@@ -47,9 +47,9 @@ score(user) = Σ over the last 7 days of (weighted messages + voice_minutes × v
 ### What VIP gives
 - **Shown separately** in the member list (hoisted).
 - **Image perms:** Attach Files + Embed Links.
-- **External emojis & stickers, soundboard, polls, create threads** (only the ones @everyone and level roles don't already have).
+- **External emojis & stickers, soundboard, create threads** (only the ones @everyone and level roles don't already have).
 - **VIP lounge:** a private category with a text channel and a voice channel only current VIPs can see.
-- **VIP colours** (§5), **temp voice channels** (§8).
+- **VIP colours** (§5), **VIP polls** (§5a), **temp voice channels** (§8).
 - VIP role itself has a distinctive colour not used by any bleed level role.
 
 ### Eligibility
@@ -100,6 +100,35 @@ Every addition/removal with its reason: `ranked #3 (score 212)`, `dropped to #15
 - **Losing VIP removes the colour role** in the same reshuffle.
 - The user's **last pick is saved**; regaining VIP restores it automatically.
 - Admins manage options with `/vip colours add|edit|remove`.
+
+---
+
+## 5a. VIP polls
+
+A **#polls** channel where only VIPs can post Discord's built-in polls, **one poll per VIP per day**, and the bot pings the **Polls** role for them.
+
+### Channel permissions (set by `/setup run`)
+| Who | Can |
+|---|---|
+| @everyone | View channel, read history, vote in polls. Can't send messages. |
+| VIP role | Send Messages + Send Polls |
+| Bot | Send Messages, Manage Messages, Manage Permissions, Mention @everyone/roles |
+
+### Posting
+1. A VIP posts a Discord poll in #polls.
+2. The bot **immediately locks the channel for that VIP only**: a member-specific permission overwrite denying Send Messages and Send Polls. The lock is saved in the DB (`PollLock`) with the reset time.
+3. The bot **replies to the poll** with `<@&PollsRole> 📊 New poll from @vipname`, using `allowed_mentions` so only the Polls role and the author are pinged.
+4. **VIPs never ping the Polls role themselves.** The Polls role is not mentionable, and VIPs don't have Mention Everyone, so typing `@Polls` does nothing.
+
+### Rules
+- **Limit is 1 poll per VIP per server-day** (same timezone as the reshuffle).
+- **Race safety:** if a second poll from the same VIP lands before the lock is applied, the bot deletes it and logs it.
+- **Non-poll messages** from VIPs in #polls are deleted and logged. Discussion goes in the poll's thread or a normal channel.
+- **Deleting your own poll doesn't give your daily poll back.**
+- **Daily reset:** at the reshuffle time, a `poll-unlock` job (same `job_runs` + advisory lock + catch-up rules as §11) removes every expired lock overwrite.
+- **Losing VIP:** access is lost through the VIP role; any lock overwrite for that person is removed at the next reset so overwrites don't pile up.
+- Staff and admins are not limited.
+- **Startup reconciliation:** lock overwrites in Discord are made to match `PollLock` rows (missing locks re-applied, expired or orphaned ones removed).
 
 ---
 
@@ -179,6 +208,9 @@ All registered to the guild only, Administrator-only, and replying privately (ep
 | `/vip colours add\|edit\|remove` | Manage colour options |
 | `/crown view` · `/crown reset-role @user` · `/crown lock @user` · `/crown unlock @user` | Crown management |
 | `/crown blocked-words add\|remove\|list` | Custom role name filter |
+| `/polls status` | Who has posted today, who's locked, when the reset is |
+| `/polls unlock @user` | Give someone their poll back for today (logged) |
+| `/config set polls-role <role>` · `/config set polls-channel <channel>` | Which role gets pinged and which channel is the polls channel |
 | `/stats @user` | Score, rank, 7-day breakdown, active days, VIP history, badges |
 | `/leaderboard [count]` | Top N this window (private reply) |
 | `/activity adjust @user <amount> <reason>` | Manual score correction, logged |
@@ -202,7 +234,7 @@ Railway containers are wiped on every deploy, so **no state may live in the bot'
 - **Reconciliation on startup and after each reshuffle:** compare DB state with actual Discord roles. Fix drift (e.g. someone manually gave VIP → removed, logged with a hint to use `/vip pin`).
 
 ### Data model (starting point)
-`GuildConfig`, `ChannelWeight`, `ActivityDay (userId, date, weightedMessages, voiceMinutes)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `JobRun`, `AuditLog`.
+`GuildConfig`, `ChannelWeight`, `ActivityDay (userId, date, weightedMessages, voiceMinutes)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `JobRun`, `AuditLog`.
 
 ---
 

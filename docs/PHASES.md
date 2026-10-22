@@ -46,10 +46,15 @@ Every phase must pass, before it's called done:
 - `/vip list|preview|pin|unpin|remove|unblock|reshuffle-now`, `/config` commands.
 - **Test:** run with a clock override on the test server; restart the bot mid-day and confirm the reshuffle neither repeats nor gets skipped.
 
-## Phase 5 — VIP colours
+## Phase 5 — VIP colours + VIP polls
 - Colour roles created by `/setup run`, placed above level roles.
 - Dropdown panel in the lounge, saved choice, restore on regaining VIP, removal on losing VIP.
 - `/vip colours` admin commands.
+- #polls channel and permissions created by `/setup run` (SPEC §5a).
+- Poll detection, per-user lock on first poll, bot pings the Polls role, extra polls and non-poll messages deleted.
+- `poll-unlock` daily job, startup reconciliation of lock overwrites.
+- `/polls status`, `/polls unlock`, polls config keys.
+- **Test:** post two polls quickly from one VIP account and confirm only one survives and only one ping goes out.
 
 ## Phase 6 — Crown + custom role
 - Monday crown logic (pure function + tests), crown role with exclusive colour.
