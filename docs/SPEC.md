@@ -266,10 +266,18 @@ The bot can chat in **main chat only**, using a free AI API. It explains how VIP
 - It doesn't reply to bots, and ignores messages that the spam filter flags.
 
 ### Cost and limits (free tier)
-- **Provider-agnostic:** the bot talks to any OpenAI-compatible chat API through env vars `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`. Default plan: **Groq's free plan**. Swapping to another free provider (e.g. OpenRouter free models, Gemini Flash-Lite) is a settings change, not a code change.
-- **Per person:** 1 AI reply every 30 s. Extra mentions inside the cooldown get a 👀 reaction instead of a reply.
-- **Bot-wide daily cap:** configurable (`ai-daily-cap`), set safely below the provider's free daily limit, with some saved for announcements.
-- **Fallback:** if the AI is down, rate-limited, or the daily cap is hit, the bot answers with pre-written replies (e.g. a canned "how VIP works" summary, and the asker's stats formatted plainly). It never just goes silent or errors.
+- **Provider chain.** Providers are an ordered list in config, each with its own base URL, model, API key env var name, and daily cap. Default chain:
+  1. **Groq** free plan (main).
+  2. **Cloudflare Workers AI** free allocation (backup). Phase 9 confirms how to call it from outside Cloudflare and picks the best model that fits the free amount.
+  3. **Pre-written fallback replies** (always available).
+- For each request, the bot uses the **first provider that is under its own daily cap and not cooling down**. If a provider errors, times out, or returns a rate limit (HTTP 429), the bot moves to the next one for that request and puts the failing provider on a cooldown (5 minutes, or until its daily reset if it says the daily limit is used up).
+- Each provider's usage is counted per day in the DB, using **that provider's own reset time** (e.g. Cloudflare resets at 00:00 UTC), so the bot doesn't hammer a provider that's out for the day.
+- **Same personality everywhere:** every provider gets the same personality prompt and VIP guide, so switching providers changes the voice as little as possible.
+- **Adding a provider later** (e.g. OpenRouter after a one-time credit purchase) is a config + env var change, never a code change.
+- **One account per provider.** Never use multiple accounts on the same provider to stack free limits; that breaks their terms and risks a ban.
+- **Not used by default:** Gemini free tier (uses prompts to improve Google's products), OpenRouter free models without credits (only 50/day), Cerebras (trial credit that expires).
+- **Per person:** up to **3 AI replies per minute** (rolling window, configurable). Extra mentions over the limit get a 👀 reaction instead of a reply.
+- **Fallback:** if every AI provider is down or out for the day, the bot answers with pre-written replies (e.g. a canned "how VIP works" summary, and the asker's stats formatted plainly). It never just goes silent or errors.
 - AI requests have a 10 s timeout; the bot shows "typing…" while waiting.
 
 ### AI touches on announcements
@@ -284,10 +292,11 @@ The bot can chat in **main chat only**, using a free AI API. It explains how VIP
 - Add a line to the server rules: "Messages you send to Puppyboy Carter are processed by an AI service."
 
 ### Admin commands
-- `/ai status`: on/off, provider and model, replies used today vs cap, last error.
+- `/ai status`: on/off, each provider in the chain with replies used today vs its cap, whether it's cooling down, last error, and how many replies fell back to pre-written today.
 - `/ai toggle`: turn AI chat on/off (fallback replies still work when off).
 - `/ai test <question>`: private test reply, doesn't count toward the cap.
-- `/config set ai-daily-cap <n>` · `/config set ai-cooldown <seconds>` · `/config set main-chat <channel>`
+- `/ai providers`: show the chain. `/ai provider-cap <provider> <n>` and `/ai provider-toggle <provider>` to adjust or skip one.
+- `/config set ai-per-user-limit <n per minute>` · `/config set main-chat <channel>`
 
 ---
 
@@ -344,7 +353,7 @@ During a redeploy Railway can briefly run the old and new copy together. If both
 - **Panels keep working after restarts.** Every button and dropdown uses a fixed ID (e.g. `vip:colour-picker`, `crown:create-role`) handled by a global interaction handler, never by temporary collectors. The channel and message ID of each panel is stored in the DB. On startup and on `/setup run`, missing or deleted panels are re-posted.
 
 ### Data model (starting point)
-`GuildConfig`, `ChannelWeight`, `MemberName (userId, lastKnownName)`, `ActivityDay (userId, serverDay, weightedMessages, voiceMinutes, filteredMessages)`, `TimeoutEvent (userId, start, end)`, `Panel (kind, channelId, messageId)`, `ModalDraft (userId, data, expiresAt)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason, pinned)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId or role-level, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `AiUsage (serverDay, count)`, `JobRun`, `AuditLog`.
+`GuildConfig`, `ChannelWeight`, `MemberName (userId, lastKnownName)`, `ActivityDay (userId, serverDay, weightedMessages, voiceMinutes, filteredMessages)`, `TimeoutEvent (userId, start, end)`, `Panel (kind, channelId, messageId)`, `ModalDraft (userId, data, expiresAt)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason, pinned)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId or role-level, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `AiProvider (name, baseUrl, model, keyEnvVar, dailyCap, order, enabled)`, `AiUsage (provider, providerDay, count, fallbacks)`, `JobRun`, `AuditLog`.
 
 ---
 

@@ -26,3 +26,5 @@
 | 2026-10-22 | AI chat as "Puppyboy Carter": hyper and friendly, puppy theme as a light touch; main chat only; replies to mentions and to replies | Carson's choices |
 | 2026-10-22 | AI shows the asker their exact rank, never anyone else's stats | Carson chose exact rank; others' stats stay private |
 | 2026-10-22 | Free AI provider (Groq free plan by default), provider-agnostic, with daily cap and pre-written fallback | Carson wants it free; free tiers have daily limits, so the bot must degrade gracefully |
+| 2026-10-22 | AI provider chain: Groq → Cloudflare Workers AI → pre-written replies; one account per provider | More free daily capacity without breaking provider terms. OpenRouter free (50/day) too small; Gemini free uses prompts for training; Cerebras is an expiring trial |
+| 2026-10-22 | Per-person AI limit of 3 replies per minute instead of a 30 s cooldown | Allows quick back-and-forth while still stopping spam |

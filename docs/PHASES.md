@@ -17,7 +17,7 @@ Every phase must pass, before it's called done:
 - [ ] In the bot service, add variables: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `GUILD_ID`, and `DATABASE_URL` as a reference to the Postgres service.
 - [ ] Turn on scheduled backups in the Postgres **Backups** tab.
 - [ ] In the bot service settings, turn off deploy overlap if Railway offers it (the bot's own lock covers it either way).
-- [ ] Create a free **Groq** account, make an API key, and check its free limits and data policy on the console. Add `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` to the bot service variables (only needed by Phase 9).
+- [ ] Create a free **Groq** account and API key, and a free **Cloudflare** account with a Workers AI API token. Check each one's free limits and data policy. Add `GROQ_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_TOKEN` to the bot service variables (only needed by Phase 9).
 - [ ] Set the bot's server nickname to **Puppyboy Carter**.
 - [ ] When inviting the bot, include **View Audit Log** along with Manage Roles, Manage Channels, Manage Messages and Mention @everyone.
 
@@ -84,14 +84,14 @@ Every phase must pass, before it's called done:
 - Create button, one per VIP, owner controls, delete after 60 s empty, startup cleanup.
 
 ## Phase 9 — AI chat (Puppyboy Carter)
-- Provider-agnostic AI client (OpenAI-compatible: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`), 10 s timeout.
+- AI client with a **provider chain** (Groq → Cloudflare Workers AI → pre-written replies), per-provider daily caps and reset times, failover on error/timeout/429, provider cooldowns. 10 s timeout per attempt. Confirm how to call Cloudflare Workers AI from outside Cloudflare and choose its model.
 - Replies to @mentions and to replies to its own messages, **main chat only**. Reads up to 6 messages of the reply chain from Discord; saves nothing.
 - Personality prompt + VIP guide in `prompts/`. Asker's own stats only.
 - Safety: no tools, mention stripping, `allowed_mentions` locked to the asker, blocked-words check on output.
-- Per-person cooldown (👀 reaction when on cooldown), bot-wide daily cap, pre-written fallback replies.
+- Per-person limit of 3 replies per minute (👀 reaction when over), pre-written fallback replies.
 - AI hype line on the daily update and Monday recap (numbers always from code), AI welcome for new VIPs.
-- `/ai status|toggle|test`, AI config keys.
-- **Tests:** fallback when the provider errors or the cap is hit; "give me VIP" style prompts change nothing; AI output with `@everyone` pings nobody.
+- `/ai status|toggle|test|providers|provider-cap|provider-toggle`, AI config keys.
+- **Tests:** chain moves to the next provider on error, timeout, 429 and cap; falls back to pre-written when all are out; provider usage resets at each provider's own time; "give me VIP" style prompts change nothing; AI output with `@everyone` pings nobody.
 
 ## Phase 10 — Hardening + handoff
 - Failure handling from SPEC §13; permission/hierarchy errors reported clearly.
