@@ -15,6 +15,7 @@ import { createClock } from './services/clock.js';
 import { ColourService } from './services/colours.js';
 import { BadgeService } from './services/badges.js';
 import { CrownService } from './services/crown.js';
+import { TempVoiceService } from './services/tempVoice.js';
 import { RecapService } from './services/recap.js';
 import { POLL_UNLOCK_JOB, PollService } from './services/polls.js';
 import { ModLog } from './services/modLog.js';
@@ -78,6 +79,8 @@ const polls = new PollService(client, env.GUILD_ID, db, config, vip, modLog, clo
 const crown = new CrownService(client, env.GUILD_ID, db, config, roleQueue, modLog, clock, log);
 vip.onRemoved.push((userId) => colours.onVipRemoved(userId));
 vip.onRemoved.push((userId, reason) => crown.onVipRemoved(userId, reason));
+const tempVoice = new TempVoiceService(client, env.GUILD_ID, db, config, vip, modLog, clock, log);
+vip.onRemoved.push((userId) => tempVoice.onVipRemoved(userId));
 const badges = new BadgeService(client, env.GUILD_ID, db, config, roleQueue, modLog, log);
 const recap = new RecapService(client, db, config, modLog, clock, log);
 vip.badges = badges;
@@ -144,6 +147,7 @@ const ctx: AppContext = {
   crown,
   badges,
   polls,
+  tempVoice,
   panels,
   runSetup: (guild) =>
     runSetup(guild, {
@@ -185,6 +189,7 @@ client.once(Events.ClientReady, (c) => {
     await colours.reconcile();
     await crown.reconcile();
     await badges.reconcile();
+    await tempVoice.start();
     await polls.reconcileLocks();
     await panels.ensureAll();
     await vip.postPendingAnnouncements();
@@ -197,6 +202,7 @@ client.once(Events.ClientReady, (c) => {
     }, FLUSH_MS),
     setInterval(() => void voice.tick().catch(logErrors('voice tick')), VOICE_TICK_MS),
     setInterval(() => messages.sweep(), SWEEP_MS),
+    setInterval(() => void tempVoice.sweep().catch(logErrors('temp voice check')), 15_000),
   );
 });
 client.on(Events.InteractionCreate, (interaction) => {
@@ -210,7 +216,10 @@ client.on(Events.MessageCreate, (message) => {
     logErrors('message tracking')(err);
   }
 });
-client.on(Events.VoiceStateUpdate, (before, after) => voice.onVoiceStateUpdate(before, after));
+client.on(Events.VoiceStateUpdate, (before, after) => {
+  voice.onVoiceStateUpdate(before, after);
+  tempVoice.onVoiceStateUpdate(before, after);
+});
 client.on(Events.GuildMemberAdd, (member) => {
   if (member.guild.id === env.GUILD_ID && !member.user.bot) buffer.setName(member.id, member.displayName);
 });

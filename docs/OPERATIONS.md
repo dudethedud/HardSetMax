@@ -144,6 +144,12 @@ All are admin-only and reply privately.
 | `/polls unlock user` | Give a VIP one more poll today, even past the daily limit (logged) |
 | `/config channel purpose:polls` / `/config polls-role` / `/config set polls-daily-cap` | Use an existing polls channel or ping role; server-wide daily VIP poll limit (default 2) |
 
+### Temporary VIP voice channels
+- In the VIP Lounge panel, **🔊 Create VIP voice** makes a voice channel in the VIP Lounge category named "*Name*'s room". Only VIPs can see it. Each VIP can have one at a time.
+- The owner gets **Rename** and **Set user limit** buttons in the channel's chat. Names are 1–32 characters, checked against the custom role blocked words. Discord allows 2 renames per 10 minutes. The limit is 0 (none) to 99. Nobody else can use the buttons, and the owner doesn't get Manage Channel.
+- It's deleted after 60 seconds empty (bots don't count), including if nobody joins within a minute of creating it. If the owner loses VIP, it's deleted as soon as it's empty.
+- On startup, empty saved channels are deleted, and ones deleted by hand are forgotten.
+
 ### Badges and the weekly recap
 - **Badges:** total weeks held = all unpinned VIP time ÷ 7 days, rounded down. Each reshuffle checks it and gives any new badge role. Badge roles have no colour, aren't hoisted, and sit just above @everyone. They're permanent, even after VIP is lost.
 - New badges appear in that day's VIP update post, which goes out even if no VIP changed. Badge earners are shown but not pinged.

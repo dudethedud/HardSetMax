@@ -18,6 +18,7 @@ import type { ColourService } from '../../services/colours.js';
 import type { CrownService } from '../../services/crown.js';
 import type { Panels } from '../../services/panels.js';
 import type { PollService } from '../../services/polls.js';
+import type { TempVoiceService } from '../../services/tempVoice.js';
 import type { ModLog } from '../../services/modLog.js';
 import type { VipService } from '../../services/vipService.js';
 import type { GatewayLeader } from '../../services/gatewayLeader.js';
@@ -38,6 +39,7 @@ export interface AppContext {
   crown: CrownService;
   badges: BadgeService;
   polls: PollService;
+  tempVoice: TempVoiceService;
   panels: Panels;
   runSetup: (guild: Guild) => Promise<string[]>;
 }

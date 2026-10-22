@@ -14,6 +14,8 @@ import {
 } from 'discord.js';
 import type { FormPrefill } from '../services/crown.js';
 import { COLOUR_NONE, COLOUR_PICKER_ID, CROWN_CREATE_ID, CROWN_EDIT_ID } from '../services/panels.js';
+import { TEMP_VOICE_CREATE_ID, TEMP_VOICE_LIMIT_ID, TEMP_VOICE_RENAME_ID } from '../services/tempVoice.js';
+import { MAX_USER_LIMIT, parseUserLimit } from '../core/tempVoice.js';
 import { MANUAL_RESHUFFLE_JOB } from '../services/vipService.js';
 import type { AppContext } from './commands/types.js';
 
@@ -81,8 +83,51 @@ const openCrownForm = (id: string): ButtonHandler => ({
   },
 });
 
+const TEMP_VOICE_RENAME_MODAL = 'tempvoice:rename-modal';
+const TEMP_VOICE_LIMIT_MODAL = 'tempvoice:limit-modal';
+
+const tempVoiceCreate: ButtonHandler = {
+  id: TEMP_VOICE_CREATE_ID,
+  adminOnly: false,
+  async run(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.editReply(await ctx.tempVoice.create(interaction.user.id));
+  },
+};
+
+/** Owner-only control buttons in a temp channel's chat; they open a one-field form. */
+const tempVoiceControl = (id: string, modalId: string, label: string, placeholder: string, max: number): ButtonHandler => ({
+  id,
+  adminOnly: false,
+  async run(interaction, ctx) {
+    if (!(await ctx.tempVoice.isOwner(interaction.user.id, interaction.channelId))) {
+      await interaction.reply({ content: 'Only the channel owner can do that.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId(modalId)
+        .setTitle(label)
+        .addComponents(
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder().setCustomId('value').setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(max).setPlaceholder(placeholder),
+          ),
+        ),
+    );
+  },
+});
+
 export const BUTTONS = new Map(
-  [reshuffleConfirm, reshuffleCancel, openCrownForm(CROWN_CREATE_ID), openCrownForm(CROWN_EDIT_ID), openCrownForm(CROWN_RETRY_ID)].map((b) => [b.id, b]),
+  [
+    reshuffleConfirm,
+    reshuffleCancel,
+    openCrownForm(CROWN_CREATE_ID),
+    openCrownForm(CROWN_EDIT_ID),
+    openCrownForm(CROWN_RETRY_ID),
+    tempVoiceCreate,
+    tempVoiceControl(TEMP_VOICE_RENAME_ID, TEMP_VOICE_RENAME_MODAL, 'Channel name', 'e.g. Chill zone', 32),
+    tempVoiceControl(TEMP_VOICE_LIMIT_ID, TEMP_VOICE_LIMIT_MODAL, 'User limit (0 = no limit)', `0–${MAX_USER_LIMIT}`, 2),
+  ].map((b) => [b.id, b]),
 );
 
 export interface ModalHandler {
@@ -108,7 +153,28 @@ const crownModal: ModalHandler = {
   },
 };
 
-export const MODALS = new Map([crownModal].map((m) => [m.id, m]));
+const tempVoiceRename: ModalHandler = {
+  id: TEMP_VOICE_RENAME_MODAL,
+  async run(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.editReply(await ctx.tempVoice.rename(interaction.user.id, interaction.channelId ?? '', interaction.fields.getTextInputValue('value')));
+  },
+};
+
+const tempVoiceLimit: ModalHandler = {
+  id: TEMP_VOICE_LIMIT_MODAL,
+  async run(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const limit = parseUserLimit(interaction.fields.getTextInputValue('value'));
+    if (limit === null) {
+      await interaction.editReply(`❌ Enter a number from 0 to ${MAX_USER_LIMIT} (0 = no limit).`);
+      return;
+    }
+    await interaction.editReply(await ctx.tempVoice.setLimit(interaction.user.id, interaction.channelId ?? '', limit));
+  },
+};
+
+export const MODALS = new Map([crownModal, tempVoiceRename, tempVoiceLimit].map((m) => [m.id, m]));
 
 export interface SelectHandler {
   id: string;
