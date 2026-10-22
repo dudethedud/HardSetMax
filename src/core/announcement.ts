@@ -1,6 +1,7 @@
 // Text of the public "VIP update" post (SPEC §4 "Announcement"). New VIPs are
 // mentioned (and pinged); everyone else appears by display name only. The caller
 // must send it with allowed_mentions set to exactly `pingUserIds`.
+import { badgeLines, type EarnedBadge } from './badges.js';
 import type { AnnouncementLine } from './reshuffle.js';
 
 export interface Announcement {
@@ -13,9 +14,16 @@ export function plainName(name: string): string {
   return name.replace(/[\\*_~`|>[\]()#-]/g, '\\$&').replace(/@/g, '@\u200b');
 }
 
-/** Null when nothing changed: no post at all. */
-export function formatVipUpdate(lines: readonly AnnouncementLine[], names: ReadonlyMap<string, string>): Announcement | null {
-  if (lines.length === 0) return null;
+/**
+ * Null when nothing changed: no post at all. New badges count as a change
+ * (owner-approved); their earners are mentioned but not pinged.
+ */
+export function formatVipUpdate(
+  lines: readonly AnnouncementLine[],
+  names: ReadonlyMap<string, string>,
+  badges: readonly EarnedBadge[] = [],
+): Announcement | null {
+  if (lines.length === 0 && badges.length === 0) return null;
   const name = (id: string) => plainName(names.get(id) ?? 'a former member');
   const ping = (id: string) => `<@${id}>`;
   const text = lines.map((l) => {
@@ -24,5 +32,5 @@ export function formatVipUpdate(lines: readonly AnnouncementLine[], names: Reado
     return `${name(l.removed)} left VIP`;
   });
   const pingUserIds = lines.flatMap((l) => (l.kind === 'left' ? [] : [l.added]));
-  return { content: ['⭐ **VIP update**', ...text].join('\n'), pingUserIds };
+  return { content: ['⭐ **VIP update**', ...text, ...badgeLines(badges)].join('\n'), pingUserIds };
 }

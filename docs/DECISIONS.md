@@ -82,3 +82,10 @@
 | 2026-10-22 | Blocked words start empty and match anywhere in the name, with the same lookalike rules | Owner approved |
 | 2026-10-22 | `/crown lock` blocks creating and editing; it doesn't delete an existing custom role (use `/crown reset-role`) | SPEC §6: "block custom role creation" |
 | 2026-10-22 | If awarding the Crown fails after a reshuffle, it's retried by the next reshuffle that week | The Crown runs as an after-reshuffle step with its own JobRun |
+| 2026-10-22 | A new badge counts as a change: the daily VIP update goes out with a "🏅" line even if no VIP changed; earners are mentioned without a ping | Owner approved |
+| 2026-10-22 | The weekly recap mentions people without pinging anyone | Owner approved |
+| 2026-10-22 | "VIP swaps that week" = everyone added by reshuffles that finished during last Monday–Sunday, including `/vip reshuffle-now`; pins don't count | Owner approved |
+| 2026-10-22 | "Longest-standing current VIP" = server-days since their current VIP started (`VipMember.since`), pinned time included | Owner approved; only badges exclude pinned time |
+| 2026-10-22 | Weeks held = unpinned stint time ÷ 7 days, rounded down, using real elapsed time; badges are checked and saved inside each reshuffle's transaction | Keeps badges and the post that announces them consistent |
+| 2026-10-22 | Badge milestones are added once (defaults from SPEC §7), managed with `/vip badges`; removing one deletes its role from everyone | Badges are permanent, but an admin removing the whole milestone means it no longer exists |
+| 2026-10-22 | The recap runs once per week (`recap` JobRun keyed by the week's Monday), right after the Crown. If posting fails, the next reshuffle that week retries | Same catch-up behaviour as the Crown |

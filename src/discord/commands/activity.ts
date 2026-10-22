@@ -35,12 +35,14 @@ export const statsCommand = defineAdminCommand(
     const adjTotal = adjustments.reduce((sum, a) => sum + a.amount, 0);
 
     const vip = ctx.vip.vips.get(user.id);
+    const badgeNames = (await ctx.db.userBadge.findMany({ where: { userId: user.id }, include: { badge: true }, orderBy: { awardedAt: 'asc' } })).map((b) => b.badge.name);
     const stints = await ctx.db.vipStint.findMany({ where: { userId: user.id }, orderBy: { startedAt: 'asc' } });
     const firstVip = stints[0]?.startedAt;
     const vipLine = [
       vip ? `⭐ VIP since ${vip.since}${vip.pinned ? ' (📌 pinned)' : ''}` : 'Not VIP',
       firstVip ? `first VIP <t:${Math.floor(firstVip.getTime() / 1000)}:D>` : 'never VIP before',
-      'badges: Phase 7',
+      `${await ctx.badges.weeksHeld(user.id, ctx.clock.now())} week(s) held (not counting pinned time)`,
+      badgeNames.length ? `🏅 ${badgeNames.join(', ')}` : 'no badges yet',
     ].join(' · ');
 
     const embed = new EmbedBuilder()

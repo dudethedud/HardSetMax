@@ -12,6 +12,7 @@ import type { Env } from '../../config/env.js';
 import type { Db } from '../../db/prisma.js';
 import type { Logger } from '../../logger.js';
 import type { ActivityBuffer } from '../../services/activityBuffer.js';
+import type { BadgeService } from '../../services/badges.js';
 import type { Clock } from '../../services/clock.js';
 import type { ColourService } from '../../services/colours.js';
 import type { CrownService } from '../../services/crown.js';
@@ -35,6 +36,7 @@ export interface AppContext {
   vip: VipService;
   colours: ColourService;
   crown: CrownService;
+  badges: BadgeService;
   polls: PollService;
   panels: Panels;
   runSetup: (guild: Guild) => Promise<string[]>;
