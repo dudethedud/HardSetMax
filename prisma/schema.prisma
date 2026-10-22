@@ -321,3 +321,11 @@ model UserBadge {
   @@id([userId, badgeId])
   @@index([awardedAt])
 }
+
+// A VIP's temporary voice channel (SPEC §8). One per VIP; deleted after 60 s empty.
+model TempVoiceChannel {
+  channelId  String    @id
+  ownerId    String    @unique
+  createdAt  DateTime  @default(now())
+  emptySince DateTime? // null while someone is in it
+}

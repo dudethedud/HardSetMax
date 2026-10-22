@@ -89,3 +89,8 @@
 | 2026-10-22 | Weeks held = unpinned stint time ÷ 7 days, rounded down, using real elapsed time; badges are checked and saved inside each reshuffle's transaction | Keeps badges and the post that announces them consistent |
 | 2026-10-22 | Badge milestones are added once (defaults from SPEC §7), managed with `/vip badges`; removing one deletes its role from everyone | Badges are permanent, but an admin removing the whole milestone means it no longer exists |
 | 2026-10-22 | The recap runs once per week (`recap` JobRun keyed by the week's Monday), right after the Crown. If posting fails, the next reshuffle that week retries | Same catch-up behaviour as the Crown |
+| 2026-10-22 | Temp voice owner controls are buttons (Rename, Set user limit) in the channel's text chat, owner-only; no Manage Channel for the owner | Owner approved. Manage Channel would also allow deleting the channel or changing other settings, and would skip the name checks |
+| 2026-10-22 | Temp voice names: "*Name*'s room" by default; renames 1–32 characters checked against the custom role blocked words; 2 renames per 10 minutes (Discord's limit) checked before calling Discord | Owner approved. Checking first avoids a request stuck waiting on Discord's rate limit |
+| 2026-10-22 | If the owner leaves but others stay, the channel stays theirs until it has been empty for 60 s; no second channel until then | Owner approved |
+| 2026-10-22 | User limit 0 (none) to 99 | Owner approved; Discord's maximum |
+| 2026-10-22 | Temp channels start "empty", so one nobody joins is removed after 60 s; bots don't count as people; if the owner lost VIP it goes as soon as it's empty | SPEC §8 |

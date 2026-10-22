@@ -17,6 +17,7 @@ import type { ConfigStore } from '../config/configStore.js';
 import type { Db } from '../db/prisma.js';
 import type { ColourOption, GuildConfig } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
+import { TEMP_VOICE_CREATE_ID } from './tempVoice.js';
 
 export interface PanelDef {
   kind: string;
@@ -46,7 +47,7 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             '**VIP perks**',
             '• Image and embed perms everywhere',
             '• External emojis, stickers and soundboard',
-            '• This private lounge (text and voice)',
+            '• This private lounge (text and voice), plus your own temporary voice channel (button below)',
             '• A VIP colour (pick below) and VIP polls in the polls channel',
             '• 👑 Crown of the week: the #1 VIP each week can create their own role',
             '',
@@ -70,7 +71,10 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             ),
           ]
         : [];
-      return { embeds: [embed], components: [...colourRows, crownRow] };
+      const voiceRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(TEMP_VOICE_CREATE_ID).setLabel('Create VIP voice').setEmoji('🔊').setStyle(ButtonStyle.Success),
+      );
+      return { embeds: [embed], components: [...colourRows, crownRow, voiceRow] };
     },
   };
 }
