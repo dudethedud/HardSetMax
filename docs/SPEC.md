@@ -105,7 +105,7 @@ Every addition/removal with its reason: `ranked #3 (score 212)`, `dropped to #15
 
 ## 5a. VIP polls
 
-A **#polls** channel where only VIPs can post Discord's built-in polls, **one poll per VIP per day**, and the bot pings the **Polls** role for them.
+A **#polls** channel where only VIPs can post Discord's built-in polls. There's a **server-wide cap of 2 polls per day** (first come, first served), **each VIP can post at most 1 of those**, and the bot pings the **Polls** role for them.
 
 ### Channel permissions (set by `/setup run`)
 | Who | Can |
@@ -117,15 +117,17 @@ A **#polls** channel where only VIPs can post Discord's built-in polls, **one po
 ### Posting
 1. A VIP posts a Discord poll in #polls.
 2. The bot **immediately locks the channel for that VIP only**: a member-specific permission overwrite denying Send Messages and Send Polls. The lock is saved in the DB (`PollLock`) with the reset time.
-3. The bot **replies to the poll** with `<@&PollsRole> 📊 New poll from @vipname`, using `allowed_mentions` so only the Polls role and the author are pinged.
-4. **VIPs never ping the Polls role themselves.** The Polls role is not mentionable, and VIPs don't have Mention Everyone, so typing `@Polls` does nothing.
+3. If that poll **reaches the daily cap**, the bot also **locks the channel for the whole VIP role** (a role overwrite denying Send Messages and Send Polls) until the reset. Saved in the DB as a role-level lock.
+4. The bot **replies to the poll** with `<@&PollsRole> 📊 New poll from @vipname`, using `allowed_mentions` so only the Polls role and the author are pinged.
+5. **VIPs never ping the Polls role themselves.** The Polls role is not mentionable, and VIPs don't have Mention Everyone, so typing `@Polls` does nothing.
 
 ### Rules
-- **Limit is 1 poll per VIP per server-day** (same timezone as the reshuffle).
-- **Race safety:** if a second poll from the same VIP lands before the lock is applied, the bot deletes it and logs it.
+- **Server cap: 2 polls per server-day** across all VIPs (config `polls-daily-cap`, default 2). Days use the same timezone as the reshuffle.
+- **Per VIP: 1 poll per server-day.**
+- **Race safety:** polls are counted in the order Discord received them. Any poll over either limit (the same VIP's second, or the server's third) that lands before a lock is applied is deleted and logged, and gets no ping.
 - **Non-poll messages** from VIPs in #polls are deleted and logged. Discussion goes in the poll's thread or a normal channel.
 - **Deleting your own poll doesn't give your daily poll back.**
-- **Daily reset:** at the reshuffle time, a `poll-unlock` job (same `job_runs` + advisory lock + catch-up rules as §11) removes every expired lock overwrite.
+- **Daily reset:** at the reshuffle time, a `poll-unlock` job (same `job_runs` + advisory lock + catch-up rules as §11) removes every expired lock overwrite, including the role-level cap lock.
 - **Losing VIP:** access is lost through the VIP role; any lock overwrite for that person is removed at the next reset so overwrites don't pile up.
 - Staff and admins are not limited.
 - **Startup reconciliation:** lock overwrites in Discord are made to match `PollLock` rows (missing locks re-applied, expired or orphaned ones removed).
@@ -208,9 +210,9 @@ All registered to the guild only, Administrator-only, and replying privately (ep
 | `/vip colours add\|edit\|remove` | Manage colour options |
 | `/crown view` · `/crown reset-role @user` · `/crown lock @user` · `/crown unlock @user` | Crown management |
 | `/crown blocked-words add\|remove\|list` | Custom role name filter |
-| `/polls status` | Who has posted today, who's locked, when the reset is |
+| `/polls status` | Polls used today (e.g. 1/2), who posted, who's locked, when the reset is |
 | `/polls unlock @user` | Give someone their poll back for today (logged) |
-| `/config set polls-role <role>` · `/config set polls-channel <channel>` | Which role gets pinged and which channel is the polls channel |
+| `/config set polls-role <role>` · `/config set polls-channel <channel>` · `/config set polls-daily-cap <n>` | Which role gets pinged, which channel is the polls channel, and the server-wide daily poll cap |
 | `/stats @user` | Score, rank, 7-day breakdown, active days, VIP history, badges |
 | `/leaderboard [count]` | Top N this window (private reply) |
 | `/activity adjust @user <amount> <reason>` | Manual score correction, logged |
@@ -234,7 +236,7 @@ Railway containers are wiped on every deploy, so **no state may live in the bot'
 - **Reconciliation on startup and after each reshuffle:** compare DB state with actual Discord roles. Fix drift (e.g. someone manually gave VIP → removed, logged with a hint to use `/vip pin`).
 
 ### Data model (starting point)
-`GuildConfig`, `ChannelWeight`, `ActivityDay (userId, date, weightedMessages, voiceMinutes)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `JobRun`, `AuditLog`.
+`GuildConfig`, `ChannelWeight`, `ActivityDay (userId, date, weightedMessages, voiceMinutes)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId or role-level, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `JobRun`, `AuditLog`.
 
 ---
 

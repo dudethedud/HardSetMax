@@ -51,10 +51,10 @@ Every phase must pass, before it's called done:
 - Dropdown panel in the lounge, saved choice, restore on regaining VIP, removal on losing VIP.
 - `/vip colours` admin commands.
 - #polls channel and permissions created by `/setup run` (SPEC §5a).
-- Poll detection, per-user lock on first poll, bot pings the Polls role, extra polls and non-poll messages deleted.
+- Poll detection, per-user lock on first poll, server-wide daily cap with a role-level lock, bot pings the Polls role, extra polls and non-poll messages deleted.
 - `poll-unlock` daily job, startup reconciliation of lock overwrites.
 - `/polls status`, `/polls unlock`, polls config keys.
-- **Test:** post two polls quickly from one VIP account and confirm only one survives and only one ping goes out.
+- **Test:** post two polls quickly from one VIP account and confirm only one survives and only one ping goes out. Then post from three different VIP accounts in quick succession and confirm only the first two survive, the channel locks for all VIPs, and it unlocks at the reset.
 
 ## Phase 6 — Crown + custom role
 - Monday crown logic (pure function + tests), crown role with exclusive colour.
