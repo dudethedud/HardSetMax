@@ -74,3 +74,11 @@
 | 2026-10-22 | `/polls unlock` is a member "allow" overwrite plus a `PollLock` row with effect `allow`; using the extra poll turns it back into a personal lock. Extras don't count toward the cap | SPEC §5a; Discord applies member overwrites over the VIP role's lock |
 | 2026-10-22 | Leftover member overwrites on Send Polls that no lock row explains are removed at startup | Keeps overwrites from piling up (SPEC §5a "Losing VIP") |
 | 2026-10-22 | Colour roles are only given or removed through the role queue; picking resets the dropdown so the same colour can be picked again | One-at-a-time role changes (SPEC §13) |
+| 2026-10-22 | The Crown is awarded by the first reshuffle of each Monday–Sunday week (normally Monday's), once per week via a `crown` JobRun keyed by the week's Monday | Owner approved. A missed Monday boundary doesn't skip the week. With no VIPs, the week is still marked so no Crown is given later that week |
+| 2026-10-22 | Crown colour default magenta `#FF00C8` (`/config set crown-colour`); role named "👑 Crown", hoisted, above the colour roles | Owner approved; not VIP gold and not in the colour picker |
+| 2026-10-22 | Near-black = brightness below 50 of 255 (0.2126R + 0.7152G + 0.0722B) | Owner approved |
+| 2026-10-22 | Role name imitation: compare lowercased with only letters/digits, with lookalikes 0→o, 1/l→i, 3→e, 4/@→a, 5/$→s, 7→t. Reject an exact match with any role, or a name containing a staff role's name (3+ characters) | Owner approved. `!` and `\|` aren't lookalikes, so "Moderator!" still matches "moderator" |
+| 2026-10-22 | Creating the custom role is free; 3 edits per Crown week after that | Owner approved |
+| 2026-10-22 | Blocked words start empty and match anywhere in the name, with the same lookalike rules | Owner approved |
+| 2026-10-22 | `/crown lock` blocks creating and editing; it doesn't delete an existing custom role (use `/crown reset-role`) | SPEC §6: "block custom role creation" |
+| 2026-10-22 | If awarding the Crown fails after a reshuffle, it's retried by the next reshuffle that week | The Crown runs as an after-reshuffle step with its own JobRun |

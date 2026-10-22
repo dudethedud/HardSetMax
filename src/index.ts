@@ -13,6 +13,7 @@ import { acquireGatewayLeader } from './services/gatewayLeader.js';
 import { MessageTracker } from './services/messageTracker.js';
 import { createClock } from './services/clock.js';
 import { ColourService } from './services/colours.js';
+import { CrownService } from './services/crown.js';
 import { POLL_UNLOCK_JOB, PollService } from './services/polls.js';
 import { ModLog } from './services/modLog.js';
 import { loungePanel, Panels } from './services/panels.js';
@@ -72,7 +73,10 @@ const roleQueue = new RoleQueue(client, env.GUILD_ID, log);
 const vip = new VipService(client, env.GUILD_ID, db, config, buffer, roleQueue, modLog, clock, log);
 const colours = new ColourService(client, env.GUILD_ID, db, config, roleQueue, vip, modLog, log);
 const polls = new PollService(client, env.GUILD_ID, db, config, vip, modLog, clock, log);
+const crown = new CrownService(client, env.GUILD_ID, db, config, roleQueue, modLog, clock, log);
 vip.onRemoved.push((userId) => colours.onVipRemoved(userId));
+vip.onRemoved.push((userId, reason) => crown.onVipRemoved(userId, reason));
+vip.onReshuffled.push(async (today, result) => void (await crown.afterReshuffle(today, result)));
 vip.onAdded.push((userId) => colours.onVipAdded(userId));
 const panels = new Panels(client, db, config, log, [loungePanel(() => colours.options())]);
 const scheduler = new DailyScheduler(config, clock, log);
@@ -128,11 +132,16 @@ const ctx: AppContext = {
   modLog,
   vip,
   colours,
+  crown,
   polls,
   panels,
   runSetup: (guild) =>
     runSetup(guild, {
-      steps: [(g, vipRole, report) => colours.setup(g, vipRole, report), (g, vipRole, report) => polls.setup(g, vipRole, report)],
+      steps: [
+        (g, vipRole, report) => colours.setup(g, vipRole, report),
+        (g, vipRole, report) => crown.setup(g, vipRole, report),
+        (g, vipRole, report) => polls.setup(g, vipRole, report),
+      ],
       db,
       config,
       panels,
@@ -163,6 +172,7 @@ client.once(Events.ClientReady, (c) => {
     // the scheduler runs any reshuffle that was due while the bot was offline.
     await vip.reconcile();
     await colours.reconcile();
+    await crown.reconcile();
     await polls.reconcileLocks();
     await panels.ensureAll();
     await vip.postPendingAnnouncements();

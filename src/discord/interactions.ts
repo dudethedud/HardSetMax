@@ -1,8 +1,15 @@
 // The one global interaction handler. Later phases route buttons, dropdowns and
 // modals here by their fixed custom IDs.
-import { MessageFlags, PermissionFlagsBits, type ButtonInteraction, type Interaction, type StringSelectMenuInteraction } from 'discord.js';
+import {
+  MessageFlags,
+  PermissionFlagsBits,
+  type ButtonInteraction,
+  type Interaction,
+  type ModalSubmitInteraction,
+  type StringSelectMenuInteraction,
+} from 'discord.js';
 import { checkAdmin } from '../core/adminCheck.js';
-import { BUTTONS, SELECTS } from './buttons.js';
+import { BUTTONS, MODALS, SELECTS } from './buttons.js';
 import { COMMANDS_BY_NAME } from './commands/index.js';
 import type { AppContext } from './commands/types.js';
 
@@ -15,6 +22,7 @@ const DENIED = {
 export async function handleInteraction(interaction: Interaction, ctx: AppContext): Promise<void> {
   if (interaction.isButton()) return handleButton(interaction, ctx);
   if (interaction.isStringSelectMenu()) return handleSelect(interaction, ctx);
+  if (interaction.isModalSubmit()) return handleModal(interaction, ctx);
   if (!interaction.isChatInputCommand()) return;
 
   const check = checkAdmin({
@@ -82,5 +90,20 @@ async function handleSelect(interaction: StringSelectMenuInteraction, ctx: AppCo
     ctx.log.error({ err, select: interaction.customId }, 'menu failed');
     const reply = { content: '❌ Something went wrong. Please try again.', flags: MessageFlags.Ephemeral } as const;
     await (interaction.replied || interaction.deferred ? interaction.editReply(reply.content) : interaction.reply(reply)).catch(() => undefined);
+  }
+}
+
+async function handleModal(interaction: ModalSubmitInteraction, ctx: AppContext): Promise<void> {
+  const handler = MODALS.get(interaction.customId);
+  if (!handler || !interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
+    await interaction.reply({ content: 'This form no longer works.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  try {
+    await handler.run(interaction, ctx);
+  } catch (err) {
+    ctx.log.error({ err, modal: interaction.customId }, 'form failed');
+    const msg = '❌ Something went wrong. Please try again.';
+    await (interaction.replied || interaction.deferred ? interaction.editReply(msg) : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral })).catch(() => undefined);
   }
 }

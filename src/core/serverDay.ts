@@ -109,3 +109,8 @@ export function completedServerDays(now: Date, count: number, b: DayBoundary): s
 export function serverDaysBetween(from: string, to: string): number {
   return Math.round(parseKey(to, 'UTC').diff(parseKey(from, 'UTC'), 'days').days);
 }
+
+/** The Monday that starts the week (Monday–Sunday) containing this server-day. */
+export function weekStartOf(key: string): string {
+  return parseKey(key, 'UTC').startOf('week').toISODate()!;
+}

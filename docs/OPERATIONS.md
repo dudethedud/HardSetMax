@@ -135,9 +135,22 @@ All are admin-only and reply privately.
 | `/vip unblock user` | Clear a block |
 | `/vip reshuffle-now` | Run a reshuffle now, after a confirm button. The nightly one still runs |
 | `/vip colours list/add/edit/remove` | VIP colour options (up to 24); changes update the roles and the lounge picker |
+| `/crown view` | This week's Crown holder and their custom role |
+| `/crown reset-role user` | Delete someone's custom role and its saved settings |
+| `/crown lock user` / `/crown unlock user` | Block or allow creating and editing a custom role |
+| `/crown blocked-words add/remove/list` | Words custom role names can't contain (lookalikes like 0 for o are caught) |
 | `/polls status` | VIP polls used today, who posted, who's locked, when it resets |
 | `/polls unlock user` | Give a VIP one more poll today, even past the daily limit (logged) |
 | `/config channel purpose:polls` / `/config polls-role` / `/config set polls-daily-cap` | Use an existing polls channel or ping role; server-wide daily VIP poll limit (default 2) |
+
+### How the Crown works
+- The week's first reshuffle (normally Monday's, at midnight) gives the **👑 Crown** role to the top member of the new VIP list, for that week (Monday to Sunday). No VIPs means no Crown that week.
+- If the holder loses VIP mid-week, the Crown and their custom role go with it, and nobody else gets the Crown until next week.
+- **Custom role:** the Crown holder clicks **Create your role** in the VIP Lounge panel and fills in a name (2–32 characters), a hex colour and an optional emoji. The emoji needs Server Boost Level 2; otherwise it's left off.
+  - **Rejected:** names that match or imitate any role, or contain a staff role's name; blocked words; near-black colours.
+  - If something's wrong, a **Try again** button reopens the form with their answers, for 15 minutes.
+  - Creating is free, then 3 edits per Crown week.
+  - The role sits right above the Crown role. It's deleted when the Crown is lost, but its settings are kept, so it comes back automatically if they win again.
 
 ### How VIP polls work
 - In #polls only VIPs, staff and admins can post. Everyone can vote and chat in each poll's thread.
