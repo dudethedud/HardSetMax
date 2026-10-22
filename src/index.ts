@@ -1,6 +1,7 @@
 import { Events } from 'discord.js';
 import { loadEnv } from './config/env.js';
 import { getGuildConfig } from './config/guildConfig.js';
+import { explainDbError, pgConfig } from './db/connection.js';
 import { createDb } from './db/prisma.js';
 import { createClient } from './discord/client.js';
 import type { AppContext } from './discord/commands/types.js';
@@ -31,17 +32,20 @@ process.on('uncaughtException', (err) => {
 
 log.info({ version: VERSION }, 'starting');
 
+const connection = pgConfig(env.DATABASE_URL, { caCertPath: env.DATABASE_CA_CERT });
+
 // 1. Become the only connected copy before touching Discord (SPEC §11).
-const leader = await acquireGatewayLeader(env.DATABASE_URL, log, {
+const leader = await acquireGatewayLeader(connection, log, {
   signal: waiting.signal,
   onLost: () => void shutdown.run('gateway-leader lost', 1),
 }).catch((err: unknown) => {
   if (waiting.signal.aborted) return null; // Shutting down; shutdown.run exits.
-  throw err;
+  log.fatal({ err, hint: explainDbError(err) ?? undefined }, 'could not connect to the database');
+  process.exit(1);
 });
 if (!leader) await new Promise(() => undefined);
 
-const db = createDb(env.DATABASE_URL);
+const db = createDb(connection, env.DATABASE_POOL_MAX);
 const client = createClient();
 
 // Shutdown order: (later phases: flush buffers, close voice sessions) → Discord → DB → lock.

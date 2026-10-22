@@ -1,4 +1,4 @@
-// Graceful shutdown (SPEC §11). Railway sends SIGTERM on redeploy: flush pending
+// Graceful shutdown (SPEC §11). The host sends SIGTERM/SIGINT on stop: flush pending
 // writes, disconnect from Discord, close the DB, and only then release
 // gateway-leader so the new copy can connect.
 import type { Logger } from '../logger.js';

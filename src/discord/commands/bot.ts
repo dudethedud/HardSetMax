@@ -11,7 +11,7 @@ export const botCommand = defineAdminCommand(
   'Bot status',
   (b) => b.addSubcommand((s) => s.setName('health').setDescription('Version, uptime, database, leader lock and intents')),
   async (interaction, ctx) => {
-    const { env, db, leader, client, startedAt } = ctx;
+    const { db, leader, client, startedAt } = ctx;
 
     let dbLine: string;
     let dayLine = 'unavailable (database down)';
@@ -26,13 +26,10 @@ export const botCommand = defineAdminCommand(
       dbLine = '❌ unreachable';
     }
 
-    const commit = env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7);
-    const copy = [`pid ${process.pid}`, hostname(), env.RAILWAY_DEPLOYMENT_ID && `deploy ${env.RAILWAY_DEPLOYMENT_ID}`]
-      .filter(Boolean)
-      .join(', ');
+    const copy = `pid ${process.pid}, ${hostname()}`;
 
     const embed = new EmbedBuilder().setTitle('Bot health').addFields(
-      { name: 'Version', value: commit ? `${VERSION} (${commit})` : VERSION, inline: true },
+      { name: 'Version', value: VERSION, inline: true },
       { name: 'Up since', value: time(startedAt, TimestampStyles.RelativeTime), inline: true },
       { name: 'Discord ping', value: `${client.ws.ping} ms`, inline: true },
       { name: 'Database', value: dbLine },

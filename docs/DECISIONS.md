@@ -6,7 +6,7 @@
 | 2026-10-22 | 10 VIP slots, 7-day window, daily reshuffle | Carson's choice |
 | 2026-10-22 | Swap announcements combined in one message, ping new VIPs only | Carson's format; avoids publicly pinging people who dropped out |
 | 2026-10-22 | Crown custom role uses a lounge button + modal, not a slash command | Keeps the "no public commands" rule and gives a proper input form |
-| 2026-10-22 | Postgres on Railway (separate service) instead of SQLite in the container | Container disk is wiped on redeploy; a separate DB service survives redeploys and has built-in backups |
+| 2026-10-22 | ~~Postgres on Railway (separate service) instead of SQLite in the container~~ (replaced below: Supabase) | Container disk is wiped on redeploy; a separate DB service survives redeploys and has built-in backups |
 | 2026-10-22 | TypeScript + discord.js v14 + Prisma | Matches the EDSA project stack |
 | 2026-10-22 | VIP polls: 1 per VIP per day, channel locks for that VIP right after their poll, bot pings the Polls role | Carson's rule; locking immediately prevents a second poll instead of punishing after; VIPs can't spam the ping |
 | 2026-10-22 | Server-wide cap of 2 polls/day (first come, first served); channel locks for the whole VIP role once hit | 10 VIPs × 1 poll each would mean up to 10 pings a day; Carson chose a server cap |
@@ -34,6 +34,12 @@
 | 2026-10-22 | Luxon does the timezone math in the server-day helper | Mature, DST-aware library instead of hand-written date code |
 | 2026-10-22 | A server-day is named by the local date it starts on (`YYYY-MM-DD`) | With the default 00:00 boundary the key is just the local calendar date |
 | 2026-10-22 | Boundary in the spring-forward gap (e.g. 02:30) runs at the first valid time after the gap (03:00); a boundary in the repeated fall-back hour uses its first occurrence | SPEC §2 says "next valid time"; this keeps every instant in exactly one server-day |
-| 2026-10-22 | `gateway-leader` uses `pg_try_advisory_lock(hashtext('gateway-leader'))` on a dedicated `pg` connection; losing that connection shuts the bot down (exit 1, Railway restarts it) | Postgres releases the lock when the connection drops, so another copy may connect; the old one must stop |
-| 2026-10-22 | Slash commands are registered to the guild on every startup | Deploys keep commands in sync without a manual step; `npm run register-commands` still exists |
+| 2026-10-22 | `gateway-leader` uses `pg_try_advisory_lock(hashtext('gateway-leader'))` on a dedicated `pg` connection; losing that connection shuts the bot down (exit 1, the host restarts it) | Postgres releases the lock when the connection drops, so another copy may connect; the old one must stop |
+| 2026-10-22 | Slash commands are registered to the guild on every startup | Restarts keep commands in sync without a manual step; `npm run register-commands` still exists |
 | 2026-10-22 | Phase 1 `/config set` keys: `timezone`, `day-boundary`. Changes are written to `AuditLog` | Real spec settings, so the redeploy proof uses real data. The mod-log channel is configured in Phase 4 |
+| 2026-10-22 | Hosting: bot on a free **Wispbyte** Node.js server, database on free **Supabase**, instead of Railway | Owner wants it fully free with no card. Railway's free plan is about $1/month of credit; Oracle's free tier needs a credit card; Wispbyte's free plan allows one server, so the database goes on Supabase. Neon's free plan was rejected: the always-open lock connection would use up its 100 compute-hours a month |
+| 2026-10-22 | Supabase via the **session pooler** (port 5432), not the transaction pooler | Advisory locks need a session that stays on one connection; the direct connection is IPv6-only |
+| 2026-10-22 | Database TLS is always verified: the bot uses Supabase's CA (`DATABASE_CA_CERT`), and migrations run with `sslaccept=strict`. TLS is only skipped for localhost or `sslmode=disable` | The connection carries the DB password and all member data; `sslmode=require` alone accepts any certificate |
+| 2026-10-22 | `start.js` is the single entry point (migrate, then start); `npm install` builds via `postinstall`; TypeScript and `@types/*` are runtime dependencies | Wispbyte runs `npm install` and then a JS file, not `npm run build` + `npm start`. The build needs TypeScript even if the host skips dev dependencies |
+| 2026-10-22 | Prisma pool capped at 5 connections (`DATABASE_POOL_MAX`) | Supabase's free session pooler allows few connections |
+| 2026-10-22 | Backups: Supabase free has no self-service restores, so an off-site scheduled backup is still needed (to be built; restore drill in Phase 10) | SPEC §11 requires backups |

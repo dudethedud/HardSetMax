@@ -5,7 +5,7 @@ Do **one phase per session**. Plan first, wait for approval, then build. Each ph
 Every phase must pass, before it's called done:
 - `npm run typecheck` and `npm test` pass
 - `npm run lint` passes
-- **Redeploy check** (from Phase 1 on): data created in this phase is still there after a Railway redeploy
+- **Redeploy check** (from Phase 1 on): data created in this phase is still there after the bot is restarted and updated
 - `docs/DECISIONS.md` updated with any choices made
 
 ---
@@ -13,11 +13,10 @@ Every phase must pass, before it's called done:
 ## Phase 0 — Setup (Carson, not Claude Code)
 - [ ] Create the application + bot in the Discord Developer Portal. Turn on **Server Members** and **Message Content** intents.
 - [ ] Invite it to a **test server** first (copy the real server's bleed level roles and a few channels).
-- [ ] Create a Railway project: add a **Postgres** service, then a service connected to this GitHub repo.
-- [ ] In the bot service, add variables: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `GUILD_ID`, and `DATABASE_URL` as a reference to the Postgres service.
-- [ ] Turn on scheduled backups in the Postgres **Backups** tab.
-- [ ] In the bot service settings, turn off deploy overlap if Railway offers it (the bot's own lock covers it either way).
-- [ ] Create a free **Groq** account and API key, and a free **Cloudflare** account with a Workers AI API token. Check each one's free limits and data policy. Add `GROQ_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_TOKEN` to the bot service variables (only needed by Phase 9).
+- [ ] Create a free **Supabase** project. Copy its **session pooler** connection string and download its **SSL certificate** (`docs/OPERATIONS.md`).
+- [ ] Create a free **Wispbyte** Node.js server linked to this GitHub repo, with a `.env` holding `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `GUILD_ID`, `DATABASE_URL` and `DATABASE_CA_CERT` (`docs/OPERATIONS.md`).
+- [ ] Set a reminder to log in to Wispbyte at least every 2 weeks, or the free server stops.
+- [ ] Create a free **Groq** account and API key, and a free **Cloudflare** account with a Workers AI API token. Check each one's free limits and data policy. Add `GROQ_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_TOKEN` to the bot's `.env` (only needed by Phase 9).
 - [ ] Set the bot's server nickname to **Puppyboy Carter**.
 - [ ] When inviting the bot, include **View Audit Log** along with Manage Roles, Manage Channels, Manage Messages and Mention @everyone.
 
@@ -29,7 +28,7 @@ Every phase must pass, before it's called done:
 - Admin command framework: guild-only registration, `default_member_permissions = Administrator`, runtime admin check, ephemeral replies.
 - `/bot health`.
 - Graceful shutdown handler (SIGTERM/SIGINT) wired up, even if it has little to flush yet.
-- **Proof:** set a config value, redeploy on Railway, confirm it's still there. Watch the logs during the redeploy and confirm the new copy waits for the old one before connecting. Write the steps in `docs/OPERATIONS.md`.
+- **Proof:** set a config value, restart the bot, confirm it's still there. Start a second copy locally and confirm it waits for the hosted one before connecting. Write the steps in `docs/OPERATIONS.md`.
 
 ## Phase 2 — Activity tracking
 - Message counting (cooldown, length/emoji filter, channel weights, ignored channels). Threads use their parent channel's weight.
@@ -97,5 +96,5 @@ Every phase must pass, before it's called done:
 - Failure handling from SPEC §13; permission/hierarchy errors reported clearly.
 - Data pruning (activity older than 60 days).
 - **Backup restore drill** done once and documented.
-- `README.md`: setup, Railway deploy, environment variables, every admin command.
+- `README.md`: setup, Wispbyte + Supabase deploy, environment variables, every admin command.
 - Move from test server to the real server: `/setup run`, check role order, watch the first reshuffle.

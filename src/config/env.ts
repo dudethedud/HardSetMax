@@ -9,10 +9,12 @@ const EnvSchema = z.object({
   DISCORD_CLIENT_ID: snowflake,
   GUILD_ID: snowflake,
   DATABASE_URL: z.string().url(),
+  // Path to the database's CA certificate (Supabase's SSL certificate file).
+  DATABASE_CA_CERT: z.string().min(1).optional(),
+  // Prisma pool size. Supabase's free session pooler allows few connections, and
+  // gateway-leader and migrations need one each on top of this.
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(20).default(5),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
-  // Set by Railway; shown in /bot health.
-  RAILWAY_GIT_COMMIT_SHA: z.string().optional(),
-  RAILWAY_DEPLOYMENT_ID: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

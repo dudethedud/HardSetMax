@@ -2,7 +2,7 @@
 // the bot takes the `gateway-leader` advisory lock on its own dedicated connection
 // (not the Prisma pool, which can hand the lock's session to another query). If the
 // connection drops, Postgres releases the lock, so the holder must stop at once.
-import pg from 'pg';
+import pg, { type ClientConfig } from 'pg';
 import type { Logger } from '../logger.js';
 
 const LOCK_NAME = 'gateway-leader';
@@ -23,11 +23,11 @@ export interface AcquireOptions {
 }
 
 export async function acquireGatewayLeader(
-  databaseUrl: string,
+  connection: ClientConfig,
   log: Logger,
   { retryMs = 2000, signal, onLost }: AcquireOptions,
 ): Promise<GatewayLeader> {
-  const client = new pg.Client({ connectionString: databaseUrl, application_name: 'vip-bot:gateway-leader' });
+  const client = new pg.Client({ ...connection, application_name: 'vip-bot:gateway-leader' });
   let held = false;
   let released = false;
 

@@ -17,6 +17,7 @@ export default tseslint.config(
   {
     files: ['**/*.js', '**/*.config.ts'],
     extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly', URL: 'readonly' } },
   },
   {
     // core/ is pure logic: no Discord, DB or env access (CLAUDE.md).
