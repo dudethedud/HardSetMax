@@ -3,25 +3,36 @@
 // global interaction handler, and each panel's message ID is saved in the database.
 // On startup and /setup run, missing or deleted panels are re-posted and existing
 // ones are updated to the current version.
-import { EmbedBuilder, type Client, type MessageCreateOptions } from 'discord.js';
+import {
+  ActionRowBuilder,
+  EmbedBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
+  type Client,
+  type MessageCreateOptions,
+} from 'discord.js';
 import type { ConfigStore } from '../config/configStore.js';
 import type { Db } from '../db/prisma.js';
-import type { GuildConfig } from '../generated/prisma/client.js';
+import type { ColourOption, GuildConfig } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
 
 export interface PanelDef {
   kind: string;
   channelId: (config: GuildConfig) => string | null;
-  render: () => Pick<MessageCreateOptions, 'content' | 'embeds' | 'components'>;
+  render: () => Promise<Pick<MessageCreateOptions, 'content' | 'embeds' | 'components'>>;
 }
 
-/** The VIP lounge welcome panel. Later phases add buttons (colours, Crown role, temp voice). */
-export const loungePanel: PanelDef = {
-  kind: 'lounge',
-  channelId: (c) => c.loungeTextId,
-  render: () => ({
-    embeds: [
-      new EmbedBuilder()
+export const COLOUR_PICKER_ID = 'vip:colour-picker';
+export const COLOUR_NONE = 'none';
+
+/** The VIP lounge panel: perks, and the colour dropdown. Later phases add more buttons. */
+export function loungePanel(colourOptions: () => Promise<ColourOption[]>): PanelDef {
+  return {
+    kind: 'lounge',
+    channelId: (c) => c.loungeTextId,
+    render: async () => {
+      const options = (await colourOptions()).filter((o) => o.roleId);
+      const embed = new EmbedBuilder()
         .setTitle('⭐ VIP Lounge')
         .setColor(0xf1c40f)
         .setDescription(
@@ -32,14 +43,28 @@ export const loungePanel: PanelDef = {
             '• Image and embed perms everywhere',
             '• External emojis, stickers and soundboard',
             '• This private lounge (text and voice)',
+            '• A VIP colour (pick below) and VIP polls in the polls channel',
             '',
             'Stay active to keep your slot. VIPs keep it down to rank #13, and nobody loses it in their first 5 days.',
           ].join('\n'),
-        ),
-    ],
-    components: [],
-  }),
-};
+        );
+      const components = options.length
+        ? [
+            new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+              new StringSelectMenuBuilder()
+                .setCustomId(COLOUR_PICKER_ID)
+                .setPlaceholder('🎨 Pick your VIP colour')
+                .addOptions(
+                  ...options.map((o) => new StringSelectMenuOptionBuilder().setLabel(o.name).setValue(String(o.id)).setDescription(o.hex)),
+                  new StringSelectMenuOptionBuilder().setLabel('Remove colour').setValue(COLOUR_NONE).setEmoji('✖️'),
+                ),
+            ),
+          ]
+        : [];
+      return { embeds: [embed], components };
+    },
+  };
+}
 
 export class Panels {
   constructor(
@@ -71,7 +96,7 @@ export class Panels {
     if (!channel?.isSendable() || !('messages' in channel)) return `⚠️ ${def.kind} panel: channel missing; run /setup run`;
 
     const saved = await this.db.panel.findUnique({ where: { kind: def.kind } });
-    const content = def.render();
+    const content = await def.render();
     if (saved && saved.channelId === channelId) {
       const message = await channel.messages.fetch(saved.messageId).catch(() => null);
       if (message) {

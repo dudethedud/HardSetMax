@@ -113,8 +113,14 @@ Once `/bot health` works, in your test server:
 2. `/config level-roles-top role:<bleed's highest level role>`. The VIP role will go directly above it.
 3. `/config channel purpose:announcements channel:#your-announcements` and `/config channel purpose:mod-log channel:#a-private-staff-channel`.
 4. `/config staff-roles add role:<each staff role>`. Members with these can't be VIP.
-5. `/setup run`. It creates the VIP role, the private VIP Lounge (text and voice) and its panel, and tells you if anything's wrong. Run it again whenever something looks off; it's safe.
-6. `/vip preview` shows what the first reshuffle will do. The reshuffle runs every night at midnight (server time). It also runs once right after setup, for the day that just ended.
+5. Optional: if you already have a #polls channel or a role for poll pings, use `/config channel purpose:polls` and `/config polls-role`. Otherwise setup creates them.
+6. `/setup run`. It creates:
+   - the VIP role and 10 VIP colour roles (above VIP)
+   - the private VIP Lounge (text and voice), with a panel where VIPs pick their colour
+   - `#polls` with the right permissions, and a **Polls** role. Give it to members who want poll pings (self-roles or another bot). Only the bot can ping it.
+
+   It tells you if anything's wrong. Run it again whenever something looks off; it's safe.
+7. `/vip preview` shows what the first reshuffle will do. The reshuffle runs every night at midnight (server time). It also runs once right after setup, for the day that just ended.
 
 ## Part 6: Nightly backups (GitHub)
 

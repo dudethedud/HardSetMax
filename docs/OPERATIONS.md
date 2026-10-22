@@ -134,6 +134,23 @@ All are admin-only and reply privately.
 | `/vip remove user [block_days]` | Remove VIP now; optionally block from VIP for N days |
 | `/vip unblock user` | Clear a block |
 | `/vip reshuffle-now` | Run a reshuffle now, after a confirm button. The nightly one still runs |
+| `/vip colours list/add/edit/remove` | VIP colour options (up to 24); changes update the roles and the lounge picker |
+| `/polls status` | VIP polls used today, who posted, who's locked, when it resets |
+| `/polls unlock user` | Give a VIP one more poll today, even past the daily limit (logged) |
+| `/config channel purpose:polls` / `/config polls-role` / `/config set polls-daily-cap` | Use an existing polls channel or ping role; server-wide daily VIP poll limit (default 2) |
+
+### How VIP polls work
+- In #polls only VIPs, staff and admins can post. Everyone can vote and chat in each poll's thread.
+- Polls are handled one at a time, in the order Discord received them. A VIP's first poll of the day:
+  - locks #polls for them until the next server-day starts
+  - gets the bot's ping of the Polls role
+  - gets a discussion thread
+- The poll that reaches `polls-daily-cap` also locks #polls for the whole VIP role.
+- Anything over a limit (a second poll from the same VIP, or past the cap) is deleted and logged, with no ping. Normal messages from VIPs in #polls are deleted too; discussion goes in the threads.
+- Staff and admin polls have no limits and still get the ping and thread.
+- Deleting your own poll doesn't give your poll back.
+- At the day boundary, the `poll-unlock` job removes only locks that have expired. Startup and `/setup run` make the #polls permissions match the saved locks.
+- Polls posted while the bot is offline aren't checked.
 
 ### How the daily reshuffle runs
 - Every 15 s the bot checks whether the server-day that just ended has a reshuffle in `JobRun` (job `reshuffle`, period = that day). If not, it runs it. This also covers catch-up: if the bot was offline at midnight, it runs as soon as it's back, once, for the most recent day only.

@@ -47,11 +47,17 @@ export const configCommand = defineAdminCommand(
               .setName('purpose')
               .setDescription('What the channel is for')
               .setRequired(true)
-              .addChoices({ name: 'announcements', value: 'announcements' }, { name: 'mod-log', value: 'mod-log' }),
+              .addChoices({ name: 'announcements', value: 'announcements' }, { name: 'mod-log', value: 'mod-log' }, { name: 'polls', value: 'polls' }),
           )
           .addChannelOption((o) =>
             o.setName('channel').setDescription('Text channel').setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
           ),
+      )
+      .addSubcommand((s) =>
+        s
+          .setName('polls-role')
+          .setDescription('Role the bot pings for new VIP polls')
+          .addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)),
       )
       .addSubcommand((s) =>
         s
@@ -108,13 +114,24 @@ export const configCommand = defineAdminCommand(
     if (sub === 'channel') {
       const purpose = interaction.options.getString('purpose', true);
       const channel = interaction.options.getChannel('channel', true, [ChannelType.GuildText, ChannelType.GuildAnnouncement]);
-      const field = purpose === 'mod-log' ? 'modLogChannelId' : 'announceChannelId';
+      const field = purpose === 'mod-log' ? 'modLogChannelId' : purpose === 'polls' ? 'pollsChannelId' : 'announceChannelId';
       await ctx.db.$transaction([
         ctx.db.guildConfig.update({ where: { guildId }, data: { [field]: channel.id } }),
         ctx.db.auditLog.create({ data: { action: 'config.channel', actorId, targetId: channel.id, data: { purpose, old: config[field] } } }),
       ]);
       await ctx.config.load();
-      await interaction.editReply(`✅ ${purpose} channel: ${channelMention(channel.id)}`);
+      await interaction.editReply(`✅ ${purpose} channel: ${channelMention(channel.id)}${purpose === 'polls' ? '. Run `/setup run` to set its permissions.' : ''}`);
+      return;
+    }
+
+    if (sub === 'polls-role') {
+      const role = interaction.options.getRole('role', true);
+      await ctx.db.$transaction([
+        ctx.db.guildConfig.update({ where: { guildId }, data: { pollsRoleId: role.id } }),
+        ctx.db.auditLog.create({ data: { action: 'config.polls-role', actorId, targetId: role.id } }),
+      ]);
+      await ctx.config.load();
+      await interaction.editReply(`✅ Polls role: ${roleMention(role.id)}. Run \`/setup run\` so only the bot can ping it.`);
       return;
     }
 
@@ -137,6 +154,7 @@ export const configCommand = defineAdminCommand(
         '',
         `**Announcements:** ${ref(config.announceChannelId, channelMention)} · **Mod-log:** ${ref(config.modLogChannelId, channelMention)}`,
         `**VIP role:** ${ref(config.vipRoleId, roleMention)} · **Level roles top:** ${ref(config.levelRolesTopId, roleMention)}`,
+        `**Polls channel:** ${ref(config.pollsChannelId, channelMention)} · **Polls role:** ${ref(config.pollsRoleId, roleMention)}`,
       );
       lines.push('', `**Channel weights** (others: ${DEFAULT_CHANNEL_WEIGHT})`, ...(weights.length ? weights : ['none set']));
       await interaction.editReply(lines.join('\n'));

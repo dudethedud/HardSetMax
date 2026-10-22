@@ -1,8 +1,8 @@
 // The one global interaction handler. Later phases route buttons, dropdowns and
 // modals here by their fixed custom IDs.
-import { MessageFlags, PermissionFlagsBits, type ButtonInteraction, type Interaction } from 'discord.js';
+import { MessageFlags, PermissionFlagsBits, type ButtonInteraction, type Interaction, type StringSelectMenuInteraction } from 'discord.js';
 import { checkAdmin } from '../core/adminCheck.js';
-import { BUTTONS } from './buttons.js';
+import { BUTTONS, SELECTS } from './buttons.js';
 import { COMMANDS_BY_NAME } from './commands/index.js';
 import type { AppContext } from './commands/types.js';
 
@@ -14,6 +14,7 @@ const DENIED = {
 
 export async function handleInteraction(interaction: Interaction, ctx: AppContext): Promise<void> {
   if (interaction.isButton()) return handleButton(interaction, ctx);
+  if (interaction.isStringSelectMenu()) return handleSelect(interaction, ctx);
   if (!interaction.isChatInputCommand()) return;
 
   const check = checkAdmin({
@@ -65,5 +66,21 @@ async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Pr
     ctx.log.error({ err, button: interaction.customId }, 'button failed');
     const reply = { content: '❌ Something went wrong. Details are in the bot logs.', flags: MessageFlags.Ephemeral } as const;
     await (interaction.replied || interaction.deferred ? interaction.followUp(reply) : interaction.reply(reply)).catch(() => undefined);
+  }
+}
+
+/** Member-facing dropdowns. Each handler checks what the member may do (e.g. VIP only). */
+async function handleSelect(interaction: StringSelectMenuInteraction, ctx: AppContext): Promise<void> {
+  const handler = SELECTS.get(interaction.customId);
+  if (!handler || !interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
+    await interaction.reply({ content: 'This menu no longer works.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  try {
+    await handler.run(interaction, ctx);
+  } catch (err) {
+    ctx.log.error({ err, select: interaction.customId }, 'menu failed');
+    const reply = { content: '❌ Something went wrong. Please try again.', flags: MessageFlags.Ephemeral } as const;
+    await (interaction.replied || interaction.deferred ? interaction.editReply(reply.content) : interaction.reply(reply)).catch(() => undefined);
   }
 }

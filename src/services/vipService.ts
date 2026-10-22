@@ -38,6 +38,8 @@ export interface VipState {
 
 /** Later phases add cleanup here (colour, Crown, custom role, temp voice). */
 export type VipRemovedHook = (userId: string, reason: string) => Promise<void>;
+/** Runs after someone gets VIP (e.g. restore their saved colour). */
+export type VipAddedHook = (userId: string) => Promise<void>;
 
 export interface ReshuffleRun {
   status: 'done' | 'skipped';
@@ -58,6 +60,7 @@ export const MANUAL_RESHUFFLE_JOB = 'reshuffle-manual';
 export class VipService {
   #vips = new Map<string, VipState>();
   readonly onRemoved: VipRemovedHook[] = [];
+  readonly onAdded: VipAddedHook[] = [];
 
   constructor(
     private readonly client: Client,
@@ -231,6 +234,7 @@ export class VipService {
   async #additionEffects(userId: string, reason: string): Promise<void> {
     const roleId = this.config.current.guild.vipRoleId;
     const res = roleId ? await this.roles.run({ userId, roleId, action: 'add', reason: `VIP: ${reason}` }) : { ok: false as const, error: 'VIP role not set up' };
+    for (const hook of this.onAdded) await hook(userId).catch((err: unknown) => this.log.warn({ err, userId }, 'VIP addition step failed'));
     await this.modLog.post(`⭐ VIP given to <@${userId}>: ${reason}${res.ok ? '' : `\n⚠️ Role not given: ${res.error}`}`);
   }
 

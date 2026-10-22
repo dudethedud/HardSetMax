@@ -67,3 +67,10 @@
 | 2026-10-22 | Pinned VIPs are removed mid-day only for leaving the server (or `/vip remove`), same as in the reshuffle | SPEC §4 step 4 |
 | 2026-10-22 | VIP role changed by hand is corrected live (and on startup): added by hand → removed, removed by hand → restored, with a mod-log hint | SPEC §11: the database is the source of truth |
 | 2026-10-22 | `CLOCK_OFFSET_MINUTES` (testing only) shifts the clock used for the schedule and reshuffle, not activity counting | PHASES Phase 4 test with a clock override; activity keeps Discord's real timestamps |
+| 2026-10-22 | Default VIP colours: Rose, Crimson, Tangerine, Lemon, Mint, Emerald, Sky, Royal, Lavender, Snow (hex in `src/core/polls.ts`), added once by `/setup run`; up to 24 options | Owner approved. Avoids black and VIP's gold. A select menu holds 25 options, one is "Remove colour" |
+| 2026-10-22 | `/setup run` creates a non-mentionable "Polls" role and `#polls` if none are set; members get the Polls role however the server hands out roles | Owner approved. The spec doesn't say where the role comes from |
+| 2026-10-22 | Administrators count as staff for polls (no limits) even without a staff role | Owner approved; SPEC §5a "staff and admins" |
+| 2026-10-22 | Poll limits are decided inside a transaction holding a per-day advisory lock, one poll at a time, with counts from `PollPost` (deleted polls still count) | Race safety (SPEC §5a): the limits hold even when polls arrive before a lock is applied |
+| 2026-10-22 | `/polls unlock` is a member "allow" overwrite plus a `PollLock` row with effect `allow`; using the extra poll turns it back into a personal lock. Extras don't count toward the cap | SPEC §5a; Discord applies member overwrites over the VIP role's lock |
+| 2026-10-22 | Leftover member overwrites on Send Polls that no lock row explains are removed at startup | Keeps overwrites from piling up (SPEC §5a "Losing VIP") |
+| 2026-10-22 | Colour roles are only given or removed through the role queue; picking resets the dropdown so the same colour can be picked again | One-at-a-time role changes (SPEC §13) |

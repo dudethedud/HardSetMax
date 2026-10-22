@@ -26,6 +26,7 @@ export interface ConfigValues {
   vipMinScore: number;
   timeoutBlockDays: number;
   vipColour: string;
+  pollsDailyCap: number;
 }
 
 type Parsed = { ok: true; value: string | number } | { ok: false; error: string };
@@ -85,6 +86,7 @@ export const CONFIG_KEYS = {
   'inactivity-days': { field: 'vipInactivityDays', description: 'Days with no activity before a VIP is removed', parse: number(1, 30) },
   'min-score': { field: 'vipMinScore', description: 'Lowest score that can get VIP', parse: number(0, 100000, { integer: false }) },
   'timeout-days': { field: 'timeoutBlockDays', description: 'A timeout in the last N days blocks VIP', parse: number(0, 60) },
+  'polls-daily-cap': { field: 'pollsDailyCap', description: 'VIP polls allowed per day across the server', parse: number(0, 25) },
   'vip-colour': {
     field: 'vipColour',
     description: 'VIP role colour, e.g. #F1C40F (applied by /setup run)',

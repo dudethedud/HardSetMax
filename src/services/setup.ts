@@ -47,6 +47,8 @@ export const BOT_PERMISSIONS = [
 ];
 
 export interface SetupDeps {
+  /** More setup steps from later phases (colours, polls, …), run after the VIP role exists. */
+  steps: ((guild: Guild, vipRole: Role, report: string[]) => Promise<void>)[];
   db: Db;
   config: ConfigStore;
   panels: Panels;
@@ -56,7 +58,7 @@ export interface SetupDeps {
 
 const permName = (bit: bigint) => new PermissionsBitField(bit).toArray()[0] ?? String(bit);
 
-export async function runSetup(guild: Guild, { db, config, panels, vip, log }: SetupDeps): Promise<string[]> {
+export async function runSetup(guild: Guild, { steps, db, config, panels, vip, log }: SetupDeps): Promise<string[]> {
   const report: string[] = [];
   const me = await guild.members.fetchMe();
   const cfg = config.current.guild;
@@ -155,6 +157,14 @@ export async function runSetup(guild: Guild, { db, config, panels, vip, log }: S
   await db.auditLog.create({ data: { action: 'setup.run', data: { vipRoleId: vipRole.id, ...ids } } });
   await config.load();
 
+  for (const step of steps) {
+    try {
+      await step(guild, vipRole, report);
+    } catch (err) {
+      log.warn({ err }, 'setup step failed');
+      report.push(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
   report.push(...(await panels.ensureAll()));
   const drift = await vip.reconcile();
   if (drift.added || drift.removed) report.push(`🔧 VIP roles fixed: ${drift.added} restored, ${drift.removed} removed`);
