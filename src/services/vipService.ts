@@ -40,6 +40,8 @@ export interface VipState {
 export type VipRemovedHook = (userId: string, reason: string) => Promise<void>;
 /** Runs after someone gets VIP (e.g. restore their saved colour). */
 export type VipAddedHook = (userId: string) => Promise<void>;
+/** Runs after a reshuffle is saved and applied (e.g. the weekly Crown). */
+export type ReshuffledHook = (today: string, result: ReshuffleResult) => Promise<void>;
 
 export interface ReshuffleRun {
   status: 'done' | 'skipped';
@@ -61,6 +63,7 @@ export class VipService {
   #vips = new Map<string, VipState>();
   readonly onRemoved: VipRemovedHook[] = [];
   readonly onAdded: VipAddedHook[] = [];
+  readonly onReshuffled: ReshuffledHook[] = [];
 
   constructor(
     private readonly client: Client,
@@ -199,6 +202,9 @@ export class VipService {
       for (const a of detail.added) await this.#additionEffects(a.userId, a.reason);
       await this.#postAnnouncement(job, period, detail);
       await this.reconcile();
+      for (const hook of this.onReshuffled) {
+        await hook(today, result).catch((err: unknown) => this.log.error({ err }, 'after-reshuffle step failed'));
+      }
 
       const message = detail.added.length || detail.removed.length ? `${detail.added.length} added, ${detail.removed.length} removed.` : 'no changes.';
       this.log.info({ job, period, added: detail.added.length, removed: detail.removed.length }, 'reshuffle done');

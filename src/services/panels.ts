@@ -5,6 +5,8 @@
 // ones are updated to the current version.
 import {
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   EmbedBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
@@ -24,6 +26,8 @@ export interface PanelDef {
 
 export const COLOUR_PICKER_ID = 'vip:colour-picker';
 export const COLOUR_NONE = 'none';
+export const CROWN_CREATE_ID = 'crown:create-role';
+export const CROWN_EDIT_ID = 'crown:edit-role';
 
 /** The VIP lounge panel: perks, and the colour dropdown. Later phases add more buttons. */
 export function loungePanel(colourOptions: () => Promise<ColourOption[]>): PanelDef {
@@ -44,11 +48,16 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             '• External emojis, stickers and soundboard',
             '• This private lounge (text and voice)',
             '• A VIP colour (pick below) and VIP polls in the polls channel',
+            '• 👑 Crown of the week: the #1 VIP each week can create their own role',
             '',
             'Stay active to keep your slot. VIPs keep it down to rank #13, and nobody loses it in their first 5 days.',
           ].join('\n'),
         );
-      const components = options.length
+      const crownRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(CROWN_CREATE_ID).setLabel('Create your role').setEmoji('👑').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(CROWN_EDIT_ID).setLabel('Edit your role').setStyle(ButtonStyle.Secondary),
+      );
+      const colourRows = options.length
         ? [
             new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
               new StringSelectMenuBuilder()
@@ -61,7 +70,7 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             ),
           ]
         : [];
-      return { embeds: [embed], components };
+      return { embeds: [embed], components: [...colourRows, crownRow] };
     },
   };
 }

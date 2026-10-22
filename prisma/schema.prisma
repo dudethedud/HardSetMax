@@ -63,6 +63,10 @@ model GuildConfig {
   // VIP colours (SPEC §5): defaults are added once, so deleting them all sticks.
   coloursSeeded Boolean @default(false)
 
+  // Crown (SPEC §6).
+  crownRoleId String?
+  crownColour String  @default("#FF00C8")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -255,4 +259,41 @@ model PollLock {
   createdAt DateTime @default(now())
 
   @@unique([scope, targetId])
+}
+
+// One Crown per week (SPEC §6). Weeks run Monday to Sunday in server-days.
+model CrownHolder {
+  id        Int       @id @default(autoincrement())
+  userId    String
+  weekStart String    @unique // server-day key of the week's Monday
+  awardedAt DateTime  @default(now())
+  endedAt   DateTime?
+  endReason String?
+}
+
+// A Crown holder's custom role. Settings stay when the role is deleted, so it
+// comes back if they win the Crown again.
+model CustomRole {
+  userId     String   @id
+  name       String
+  hex        String
+  emoji      String?
+  roleId     String?
+  editsWeek  String? // week the edit count belongs to
+  editsCount Int      @default(0)
+  locked     Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+}
+
+// Words a custom role name can't contain.
+model BlockedWord {
+  word String @id
+}
+
+// The last custom role form answers, so "Try again" can refill the form. Deleted
+// after 15 minutes.
+model ModalDraft {
+  userId    String   @id
+  data      Json
+  expiresAt DateTime
 }
