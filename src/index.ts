@@ -11,7 +11,14 @@ import { createLogger } from './logger.js';
 import { ActivityBuffer } from './services/activityBuffer.js';
 import { acquireGatewayLeader } from './services/gatewayLeader.js';
 import { MessageTracker } from './services/messageTracker.js';
+import { createClock } from './services/clock.js';
+import { ModLog } from './services/modLog.js';
+import { loungePanel, Panels } from './services/panels.js';
+import { RoleQueue } from './services/roleQueue.js';
+import { DailyScheduler } from './services/scheduler.js';
+import { runSetup } from './services/setup.js';
 import { createShutdown } from './services/shutdown.js';
+import { RESHUFFLE_JOB, VipService } from './services/vipService.js';
 import { TimeoutTracker } from './services/timeoutTracker.js';
 import { VoiceTracker } from './services/voiceTracker.js';
 import { VERSION } from './version.js';
@@ -56,6 +63,14 @@ const buffer = new ActivityBuffer();
 const messages = new MessageTracker(env.GUILD_ID, config, buffer);
 const voice = new VoiceTracker(client, env.GUILD_ID, db, config, buffer, log);
 const timeouts = new TimeoutTracker(env.GUILD_ID, db, log);
+const clock = createClock(env.CLOCK_OFFSET_MINUTES);
+if (clock.offsetMinutes) log.warn({ offsetMinutes: clock.offsetMinutes }, 'TEST CLOCK: reshuffle times are shifted');
+const modLog = new ModLog(client, config, log);
+const roleQueue = new RoleQueue(client, env.GUILD_ID, log);
+const vip = new VipService(client, env.GUILD_ID, db, config, buffer, roleQueue, modLog, clock, log);
+const panels = new Panels(client, db, config, log, [loungePanel]);
+const scheduler = new DailyScheduler(config, clock, log);
+scheduler.register(RESHUFFLE_JOB, (period) => vip.runReshuffle(RESHUFFLE_JOB, period));
 const timers: NodeJS.Timeout[] = [];
 
 const FLUSH_MS = 30_000;
@@ -73,8 +88,10 @@ shutdown.add({
   name: 'activity',
   run: async () => {
     for (const t of timers) clearInterval(t);
+    scheduler.stop();
     messages.stop();
     await voice.stop();
+    await roleQueue.idle();
     for (let attempt = 1; ; attempt++) {
       try {
         await buffer.flush(db);
@@ -91,7 +108,20 @@ shutdown.add({ name: 'discord', run: () => client.destroy() });
 shutdown.add({ name: 'database', run: () => db.$disconnect() });
 shutdown.add({ name: 'gateway-leader', run: () => leader!.release() });
 
-const ctx: AppContext = { env, log, db, leader: leader!, client, startedAt: new Date(), config, activity: buffer };
+const ctx: AppContext = {
+  env,
+  log,
+  db,
+  leader: leader!,
+  client,
+  startedAt: new Date(),
+  config,
+  activity: buffer,
+  clock,
+  modLog,
+  vip,
+  runSetup: (guild) => runSetup(guild, { db, config, panels, vip, log }),
+};
 
 const logErrors =
   (what: string) =>
@@ -111,6 +141,12 @@ client.once(Events.ClientReady, (c) => {
     for (const m of guild.members.cache.values()) if (!m.user.bot) buffer.setName(m.id, m.displayName);
     await voice.start();
     await timeouts.catchUp(guild);
+    // VIP: roles match the database, panels exist, missed announcements go out, then
+    // the scheduler runs any reshuffle that was due while the bot was offline.
+    await vip.reconcile();
+    await panels.ensureAll();
+    await vip.postPendingAnnouncements();
+    scheduler.start();
   })().catch(logErrors('startup catch-up'));
 
   timers.push(
@@ -138,6 +174,10 @@ client.on(Events.GuildMemberAdd, (member) => {
 client.on(Events.GuildMemberUpdate, (before, after) => {
   if (after.guild.id === env.GUILD_ID && !after.user.bot) buffer.setName(after.id, after.displayName);
   timeouts.onMemberUpdate(before, after).catch(logErrors('timeout tracking'));
+  vip.onMemberUpdate(before, after).catch(logErrors('VIP member update'));
+});
+client.on(Events.GuildMemberRemove, (member) => {
+  vip.onMemberRemove(member).catch(logErrors('VIP member leave'));
 });
 client.on(Events.GuildAuditLogEntryCreate, (entry, guild) => {
   timeouts.onAuditLogEntry(entry, guild).catch(logErrors('audit log cursor'));
@@ -146,6 +186,7 @@ client.on(Events.Error, (err) => log.error({ err }, 'discord client error'));
 
 try {
   await config.load();
+  await vip.load();
   await registerCommands(env, log);
   await client.login(env.DISCORD_TOKEN);
 } catch (err) {

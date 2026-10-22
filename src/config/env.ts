@@ -15,6 +15,9 @@ const EnvSchema = z.object({
   // gateway-leader and migrations need one each on top of this.
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(20).default(5),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  // Testing only: shifts the bot's clock for the reshuffle schedule, e.g. 600 to make
+  // midnight happen 10 hours early. Leave unset in production.
+  CLOCK_OFFSET_MINUTES: z.coerce.number().int().min(-10080).max(10080).default(0),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

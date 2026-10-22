@@ -1,6 +1,8 @@
 // Keys accepted by `/config set`. Later phases add their keys here.
 import type { MessageRulesConfig } from './messageRules.js';
+import type { ReshuffleConfig } from './reshuffle.js';
 import { isValidBoundaryTime, isValidTimezone } from './serverDay.js';
+import { formatHexColour, parseHexColour } from './vipRules.js';
 
 export interface ConfigValues {
   timezone: string;
@@ -17,6 +19,13 @@ export interface ConfigValues {
   spamBurstCount: number;
   spamBurstSeconds: number;
   spamBurstMuteMinutes: number;
+  vipSlots: number;
+  vipBuffer: number;
+  vipMinHoldDays: number;
+  vipInactivityDays: number;
+  vipMinScore: number;
+  timeoutBlockDays: number;
+  vipColour: string;
 }
 
 type Parsed = { ok: true; value: string | number } | { ok: false; error: string };
@@ -70,6 +79,20 @@ export const CONFIG_KEYS = {
   'spam-burst-count': { field: 'spamBurstCount', description: 'Messages in the burst window that trigger a mute', parse: number(2, 100) },
   'spam-burst-seconds': { field: 'spamBurstSeconds', description: 'Burst window (seconds)', parse: number(5, 600) },
   'spam-burst-mute': { field: 'spamBurstMuteMinutes', description: 'Minutes nothing counts after a burst', parse: number(1, 120) },
+  slots: { field: 'vipSlots', description: 'Number of VIP slots', parse: number(1, 50) },
+  buffer: { field: 'vipBuffer', description: 'VIPs keep their slot down to rank slots + buffer', parse: number(0, 50) },
+  'min-hold': { field: 'vipMinHoldDays', description: 'Days a VIP keeps VIP before rank can remove them', parse: number(0, 60) },
+  'inactivity-days': { field: 'vipInactivityDays', description: 'Days with no activity before a VIP is removed', parse: number(1, 30) },
+  'min-score': { field: 'vipMinScore', description: 'Lowest score that can get VIP', parse: number(0, 100000, { integer: false }) },
+  'timeout-days': { field: 'timeoutBlockDays', description: 'A timeout in the last N days blocks VIP', parse: number(0, 60) },
+  'vip-colour': {
+    field: 'vipColour',
+    description: 'VIP role colour, e.g. #F1C40F (applied by /setup run)',
+    parse: (v) => {
+      const n = parseHexColour(v);
+      return n === null ? { ok: false, error: `"${v}" is not a hex colour like #F1C40F.` } : { ok: true, value: formatHexColour(n) };
+    },
+  },
 } as const satisfies Record<string, KeyDef>;
 
 export type ConfigKey = keyof typeof CONFIG_KEYS;
@@ -101,4 +124,8 @@ export function messageRulesConfig(c: ConfigValues): MessageRulesConfig {
     burstSeconds: c.spamBurstSeconds,
     burstMuteMinutes: c.spamBurstMuteMinutes,
   };
+}
+
+export function reshuffleConfig(c: ConfigValues): ReshuffleConfig {
+  return { slots: c.vipSlots, buffer: c.vipBuffer, minHoldDays: c.vipMinHoldDays, inactivityDays: c.vipInactivityDays, minScore: c.vipMinScore };
 }

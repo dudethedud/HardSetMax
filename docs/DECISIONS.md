@@ -56,3 +56,14 @@
 | 2026-10-22 | Someone removed in a reshuffle can't be re-added in the same reshuffle | Owner approved |
 | 2026-10-22 | Pinned members who aren't VIP yet are added by the reshuffle and take a slot (unless they left or are bots); a pinned VIP is only removed for leaving | SPEC §4 step 4 |
 | 2026-10-22 | Announcement pairing: removed VIPs who are no longer ranked (left, ineligible) count as the lowest-ranked | SPEC §4 pairs "lowest-ranked removed VIP" first; unranked is lower than any rank |
+| 2026-10-22 | VIP role goes directly above `/config level-roles-top` (bleed's highest level role); if unset, just below the bot's role with a warning | Owner approved. The bot can't tell which roles are bleed's |
+| 2026-10-22 | Only one catch-up reshuffle after downtime, for the most recent missed day | Owner approved |
+| 2026-10-22 | `/vip pin` on a non-VIP makes them VIP immediately, pinned; `/vip unpin` leaves them VIP for the next reshuffle to decide | Owner approved |
+| 2026-10-22 | The VIP role gets all SPEC §3 perms even if @everyone already has some; the bot must have them itself to grant them | Owner approved. Discord only lets a bot grant permissions it has |
+| 2026-10-22 | Defaults: VIP colour `#F1C40F`, a timeout within the last 3 days blocks VIP | Owner approved |
+| 2026-10-22 | Scheduler checks every 15 s whether the just-closed server-day has a run, instead of a timer to the next boundary | One check covers the normal run, catch-up, clock changes and DST |
+| 2026-10-22 | Reshuffle saves VIP changes and its `JobRun` "succeeded" in one transaction; roles, mod-log and announcement come after. A saved reshuffle is never marked failed, and its announcement is stored so a missed post goes out at the next startup | Never half-applied or run twice; nothing is lost if the bot dies mid-way |
+| 2026-10-22 | `/vip reshuffle-now` runs as job `reshuffle-manual` keyed by its timestamp, so it doesn't replace the nightly run | SPEC §10: "run the reshuffle immediately" |
+| 2026-10-22 | Pinned VIPs are removed mid-day only for leaving the server (or `/vip remove`), same as in the reshuffle | SPEC §4 step 4 |
+| 2026-10-22 | VIP role changed by hand is corrected live (and on startup): added by hand → removed, removed by hand → restored, with a mod-log hint | SPEC §11: the database is the source of truth |
+| 2026-10-22 | `CLOCK_OFFSET_MINUTES` (testing only) shifts the clock used for the schedule and reshuffle, not activity counting | PHASES Phase 4 test with a clock override; activity keeps Discord's real timestamps |

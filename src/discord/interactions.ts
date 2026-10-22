@@ -1,7 +1,8 @@
 // The one global interaction handler. Later phases route buttons, dropdowns and
 // modals here by their fixed custom IDs.
-import { MessageFlags, PermissionFlagsBits, type Interaction } from 'discord.js';
+import { MessageFlags, PermissionFlagsBits, type ButtonInteraction, type Interaction } from 'discord.js';
 import { checkAdmin } from '../core/adminCheck.js';
+import { BUTTONS } from './buttons.js';
 import { COMMANDS_BY_NAME } from './commands/index.js';
 import type { AppContext } from './commands/types.js';
 
@@ -12,6 +13,7 @@ const DENIED = {
 } as const;
 
 export async function handleInteraction(interaction: Interaction, ctx: AppContext): Promise<void> {
+  if (interaction.isButton()) return handleButton(interaction, ctx);
   if (!interaction.isChatInputCommand()) return;
 
   const check = checkAdmin({
@@ -36,5 +38,32 @@ export async function handleInteraction(interaction: Interaction, ctx: AppContex
   } catch (err) {
     ctx.log.error({ err, command: interaction.commandName }, 'command failed');
     await interaction.editReply('❌ Something went wrong. Details are in the bot logs.').catch(() => undefined);
+  }
+}
+
+async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
+  const handler = BUTTONS.get(interaction.customId);
+  if (!handler || !interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
+    await interaction.reply({ content: 'This button no longer works.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (handler.adminOnly) {
+    const check = checkAdmin({
+      guildId: interaction.guildId,
+      expectedGuildId: ctx.env.GUILD_ID,
+      isAdministrator: interaction.memberPermissions.has(PermissionFlagsBits.Administrator),
+    });
+    if (!check.ok) {
+      ctx.log.warn({ userId: interaction.user.id, button: interaction.customId, reason: check.reason }, 'button denied');
+      await interaction.reply({ content: DENIED[check.reason], flags: MessageFlags.Ephemeral });
+      return;
+    }
+  }
+  try {
+    await handler.run(interaction, ctx);
+  } catch (err) {
+    ctx.log.error({ err, button: interaction.customId }, 'button failed');
+    const reply = { content: '❌ Something went wrong. Details are in the bot logs.', flags: MessageFlags.Ephemeral } as const;
+    await (interaction.replied || interaction.deferred ? interaction.followUp(reply) : interaction.reply(reply)).catch(() => undefined);
   }
 }
