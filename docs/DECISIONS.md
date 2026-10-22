@@ -50,3 +50,9 @@
 | 2026-10-22 | Timeouts are keyed by (user, scheduled end). Live: member updates (covers AutoMod). Startup: audit log back to a saved cursor (first scan 30 days), plus members timed out right now | Both the member update and the audit log entry carry the same end time, so the same timeout is never saved twice |
 | 2026-10-22 | Voice cap uses today's saved minutes plus unsaved ones; if the database is down when a member's total is first needed, that member's minute is skipped | Never counts past the cap. Totals are loaded once per member per day, so this only matters during an outage |
 | 2026-10-22 | Setting a channel's weight back to 1 removes its row | 1 is the default, so only non-default weights are stored |
+| 2026-10-22 | To be added as VIP, a member must also have been active within `inactivityDays` (default 3) | Owner approved. Otherwise a high score from early in the week adds someone who is removed for inactivity the next day |
+| 2026-10-22 | When pins push VIPs over `slots`, nobody is removed to make room; open slots just aren't filled until the count drops | Owner approved |
+| 2026-10-22 | "Held VIP at least `minHoldDays`" is counted in server-days from the day they got VIP to the reshuffle's day | Owner approved; all day logic uses server-days |
+| 2026-10-22 | Someone removed in a reshuffle can't be re-added in the same reshuffle | Owner approved |
+| 2026-10-22 | Pinned members who aren't VIP yet are added by the reshuffle and take a slot (unless they left or are bots); a pinned VIP is only removed for leaving | SPEC §4 step 4 |
+| 2026-10-22 | Announcement pairing: removed VIPs who are no longer ranked (left, ineligible) count as the lowest-ranked | SPEC §4 pairs "lowest-ranked removed VIP" first; unranked is lower than any rank |

@@ -248,7 +248,7 @@ describe('announcements', () => {
       ]),
     );
     expect(msg?.content).toBe(
-      [`⭐ **VIP update**`, `<@${id(1)}> → replaced Old\\_Vip`, `<@${id(3)}> → filled an open slot`, `@​everyone left VIP`].join('\n'),
+      [`⭐ **VIP update**`, `<@${id(1)}> → replaced Old\\_Vip`, `<@${id(3)}> → filled an open slot`, `@\u200beveryone left VIP`].join('\n'),
     );
     expect(msg?.pingUserIds).toEqual([id(1), id(3)]);
   });
