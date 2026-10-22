@@ -49,7 +49,7 @@ export const botCommand = defineAdminCommand(
         }`,
         inline: true,
       },
-      { name: 'AI', value: 'not built yet (Phase 9)', inline: true },
+      { name: 'AI', value: (await ctx.ai.status()).split('\n').slice(0, 3).join('\n').slice(0, 1000) },
     );
 
     await interaction.editReply({ embeds: [embed] });

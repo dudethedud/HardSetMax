@@ -12,6 +12,8 @@ import type { Env } from '../../config/env.js';
 import type { Db } from '../../db/prisma.js';
 import type { Logger } from '../../logger.js';
 import type { ActivityBuffer } from '../../services/activityBuffer.js';
+import type { AiService } from '../../services/ai/aiService.js';
+import type { ChatService } from '../../services/ai/chat.js';
 import type { BadgeService } from '../../services/badges.js';
 import type { Clock } from '../../services/clock.js';
 import type { ColourService } from '../../services/colours.js';
@@ -40,6 +42,8 @@ export interface AppContext {
   badges: BadgeService;
   polls: PollService;
   tempVoice: TempVoiceService;
+  ai: AiService;
+  chat: ChatService;
   panels: Panels;
   runSetup: (guild: Guild) => Promise<string[]>;
 }

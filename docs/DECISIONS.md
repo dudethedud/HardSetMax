@@ -94,3 +94,11 @@
 | 2026-10-22 | If the owner leaves but others stay, the channel stays theirs until it has been empty for 60 s; no second channel until then | Owner approved |
 | 2026-10-22 | User limit 0 (none) to 99 | Owner approved; Discord's maximum |
 | 2026-10-22 | Temp channels start "empty", so one nobody joins is removed after 60 s; bots don't count as people; if the owner lost VIP it goes as soon as it's empty | SPEC §8 |
+| 2026-10-22 | AI models: Groq `llama-3.1-8b-instant`, Cloudflare `@cf/meta/llama-3.1-8b-instruct`; `/ai provider-model` (added to SPEC §9a's commands) changes a model without a code change | Owner approved. Groq's free model list changes; reports in 2026 say Llama may have left it |
+| 2026-10-22 | AI daily caps: Groq 1,000, Cloudflare 800, both resetting at 00:00 UTC | Owner approved. Cloudflare's free 10,000 neurons/day ≈ 1,000 short replies with this model, so 800 leaves headroom |
+| 2026-10-22 | Owner turns on Groq Zero Data Retention and adds the AI rules line; both are in SETUP.md | Owner approved (SPEC §9a "Privacy") |
+| 2026-10-22 | New VIPs get one combined welcome per reshuffle in the lounge, pinging only them | Owner approved |
+| 2026-10-22 | Both providers are called through their OpenAI-compatible chat completions APIs (Groq `/openai/v1`, Cloudflare `/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1`), with the Bearer key from the env var named in the provider row | One client for every provider; new providers are a row plus an env var (SPEC §9a). Not tested against the live APIs: they weren't reachable from the build environment |
+| 2026-10-22 | A 429 whose body mentions a per-day limit (RPD, TPD, "daily", neurons) cools the provider down until its next reset; any other failure cools it down 5 min | SPEC §9a cooldown rules |
+| 2026-10-22 | AI hype lines and welcomes containing digits are dropped | SPEC §9a: numbers in posts always come from code |
+| 2026-10-22 | Pre-written replies are counted per UTC day as provider `prewritten` | Shown in `/ai status` (SPEC §9a) |

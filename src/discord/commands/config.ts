@@ -47,7 +47,12 @@ export const configCommand = defineAdminCommand(
               .setName('purpose')
               .setDescription('What the channel is for')
               .setRequired(true)
-              .addChoices({ name: 'announcements', value: 'announcements' }, { name: 'mod-log', value: 'mod-log' }, { name: 'polls', value: 'polls' }),
+              .addChoices(
+                { name: 'announcements', value: 'announcements' },
+                { name: 'mod-log', value: 'mod-log' },
+                { name: 'polls', value: 'polls' },
+                { name: 'main-chat (AI replies here)', value: 'main-chat' },
+              ),
           )
           .addChannelOption((o) =>
             o.setName('channel').setDescription('Text channel').setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
@@ -114,7 +119,8 @@ export const configCommand = defineAdminCommand(
     if (sub === 'channel') {
       const purpose = interaction.options.getString('purpose', true);
       const channel = interaction.options.getChannel('channel', true, [ChannelType.GuildText, ChannelType.GuildAnnouncement]);
-      const field = purpose === 'mod-log' ? 'modLogChannelId' : purpose === 'polls' ? 'pollsChannelId' : 'announceChannelId';
+      const field =
+        purpose === 'mod-log' ? 'modLogChannelId' : purpose === 'polls' ? 'pollsChannelId' : purpose === 'main-chat' ? 'mainChatChannelId' : 'announceChannelId';
       await ctx.db.$transaction([
         ctx.db.guildConfig.update({ where: { guildId }, data: { [field]: channel.id } }),
         ctx.db.auditLog.create({ data: { action: 'config.channel', actorId, targetId: channel.id, data: { purpose, old: config[field] } } }),
@@ -155,6 +161,7 @@ export const configCommand = defineAdminCommand(
         `**Announcements:** ${ref(config.announceChannelId, channelMention)} · **Mod-log:** ${ref(config.modLogChannelId, channelMention)}`,
         `**VIP role:** ${ref(config.vipRoleId, roleMention)} · **Level roles top:** ${ref(config.levelRolesTopId, roleMention)}`,
         `**Polls channel:** ${ref(config.pollsChannelId, channelMention)} · **Polls role:** ${ref(config.pollsRoleId, roleMention)}`,
+        `**Main chat (AI):** ${ref(config.mainChatChannelId, channelMention)} · **AI chat:** ${config.aiEnabled ? 'on' : 'off'}`,
       );
       lines.push('', `**Channel weights** (others: ${DEFAULT_CHANNEL_WEIGHT})`, ...(weights.length ? weights : ['none set']));
       await interaction.editReply(lines.join('\n'));

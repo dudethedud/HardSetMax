@@ -92,7 +92,7 @@ Every `/config set` is also saved in the `AuditLog` table (`action = 'config.set
 2. checks the dump can be read,
 3. encrypts it with `age` for your public key, and keeps it as a workflow artifact for **30 days**.
 
-GitHub never sees your data unencrypted. Only the private key (`vipbot-backup-key.txt`, kept by you) can open a backup. Setup is in `docs/SETUP.md` part 6. It needs secrets `BACKUP_DATABASE_URL` and `SUPABASE_CA_CERT`, and variable `BACKUP_AGE_RECIPIENT`.
+GitHub never sees your data unencrypted. Only the private key (`vipbot-backup-key.txt`, kept by you) can open a backup. Setup is in `docs/SETUP.md` part 7. It needs secrets `BACKUP_DATABASE_URL` and `SUPABASE_CA_CERT`, and variable `BACKUP_AGE_RECIPIENT`.
 
 - **Failures:** GitHub emails you when a scheduled run fails. Check the run's log: errors name the missing secret or the connection problem.
 - **Inactive repos:** GitHub turns off scheduled workflows in a repo with no activity for 60 days, and emails before it does. Click **Enable workflow** in the Actions tab if that happens.
@@ -143,6 +143,18 @@ All are admin-only and reply privately.
 | `/polls status` | VIP polls used today, who posted, who's locked, when it resets |
 | `/polls unlock user` | Give a VIP one more poll today, even past the daily limit (logged) |
 | `/config channel purpose:polls` / `/config polls-role` / `/config set polls-daily-cap` | Use an existing polls channel or ping role; server-wide daily VIP poll limit (default 2) |
+
+### AI chat (Puppyboy Carter)
+- The bot replies only in the **main chat** channel (`/config channel purpose:main-chat`), when @mentioned or when someone replies to one of its messages. It reads up to 6 messages of the reply chain from Discord at that moment and saves nothing. It ignores bots and spam-flagged messages.
+- Each person gets up to `ai-per-user-limit` replies a minute (default 3); after that it reacts with 👀.
+- **What the AI is given:** `prompts/personality.md` and `prompts/vip-guide.md` (edit, then restart), the asker's **own** stats only, and the current VIPs and Crown holder. It has no tools: it can't change anything, whatever it says.
+- **Safety:** replies can only ping the asker. `@everyone`, `@here` and role mentions are stripped, and anything with a blocked word is replaced with a fixed line. Replies are at most 400 characters.
+- **Provider chain:** `/ai providers` shows it. Default: Groq (`llama-3.1-8b-instant`, 1,000/day) → Cloudflare Workers AI (`@cf/meta/llama-3.1-8b-instruct`, 800/day) → pre-written replies.
+  - Each provider's cap resets at its own time (default 00:00 UTC).
+  - On an error, a 10 s timeout or a 429, the bot uses the next provider and cools the failing one down for 5 min, or until its reset if the daily limit is used up.
+- **Adding a provider:** insert an `AiProvider` row (OpenAI-compatible base URL, model, the env var name holding its key, cap, order) and add the key to `.env`. No code change.
+- **Posts:** the daily VIP update and the weekly recap get one AI hype line on top. It's dropped if it contains numbers, since numbers always come from code, and the post goes without it if the AI is unavailable. New VIPs get a welcome in the lounge, with a fixed message if the AI is unavailable.
+- Commands: `/ai status`, `/ai toggle` (pre-written replies still work when off), `/ai test`, `/ai providers`, `/ai provider-cap`, `/ai provider-toggle`, `/ai provider-model`.
 
 ### Temporary VIP voice channels
 - In the VIP Lounge panel, **🔊 Create VIP voice** makes a voice channel in the VIP Lounge category named "*Name*'s room". Only VIPs can see it. Each VIP can have one at a time.

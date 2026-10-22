@@ -16,6 +16,9 @@ import { MANUAL_RESHUFFLE_JOB, RESHUFFLE_JOB } from './vipService.js';
 export const RECAP_JOB = 'recap';
 
 export class RecapService {
+  /** Set when AI chat is enabled (Phase 9): one hype line for the top of the recap. */
+  hype: ((summary: string) => Promise<string | null>) | null = null;
+
   constructor(
     private readonly client: Client,
     private readonly db: Db,
@@ -70,7 +73,8 @@ export class RecapService {
         const channel = await this.client.channels.fetch(channelId);
         if (!channel?.isSendable()) throw new Error('announcement channel missing or not sendable');
         // Mentions show names, but nobody is pinged (owner-approved).
-        await channel.send({ content, allowedMentions: { parse: [] } });
+        const line = this.hype ? await this.hype('The weekly VIP recap: Crown, top members, swaps and badges.').catch(() => null) : null;
+        await channel.send({ content: (line ? `${line}\n${content}` : content).slice(0, 2000), allowedMentions: { parse: [] } });
       }
       await this.db.$transaction((tx) => completeJob(tx, RECAP_JOB, week, { posted: !!channelId }, now));
     } catch (err) {
