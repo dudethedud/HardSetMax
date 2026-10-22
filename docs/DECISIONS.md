@@ -10,3 +10,7 @@
 | 2026-10-22 | TypeScript + discord.js v14 + Prisma | Matches the EDSA project stack |
 | 2026-10-22 | VIP polls: 1 per VIP per day, channel locks for that VIP right after their poll, bot pings the Polls role | Carson's rule; locking immediately prevents a second poll instead of punishing after; VIPs can't spam the ping |
 | 2026-10-22 | Server-wide cap of 2 polls/day (first come, first served); channel locks for the whole VIP role once hit | 10 VIPs × 1 poll each would mean up to 10 pings a day; Carson chose a server cap |
+| 2026-10-22 | Crown always goes to a current VIP (top scorer of the new VIP list) | Avoids a Crown holder without VIP perks |
+| 2026-10-22 | Poll discussion happens in a bot-created thread on each poll; everyone can chat in threads only | Keeps #polls clean while letting people discuss |
+| 2026-10-22 | Staff can post polls with no limits; their polls get the ping and thread and don't use the VIP cap | Carson's choice |
+| 2026-10-22 | Losing VIP is immediate and complete (colour, Crown, custom role, temp voice) through one shared routine; the slot refills at the next reshuffle | Mid-day removals shouldn't leave people with VIP perks until midnight |

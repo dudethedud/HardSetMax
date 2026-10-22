@@ -55,6 +55,16 @@ score(user) = Σ over the last 7 days of (weighted messages + voice_minutes × v
 ### Eligibility
 Not eligible: bots, members with any configured staff role, members currently timed out or timed out within the last N days (default 3), members on the VIP block list, members who left the server.
 
+### Losing VIP is always immediate and complete
+There is **one removal routine** used everywhere: the daily reshuffle, `/vip remove`, and mid-day events (a VIP gets timed out, leaves, gets a staff role, or is blocked; the bot listens for these and removes VIP right away instead of waiting for the reshuffle). It does all of this at once:
+- Removes the VIP role and their VIP colour role (colour choice stays saved).
+- Removes the Crown and deletes their custom crown role (settings stay saved), if they hold it. The Crown is not reassigned until Monday.
+- Poll access ends with the VIP role. Any personal poll lock is cleaned up at the next reset.
+- Their temp voice channel is deleted once empty.
+- Ends their `VipStint`, logs to the mod-log with the reason.
+
+The freed slot is filled at the **next daily reshuffle**, not instantly.
+
 ---
 
 ## 4. Daily reshuffle
@@ -97,7 +107,7 @@ Every addition/removal with its reason: `ranked #3 (score 212)`, `dropped to #15
 - On setup the bot **creates 10 colour roles** (names and hex values configurable), positioned **above all bleed level roles** so the colour shows.
 - A **colour picker panel** (dropdown) lives in the VIP lounge. Picking a colour replaces the previous one; there's a "Remove colour" option.
 - Non-VIPs who use the dropdown get a private "VIP only" reply.
-- **Losing VIP removes the colour role** in the same reshuffle.
+- **Losing VIP removes the colour role** immediately (see §3, "Losing VIP").
 - The user's **last pick is saved**; regaining VIP restores it automatically.
 - Admins manage options with `/vip colours add|edit|remove`.
 
@@ -105,42 +115,47 @@ Every addition/removal with its reason: `ranked #3 (score 212)`, `dropped to #15
 
 ## 5a. VIP polls
 
-A **#polls** channel where only VIPs can post Discord's built-in polls. There's a **server-wide cap of 2 polls per day** (first come, first served), **each VIP can post at most 1 of those**, and the bot pings the **Polls** role for them.
+A **#polls** channel where only VIPs and staff can post Discord's built-in polls. There's a **server-wide cap of 2 VIP polls per day** (first come, first served), **each VIP can post at most 1 of those**, and the bot pings the **Polls** role for them. Everyone can discuss each poll in its own thread.
 
 ### Channel permissions (set by `/setup run`)
 | Who | Can |
 |---|---|
-| @everyone | View channel, read history, vote in polls. Can't send messages. |
+| @everyone | View channel, read history, vote in polls, **Send Messages in Threads**. Can't post in the channel itself or create threads. |
 | VIP role | Send Messages + Send Polls |
-| Bot | Send Messages, Manage Messages, Manage Permissions, Mention @everyone/roles |
+| Staff roles (from config) | Send Messages + Send Polls |
+| Bot | Send Messages, Manage Messages, Manage Permissions, Create Public Threads, Mention @everyone/roles |
 
 ### Posting
-1. A VIP posts a Discord poll in #polls.
+1. A VIP or staff member posts a Discord poll in #polls.
 2. The bot **immediately locks the channel for that VIP only**: a member-specific permission overwrite denying Send Messages and Send Polls. The lock is saved in the DB (`PollLock`) with the reset time.
 3. If that poll **reaches the daily cap**, the bot also **locks the channel for the whole VIP role** (a role overwrite denying Send Messages and Send Polls) until the reset. Saved in the DB as a role-level lock.
 4. The bot **replies to the poll** with `<@&PollsRole> 📊 New poll from @vipname`, using `allowed_mentions` so only the Polls role and the author are pinged.
-5. **VIPs never ping the Polls role themselves.** The Polls role is not mentionable, and VIPs don't have Mention Everyone, so typing `@Polls` does nothing.
+5. The bot **creates a discussion thread** on the poll (named after the poll question, auto-archive 24 h), where everyone can chat.
+6. **VIPs never ping the Polls role themselves.** The Polls role is not mentionable, and VIPs don't have Mention Everyone, so typing `@Polls` does nothing.
+
+Steps 2–3 (locks) apply to VIPs only. **Staff polls** skip the limits and locks, don't count toward the cap, and still get the bot's ping and discussion thread.
 
 ### Rules
 - **Server cap: 2 polls per server-day** across all VIPs (config `polls-daily-cap`, default 2). Days use the same timezone as the reshuffle.
 - **Per VIP: 1 poll per server-day.**
 - **Race safety:** polls are counted in the order Discord received them. Any poll over either limit (the same VIP's second, or the server's third) that lands before a lock is applied is deleted and logged, and gets no ping.
-- **Non-poll messages** from VIPs in #polls are deleted and logged. Discussion goes in the poll's thread or a normal channel.
+- **Non-poll messages** from VIPs in #polls are deleted and logged. Discussion goes in the poll's thread. (Staff and admins can post normal messages there, e.g. for announcements.)
 - **Deleting your own poll doesn't give your daily poll back.**
 - **Daily reset:** at the reshuffle time, a `poll-unlock` job (same `job_runs` + advisory lock + catch-up rules as §11) removes every expired lock overwrite, including the role-level cap lock.
 - **Losing VIP:** access is lost through the VIP role; any lock overwrite for that person is removed at the next reset so overwrites don't pile up.
-- Staff and admins are not limited.
+- **Staff and admins are not limited** by the per-person limit, the daily cap or the locks.
 - **Startup reconciliation:** lock overwrites in Discord are made to match `PollLock` rows (missing locks re-applied, expired or orphaned ones removed).
 
 ---
 
 ## 6. Crown (#1 of the week)
 
-- Awarded at the **Monday reshuffle** to the top-ranked eligible member. Held for one week. Same person can win again.
+- Awarded at the **Monday reshuffle**, right after VIPs are updated, to the **highest-scoring member of the new VIP list**. The Crown holder is always a VIP. Held for one week. Same person can win again.
+- If there are no VIPs (e.g. a dead week where nobody reaches the minimum score), there's no Crown that week.
 - Crown gives:
   - A **Crown role** (above VIP, hoisted) with an **exclusive colour** not in the colour picker.
   - The ability to **create their own custom role**.
-- If the Crown holder becomes ineligible mid-week (timed out, leaves, blocked), the Crown is removed and **not** reassigned until Monday. Logged.
+- If the Crown holder **loses VIP for any reason** mid-week, the Crown goes with it (§3, "Losing VIP") and is **not** reassigned until Monday. Logged.
 
 ### Custom role (button → pop-up form)
 Slash commands would be visible to everyone, so this uses a button instead, which also gives a proper input form:

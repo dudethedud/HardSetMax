@@ -43,6 +43,7 @@ Every phase must pass, before it's called done:
 - Applies roles through a rate-limited queue, records `VipStint`s.
 - Announcement message (ping new only) and mod-log entries.
 - Reconciliation on startup.
+- One shared VIP removal routine (SPEC §3, "Losing VIP"), used by the reshuffle, `/vip remove`, and mid-day events (timeout, leave, staff role added, block). Later phases add their cleanup steps to this same routine.
 - `/vip list|preview|pin|unpin|remove|unblock|reshuffle-now`, `/config` commands.
 - **Test:** run with a clock override on the test server; restart the bot mid-day and confirm the reshuffle neither repeats nor gets skipped.
 
@@ -52,12 +53,14 @@ Every phase must pass, before it's called done:
 - `/vip colours` admin commands.
 - #polls channel and permissions created by `/setup run` (SPEC §5a).
 - Poll detection, per-user lock on first poll, server-wide daily cap with a role-level lock, bot pings the Polls role, extra polls and non-poll messages deleted.
+- Discussion thread on every poll; @everyone can talk in threads only.
+- Staff can post polls without limits; their polls still get the ping and thread.
 - `poll-unlock` daily job, startup reconciliation of lock overwrites.
 - `/polls status`, `/polls unlock`, polls config keys.
 - **Test:** post two polls quickly from one VIP account and confirm only one survives and only one ping goes out. Then post from three different VIP accounts in quick succession and confirm only the first two survive, the channel locks for all VIPs, and it unlocks at the reset.
 
 ## Phase 6 — Crown + custom role
-- Monday crown logic (pure function + tests), crown role with exclusive colour.
+- Monday crown logic (pure function + tests): highest scorer among the new VIP list, no Crown if no VIPs. Crown role with exclusive colour.
 - Lounge buttons → modal with name / hex / emoji.
 - Validation (hex, near-black, blocked words, role-name impersonation, edit limit).
 - Delete on crown loss, save settings, recreate on re-win.
