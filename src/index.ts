@@ -16,6 +16,8 @@ import { ColourService } from './services/colours.js';
 import { BadgeService } from './services/badges.js';
 import { CrownService } from './services/crown.js';
 import { TempVoiceService } from './services/tempVoice.js';
+import { AiService, loadPrompts } from './services/ai/aiService.js';
+import { ChatService } from './services/ai/chat.js';
 import { RecapService } from './services/recap.js';
 import { POLL_UNLOCK_JOB, PollService } from './services/polls.js';
 import { ModLog } from './services/modLog.js';
@@ -81,13 +83,18 @@ vip.onRemoved.push((userId) => colours.onVipRemoved(userId));
 vip.onRemoved.push((userId, reason) => crown.onVipRemoved(userId, reason));
 const tempVoice = new TempVoiceService(client, env.GUILD_ID, db, config, vip, modLog, clock, log);
 vip.onRemoved.push((userId) => tempVoice.onVipRemoved(userId));
+const ai = new AiService(db, config, process.env, clock, log);
+const chat = new ChatService(client, env.GUILD_ID, db, config, ai, vip, crown, loadPrompts(), clock, log);
+vip.hype = (summary) => chat.hypeLine('vip-update', summary);
 const badges = new BadgeService(client, env.GUILD_ID, db, config, roleQueue, modLog, log);
 const recap = new RecapService(client, db, config, modLog, clock, log);
 vip.badges = badges;
+recap.hype = (summary) => chat.hypeLine('recap', summary);
 // Order matters: the recap names the Crown holder that was just picked.
 vip.onReshuffled.push(async (today, result) => {
   await crown.afterReshuffle(today, result);
   await recap.afterReshuffle(today, result);
+  await chat.welcome(result.added.map((a) => a.userId));
 });
 vip.onAdded.push((userId) => colours.onVipAdded(userId));
 const panels = new Panels(client, db, config, log, [loungePanel(() => colours.options())]);
@@ -148,6 +155,8 @@ const ctx: AppContext = {
   badges,
   polls,
   tempVoice,
+  ai,
+  chat,
   panels,
   runSetup: (guild) =>
     runSetup(guild, {
@@ -210,8 +219,9 @@ client.on(Events.InteractionCreate, (interaction) => {
 });
 client.on(Events.MessageCreate, (message) => {
   try {
-    messages.handle(message);
+    const outcome = messages.handle(message);
     polls.handleMessage(message);
+    chat.handle(message, outcome).catch(logErrors('AI chat'));
   } catch (err) {
     logErrors('message tracking')(err);
   }
@@ -239,6 +249,7 @@ client.on(Events.Error, (err) => log.error({ err }, 'discord client error'));
 try {
   await config.load();
   await vip.load();
+  await ai.ensureProviders();
   await registerCommands(env, log);
   await client.login(env.DISCORD_TOKEN);
 } catch (err) {

@@ -70,6 +70,11 @@ model GuildConfig {
   // History badges (SPEC §7): defaults are added once, so deleting them sticks.
   badgesSeeded Boolean @default(false)
 
+  // AI chat (SPEC §9a).
+  aiEnabled         Boolean @default(true)
+  mainChatChannelId String?
+  aiPerUserLimit    Int     @default(3) // replies per person per minute
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -328,4 +333,27 @@ model TempVoiceChannel {
   ownerId    String    @unique
   createdAt  DateTime  @default(now())
   emptySince DateTime? // null while someone is in it
+}
+
+// An AI provider in the chain (SPEC §9a). Adding one is a row plus an env var.
+model AiProvider {
+  name          String    @id
+  baseUrl       String // OpenAI-compatible; {ENV_VAR} placeholders are filled from the environment
+  model         String
+  keyEnvVar     String // name of the env var holding the API key (never the key itself)
+  dailyCap      Int
+  resetTimezone String    @default("UTC") // when this provider's daily limit resets
+  order         Int
+  enabled       Boolean   @default(true)
+  cooldownUntil DateTime?
+  lastError     String?
+}
+
+// Replies per provider per provider-day. provider "prewritten" counts fallbacks.
+model AiUsage {
+  provider    String
+  providerDay String
+  count       Int    @default(0)
+
+  @@id([provider, providerDay])
 }

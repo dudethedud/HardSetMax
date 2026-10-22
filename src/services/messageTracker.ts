@@ -4,7 +4,7 @@
 import type { Message } from 'discord.js';
 import type { ConfigStore } from '../config/configStore.js';
 import { channelWeight } from '../core/activityRules.js';
-import { emptySpamState, evaluateMessage, isFiltered, isSpamStateIdle, type SpamState } from '../core/messageRules.js';
+import { emptySpamState, evaluateMessage, isFiltered, isSpamStateIdle, type MessageOutcome, type SpamState } from '../core/messageRules.js';
 import { serverDayAt } from '../core/serverDay.js';
 import type { ActivityBuffer } from './activityBuffer.js';
 
@@ -18,14 +18,15 @@ export class MessageTracker {
     private readonly buffer: ActivityBuffer,
   ) {}
 
-  handle(message: Message): void {
-    if (this.#stopped || !message.inGuild() || message.guildId !== this.guildId) return;
-    if (message.author.bot || message.webhookId || message.system) return;
+  /** Counts the message. Returns how the rules judged it, or null if it wasn't checked. */
+  handle(message: Message): MessageOutcome | null {
+    if (this.#stopped || !message.inGuild() || message.guildId !== this.guildId) return null;
+    if (message.author.bot || message.webhookId || message.system) return null;
 
     const { channelWeights, rules, boundary } = this.config.current;
     const channel = message.channel;
     const weight = channelWeight({ id: channel.id, parentId: channel.parentId, isThread: channel.isThread() }, channelWeights);
-    if (weight <= 0) return;
+    if (weight <= 0) return null;
 
     const userId = message.author.id;
     this.buffer.setName(userId, message.member?.displayName ?? message.author.displayName);
@@ -40,6 +41,7 @@ export class MessageTracker {
     const day = serverDayAt(message.createdAt, boundary).key;
     if (outcome === 'counted') this.buffer.add(userId, day, { messages: 1, weightedMessages: weight });
     else if (isFiltered(outcome)) this.buffer.add(userId, day, { filteredMessages: 1 });
+    return outcome;
   }
 
   /** Drops spam state that can't affect any future message (run every few minutes). */

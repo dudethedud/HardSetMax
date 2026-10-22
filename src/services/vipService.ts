@@ -68,6 +68,8 @@ export class VipService {
   readonly onReshuffled: ReshuffledHook[] = [];
   /** Set when history badges are enabled (Phase 7); new badges are saved with each reshuffle. */
   badges: BadgeService | null = null;
+  /** Set when AI chat is enabled (Phase 9): one hype line for the top of the VIP update. Numbers stay code-written. */
+  hype: ((summary: string) => Promise<string | null>) | null = null;
 
   constructor(
     private readonly client: Client,
@@ -362,7 +364,10 @@ export class VipService {
     try {
       const channel = await this.client.channels.fetch(channelId);
       if (!channel?.isSendable()) throw new Error('not a text channel the bot can post in');
-      await channel.send({ content: detail.announcement.content, allowedMentions: { users: detail.announcement.pingUserIds } });
+      const summary = `${detail.added.length} new VIPs, ${detail.removed.length} left VIP, ${detail.badges?.length ?? 0} new badges.`;
+      const line = this.hype ? await this.hype(summary).catch(() => null) : null;
+      const content = line ? `${line}\n${detail.announcement.content}` : detail.announcement.content;
+      await channel.send({ content: content.slice(0, 2000), allowedMentions: { users: detail.announcement.pingUserIds } });
       await this.db.jobRun.update({
         where: { job_period: { job, period } },
         data: { detail: { ...detail, posted: true } as unknown as Prisma.InputJsonValue },

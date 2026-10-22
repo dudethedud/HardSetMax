@@ -11,7 +11,7 @@ Keep a private note open (e.g. a password manager or a note only you can see) to
 | `GUILD_ID` | Discord, part 2 | No |
 | `DATABASE_URL` | Supabase, part 3 | **Yes**: contains the database password |
 | Supabase certificate file | Supabase, part 3 | No |
-| Backup private key file | Your computer, part 6 | **Yes**: needed to open backups |
+| Backup private key file | Your computer, part 7 | **Yes**: needed to open backups |
 
 Never paste secret values into Discord, GitHub issues or chats (including with Claude).
 
@@ -122,11 +122,35 @@ Once `/bot health` works, in your test server:
    It tells you if anything's wrong. Run it again whenever something looks off; it's safe.
 7. `/vip preview` shows what the first reshuffle will do. The reshuffle runs every night at midnight (server time). It also runs once right after setup, for the day that just ended.
 
-## Part 6: Nightly backups (GitHub)
+## Part 6: AI chat (Puppyboy Carter)
+
+Optional, and free. Without it, the bot answers mentions with pre-written replies.
+
+1. **Groq** (main):
+   - Sign up at https://console.groq.com (no card needed).
+   - Go to **API Keys → Create API Key** and copy it.
+   - In **Settings → Data Controls**, turn on **Zero Data Retention**, so Groq doesn't keep the messages.
+   - Check **Settings → Limits** for what the free plan allows. If `llama-3.1-8b-instant` isn't listed, run `/ai provider-model provider:groq model:<a listed model>`, e.g. `openai/gpt-oss-20b`.
+2. **Cloudflare Workers AI** (backup):
+   - Sign up at https://dash.cloudflare.com (free plan).
+   - Your **Account ID** is on the right of the account home page.
+   - Create a token under **My Profile → API Tokens → Create Token**, using the **Workers AI** template.
+3. Add to the bot's `.env` on Wispbyte, then restart:
+   ```
+   GROQ_API_KEY=...
+   CLOUDFLARE_ACCOUNT_ID=...
+   CLOUDFLARE_AI_TOKEN=...
+   ```
+4. In Discord: `/config channel purpose:main-chat channel:#general` (the bot only chats there), then `/ai status` and `/ai test question:how does VIP work?`.
+5. Add this line to your server rules: **"Messages you send to Puppyboy Carter are processed by an AI service."**
+
+Use one account per provider. Making extra accounts to get more free usage breaks their terms.
+
+## Part 7: Nightly backups (GitHub)
 
 Every night, GitHub makes an **encrypted** copy of the database and keeps the last 30 days. It's encrypted with a key that only you have, so nobody else (not GitHub, not anyone with access to the repo) can read it.
 
-### 6a. Make your backup key (on your own computer, once)
+### 7a. Make your backup key (on your own computer, once)
 1. Install **age**, a small encryption tool:
    - **Windows:** open **PowerShell** and run `winget install FiloSottile.age`, then close and reopen PowerShell.
    - **Mac:** `brew install age` (needs Homebrew).
@@ -137,7 +161,7 @@ Every night, GitHub makes an **encrypted** copy of the database and keeps the la
    It prints `Public key: age1...`. Copy that `age1...` line into your note. It's **not** secret.
 3. The file `vipbot-backup-key.txt` is your **private key**. Store it somewhere safe and private: a password manager, a USB stick, or a private cloud folder, ideally two of these. **If you lose it, the backups can't be opened by anyone.** Never upload it to GitHub, Wispbyte or a chat.
 
-### 6b. Give GitHub what it needs
+### 7b. Give GitHub what it needs
 1. Go to https://github.com/dudethedud/HardSetMax → **Settings** (top bar of the repo) → **Secrets and variables** → **Actions**.
 2. On the **Secrets** tab, click **New repository secret** twice:
    - Name `BACKUP_DATABASE_URL`, value: your `DATABASE_URL` (the same one as in `.env`).
@@ -145,7 +169,7 @@ Every night, GitHub makes an **encrypted** copy of the database and keeps the la
 3. On the **Variables** tab, click **New repository variable**:
    - Name `BACKUP_AGE_RECIPIENT`, value: your `age1...` public key.
 
-### 6c. Check it works
+### 7c. Check it works
 Backups start once the pull request is merged into `main`.
 1. In the repo, click **Actions** → **Nightly database backup** → **Run workflow** → **Run workflow**.
 2. After a minute or two, it should show a green tick. Click the run: under **Artifacts** there's a `database-backup-…` file.

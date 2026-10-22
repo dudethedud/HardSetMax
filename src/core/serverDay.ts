@@ -114,3 +114,19 @@ export function serverDaysBetween(from: string, to: string): number {
 export function weekStartOf(key: string): string {
   return parseKey(key, 'UTC').startOf('week').toISODate()!;
 }
+
+/**
+ * The calendar date at `instant` in `timezone`. Only for outside services' own
+ * daily resets (e.g. an AI provider's daily limit at 00:00 UTC); everything about
+ * the server's own days uses serverDayAt.
+ */
+export function calendarDayIn(instant: Date, timezone: string): string {
+  assertZone(timezone);
+  return DateTime.fromJSDate(instant, { zone: timezone }).toISODate()!;
+}
+
+/** The next midnight in `timezone` after `instant`. */
+export function nextMidnightIn(instant: Date, timezone: string): Date {
+  assertZone(timezone);
+  return DateTime.fromJSDate(instant, { zone: timezone }).plus({ days: 1 }).startOf('day').toJSDate();
+}
