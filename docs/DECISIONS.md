@@ -28,3 +28,12 @@
 | 2026-10-22 | Free AI provider (Groq free plan by default), provider-agnostic, with daily cap and pre-written fallback | Carson wants it free; free tiers have daily limits, so the bot must degrade gracefully |
 | 2026-10-22 | AI provider chain: Groq → Cloudflare Workers AI → pre-written replies; one account per provider | More free daily capacity without breaking provider terms. OpenRouter free (50/day) too small; Gemini free uses prompts for training; Cerebras is an expiring trial |
 | 2026-10-22 | Per-person AI limit of 3 replies per minute instead of a 30 s cooldown | Allows quick back-and-forth while still stopping spam |
+| 2026-10-22 | Invite tracking dropped; VIP is decided by activity only | Owner's choice |
+| 2026-10-22 | Commands use `contexts: [Guild]` instead of `dm_permission = false` | Discord deprecated `dm_permission`; `contexts` is its replacement and does the same thing. A test checks every command has it plus `default_member_permissions = Administrator` |
+| 2026-10-22 | Prisma pinned to 7.x (7.10.1); the `prisma` CLI is a runtime dependency | npm's "latest" for Prisma was an 8.0 release candidate. `npm start` runs `prisma migrate deploy` in production, so the CLI must be installed there |
+| 2026-10-22 | Luxon does the timezone math in the server-day helper | Mature, DST-aware library instead of hand-written date code |
+| 2026-10-22 | A server-day is named by the local date it starts on (`YYYY-MM-DD`) | With the default 00:00 boundary the key is just the local calendar date |
+| 2026-10-22 | Boundary in the spring-forward gap (e.g. 02:30) runs at the first valid time after the gap (03:00); a boundary in the repeated fall-back hour uses its first occurrence | SPEC §2 says "next valid time"; this keeps every instant in exactly one server-day |
+| 2026-10-22 | `gateway-leader` uses `pg_try_advisory_lock(hashtext('gateway-leader'))` on a dedicated `pg` connection; losing that connection shuts the bot down (exit 1, Railway restarts it) | Postgres releases the lock when the connection drops, so another copy may connect; the old one must stop |
+| 2026-10-22 | Slash commands are registered to the guild on every startup | Deploys keep commands in sync without a manual step; `npm run register-commands` still exists |
+| 2026-10-22 | Phase 1 `/config set` keys: `timezone`, `day-boundary`. Changes are written to `AuditLog` | Real spec settings, so the redeploy proof uses real data. The mod-log channel is configured in Phase 4 |
