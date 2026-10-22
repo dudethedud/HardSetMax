@@ -55,6 +55,14 @@ model GuildConfig {
   announceChannelId String?
   modLogChannelId   String?
 
+  // VIP polls (SPEC §5a).
+  pollsChannelId String?
+  pollsRoleId    String?
+  pollsDailyCap  Int     @default(2)
+
+  // VIP colours (SPEC §5): defaults are added once, so deleting them all sticks.
+  coloursSeeded Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -201,4 +209,50 @@ model Panel {
   channelId String
   messageId String
   updatedAt DateTime @updatedAt
+}
+
+// Colour choices for VIPs (SPEC §5). Each has its own role, above the VIP role.
+model ColourOption {
+  id       Int     @id @default(autoincrement())
+  name     String  @unique
+  hex      String
+  position Int     @default(0)
+  roleId   String?
+
+  choices UserColourChoice[]
+}
+
+// A VIP's last colour pick. Kept when VIP is lost, so it comes back with VIP.
+model UserColourChoice {
+  userId   String       @id
+  optionId Int
+  option   ColourOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+}
+
+// Every poll posted in #polls (SPEC §5a). A deleted poll still counts.
+model PollPost {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  messageId String   @unique
+  serverDay String
+  kind      String // "vip" (counts toward the cap) | "extra" (/polls unlock) | "staff"
+  accepted  Boolean // false: over a limit, deleted
+  createdAt DateTime @default(now())
+
+  @@index([serverDay])
+}
+
+// A permission overwrite the bot put on #polls, removed once `until` passes.
+// scope "user": a VIP's personal lock ("deny") or admin-granted extra poll ("allow").
+// scope "role": the VIP role is locked because the daily cap was reached.
+model PollLock {
+  id        Int      @id @default(autoincrement())
+  scope     String
+  targetId  String
+  effect    String // "deny" | "allow"
+  serverDay String
+  until     DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([scope, targetId])
 }

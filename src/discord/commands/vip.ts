@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, userMention } from 'discord.js';
 import { describeAdd, describeRemove, formatScore } from '../../core/reshuffle.js';
 import { serverDayAt, serverDaysBetween } from '../../core/serverDay.js';
+import { formatHexColour, parseHexColour } from '../../core/vipRules.js';
 import { RESHUFFLE_CANCEL_ID, RESHUFFLE_CONFIRM_ID } from '../buttons.js';
 import { defineAdminCommand } from './types.js';
 
@@ -36,11 +37,65 @@ export const vipCommand = defineAdminCommand(
           .setDescription('Clear a VIP block')
           .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)),
       )
-      .addSubcommand((s) => s.setName('reshuffle-now').setDescription('Run the reshuffle now (asks to confirm)')),
+      .addSubcommand((s) => s.setName('reshuffle-now').setDescription('Run the reshuffle now (asks to confirm)'))
+      .addSubcommandGroup((g) =>
+        g
+          .setName('colours')
+          .setDescription('VIP colour options')
+          .addSubcommand((s) => s.setName('list').setDescription('List colour options'))
+          .addSubcommand((s) =>
+            s
+              .setName('add')
+              .setDescription('Add a colour option')
+              .addStringOption((o) => o.setName('name').setDescription('Name shown in the picker').setRequired(true).setMaxLength(32))
+              .addStringOption((o) => o.setName('hex').setDescription('Colour, e.g. #FF8800').setRequired(true).setMaxLength(7)),
+          )
+          .addSubcommand((s) =>
+            s
+              .setName('edit')
+              .setDescription('Rename or recolour an option')
+              .addStringOption((o) => o.setName('name').setDescription('Current name').setRequired(true).setMaxLength(32))
+              .addStringOption((o) => o.setName('new_name').setDescription('New name').setMaxLength(32))
+              .addStringOption((o) => o.setName('hex').setDescription('New colour, e.g. #FF8800').setMaxLength(7)),
+          )
+          .addSubcommand((s) =>
+            s
+              .setName('remove')
+              .setDescription('Remove a colour option (deletes its role)')
+              .addStringOption((o) => o.setName('name').setDescription('Name').setRequired(true).setMaxLength(32)),
+          ),
+      ),
   async (interaction, ctx) => {
     const sub = interaction.options.getSubcommand();
     const actor = interaction.user.id;
     const now = ctx.clock.now();
+
+    if (interaction.options.getSubcommandGroup(false) === 'colours') {
+      if (sub === 'list') {
+        const options = await ctx.colours.options();
+        await interaction.editReply(
+          options.length ? options.map((o) => `• **${o.name}** ${o.hex}${o.roleId ? ` <@&${o.roleId}>` : ' (no role yet: run /setup run)'}`).join('\n') : 'No colours. Add some with `/vip colours add`.',
+        );
+        return;
+      }
+      const name = interaction.options.getString('name', true).trim();
+      const hexRaw = interaction.options.getString('hex');
+      const hex = hexRaw === null ? undefined : parseHexColour(hexRaw);
+      if (hex === null) {
+        await interaction.editReply(`❌ "${hexRaw}" is not a hex colour like #FF8800.`);
+        return;
+      }
+      const hexText = hex === undefined ? undefined : formatHexColour(hex);
+      let reply: string;
+      if (sub === 'add') reply = await ctx.colours.addOption(name, hexText!, actor);
+      else if (sub === 'edit') {
+        const newName = interaction.options.getString('new_name')?.trim();
+        reply = await ctx.colours.editOption(name, { ...(newName ? { name: newName } : {}), ...(hexText ? { hex: hexText } : {}) }, actor);
+      } else reply = await ctx.colours.removeOption(name, actor);
+      const report = reply.startsWith('✅') ? [...(await ctx.colours.syncRoles()), ...(await ctx.panels.ensureAll())] : [];
+      await interaction.editReply([reply, ...report.filter((l) => !l.startsWith('✅'))].join('\n'));
+      return;
+    }
 
     if (sub === 'list' || sub === 'preview') {
       await ctx.activity.flush(ctx.db).catch(() => undefined);
@@ -151,5 +206,31 @@ export const setupCommand = defineAdminCommand(
   async (interaction, ctx) => {
     const report = await ctx.runSetup(interaction.guild);
     await interaction.editReply(report.join('\n').slice(0, 2000));
+  },
+);
+
+export const pollsCommand = defineAdminCommand(
+  'polls',
+  'VIP polls',
+  (b) =>
+    b
+      .addSubcommand((s) => s.setName('status').setDescription('Polls used today, who posted, who is locked, when it resets'))
+      .addSubcommand((s) =>
+        s
+          .setName('unlock')
+          .setDescription('Give a VIP one more poll today (works even past the daily limit)')
+          .addUserOption((o) => o.setName('user').setDescription('VIP').setRequired(true)),
+      ),
+  async (interaction, ctx) => {
+    if (interaction.options.getSubcommand() === 'status') {
+      await interaction.editReply(await ctx.polls.status());
+      return;
+    }
+    const user = interaction.options.getUser('user', true);
+    if (!ctx.vip.vips.has(user.id)) {
+      await interaction.editReply(`❌ ${userMention(user.id)} isn't VIP.`);
+      return;
+    }
+    await interaction.editReply(await ctx.polls.grantExtra(user.id, interaction.user.id));
   },
 );

@@ -12,6 +12,8 @@ import { ActivityBuffer } from './services/activityBuffer.js';
 import { acquireGatewayLeader } from './services/gatewayLeader.js';
 import { MessageTracker } from './services/messageTracker.js';
 import { createClock } from './services/clock.js';
+import { ColourService } from './services/colours.js';
+import { POLL_UNLOCK_JOB, PollService } from './services/polls.js';
 import { ModLog } from './services/modLog.js';
 import { loungePanel, Panels } from './services/panels.js';
 import { RoleQueue } from './services/roleQueue.js';
@@ -68,9 +70,14 @@ if (clock.offsetMinutes) log.warn({ offsetMinutes: clock.offsetMinutes }, 'TEST 
 const modLog = new ModLog(client, config, log);
 const roleQueue = new RoleQueue(client, env.GUILD_ID, log);
 const vip = new VipService(client, env.GUILD_ID, db, config, buffer, roleQueue, modLog, clock, log);
-const panels = new Panels(client, db, config, log, [loungePanel]);
+const colours = new ColourService(client, env.GUILD_ID, db, config, roleQueue, vip, modLog, log);
+const polls = new PollService(client, env.GUILD_ID, db, config, vip, modLog, clock, log);
+vip.onRemoved.push((userId) => colours.onVipRemoved(userId));
+vip.onAdded.push((userId) => colours.onVipAdded(userId));
+const panels = new Panels(client, db, config, log, [loungePanel(() => colours.options())]);
 const scheduler = new DailyScheduler(config, clock, log);
 scheduler.register(RESHUFFLE_JOB, (period) => vip.runReshuffle(RESHUFFLE_JOB, period));
+scheduler.register(POLL_UNLOCK_JOB, (period) => polls.runUnlockJob(period));
 const timers: NodeJS.Timeout[] = [];
 
 const FLUSH_MS = 30_000;
@@ -120,7 +127,18 @@ const ctx: AppContext = {
   clock,
   modLog,
   vip,
-  runSetup: (guild) => runSetup(guild, { db, config, panels, vip, log }),
+  colours,
+  polls,
+  panels,
+  runSetup: (guild) =>
+    runSetup(guild, {
+      steps: [(g, vipRole, report) => colours.setup(g, vipRole, report), (g, vipRole, report) => polls.setup(g, vipRole, report)],
+      db,
+      config,
+      panels,
+      vip,
+      log,
+    }),
 };
 
 const logErrors =
@@ -144,6 +162,8 @@ client.once(Events.ClientReady, (c) => {
     // VIP: roles match the database, panels exist, missed announcements go out, then
     // the scheduler runs any reshuffle that was due while the bot was offline.
     await vip.reconcile();
+    await colours.reconcile();
+    await polls.reconcileLocks();
     await panels.ensureAll();
     await vip.postPendingAnnouncements();
     scheduler.start();
@@ -163,6 +183,7 @@ client.on(Events.InteractionCreate, (interaction) => {
 client.on(Events.MessageCreate, (message) => {
   try {
     messages.handle(message);
+    polls.handleMessage(message);
   } catch (err) {
     logErrors('message tracking')(err);
   }
