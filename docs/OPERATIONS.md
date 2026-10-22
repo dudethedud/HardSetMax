@@ -12,7 +12,7 @@ The bot runs on a free **Wispbyte** Node.js server. Its data lives in a free **S
    ```
    Don't use the **Transaction pooler** (port 6543): the `gateway-leader` lock needs a session connection. The **Direct connection** string usually only works over IPv6, so most hosts can't use it.
 3. Add `?sslmode=require` to the end. This is your `DATABASE_URL`.
-4. In **Database settings → SSL Configuration**, click **Download certificate**. This is Supabase's CA certificate. It's public, not a secret. The bot uses it to check it's really talking to Supabase.
+4. In **Database** (left icon menu) **→ Settings → SSL Configuration**, click **Download certificate**. This is Supabase's CA certificate. It's public, not a secret. The bot uses it to check it's really talking to Supabase.
 5. In the same place, turn on **Enforce SSL** if it's offered.
 
 Keep the connection string secret: it contains the database password. It only goes in the `.env` file on the server, never in Git or chat.

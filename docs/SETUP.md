@@ -61,8 +61,8 @@ Use a test server first, not the real one.
    ```
    postgresql://postgres.abcdefghijklmnop:MyPassw0rd@aws-0-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require
    ```
-   If your password contains `@`, `#`, `?`, `&`, `/` or `:`, generate a new password without them (**Project Settings → Database → Reset database password**). Those characters break the link.
-6. Download the certificate: in the left menu, open **Project Settings** (gear icon) → **Database**. Scroll to **SSL Configuration** and click **Download certificate**. You get a file like `prod-ca-2021.crt`. Keep it; you'll upload it in part 4.
+   If your password contains `@`, `#`, `?`, `&`, `/` or `:`, generate a new password without them (**Database → Settings → Reset database password**). Those characters break the link.
+6. Download the certificate: in the main menu on the far left (the column of icons), click **Database** (cylinder icon), then **Settings** under **Configuration**. Scroll to **SSL Configuration** and click **Download certificate**. It's not under Project Settings. A direct link is `https://supabase.com/dashboard/project/<your-project-code>/database/settings`. You get a file like `prod-ca-2021.crt`. Keep it; you'll upload it in part 4.
 7. On the same page, if there's an **Enforce SSL on incoming connections** switch, turn it on.
 
 ## Part 4: Run the bot (Wispbyte)
