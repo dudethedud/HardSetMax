@@ -6,6 +6,7 @@ import {
   isValidTimezone,
   serverDayAt,
   serverDayByKey,
+  serverDaysBetween,
   type DayBoundary,
 } from './serverDay.js';
 
@@ -126,5 +127,16 @@ describe('helpers', () => {
     expect(isValidBoundaryTime('9:00')).toBe(false);
     expect(() => serverDayAt(new Date(), { timezone: 'nope', time: '00:00' })).toThrow();
     expect(() => serverDayByKey('2026-13-01', edmonton)).toThrow();
+  });
+});
+
+describe('serverDaysBetween', () => {
+  it('counts whole days across months, years and DST dates', () => {
+    expect(serverDaysBetween('2026-10-20', '2026-10-25')).toBe(5);
+    expect(serverDaysBetween('2026-12-30', '2027-01-02')).toBe(3);
+    expect(serverDaysBetween('2026-03-07', '2026-03-09')).toBe(2);
+    expect(serverDaysBetween('2026-10-31', '2026-11-02')).toBe(2);
+    expect(serverDaysBetween('2026-10-25', '2026-10-20')).toBe(-5);
+    expect(serverDaysBetween('2026-10-20', '2026-10-20')).toBe(0);
   });
 });
