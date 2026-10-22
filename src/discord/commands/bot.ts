@@ -1,6 +1,5 @@
 import { hostname } from 'node:os';
 import { EmbedBuilder, time, TimestampStyles } from 'discord.js';
-import { dayBoundaryOf, getGuildConfig } from '../../config/guildConfig.js';
 import { serverDayAt } from '../../core/serverDay.js';
 import { VERSION } from '../../version.js';
 import { REQUIRED_INTENT_NAMES } from '../client.js';
@@ -19,7 +18,7 @@ export const botCommand = defineAdminCommand(
     try {
       await db.$queryRaw`SELECT 1`;
       dbLine = `✅ connected (${Math.round(performance.now() - t0)} ms)`;
-      const day = serverDayAt(new Date(), dayBoundaryOf(await getGuildConfig(db, interaction.guildId)));
+      const day = serverDayAt(new Date(), ctx.config.current.boundary);
       dayLine = `\`${day.key}\`, next boundary ${time(day.end, TimestampStyles.RelativeTime)}`;
     } catch (err) {
       ctx.log.warn({ err }, 'health: database check failed');
@@ -43,7 +42,13 @@ export const botCommand = defineAdminCommand(
       { name: 'Intents', value: `✅ ${REQUIRED_INTENT_NAMES.join(', ')}` },
       { name: 'Server-day', value: dayLine },
       { name: 'Last reshuffle', value: 'not built yet (Phase 4)', inline: true },
-      { name: 'Pending writes', value: 'none (activity tracking is Phase 2)', inline: true },
+      {
+        name: 'Pending writes',
+        value: `${ctx.activity.pendingCount}${ctx.activity.lastFlushError ? ' ⚠️ last save failed, retrying' : ''}${
+          ctx.activity.lastFlushAt ? `, last saved ${time(ctx.activity.lastFlushAt, TimestampStyles.RelativeTime)}` : ''
+        }`,
+        inline: true,
+      },
       { name: 'AI', value: 'not built yet (Phase 9)', inline: true },
     );
 

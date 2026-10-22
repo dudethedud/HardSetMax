@@ -6,9 +6,11 @@ import {
   type Client,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
+import type { ConfigStore } from '../../config/configStore.js';
 import type { Env } from '../../config/env.js';
 import type { Db } from '../../db/prisma.js';
 import type { Logger } from '../../logger.js';
+import type { ActivityBuffer } from '../../services/activityBuffer.js';
 import type { GatewayLeader } from '../../services/gatewayLeader.js';
 
 export interface AppContext {
@@ -18,6 +20,8 @@ export interface AppContext {
   leader: GatewayLeader;
   client: Client;
   startedAt: Date;
+  config: ConfigStore;
+  activity: ActivityBuffer;
 }
 
 export interface AdminCommand {
