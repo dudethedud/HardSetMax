@@ -21,6 +21,8 @@ export class DailyScheduler {
     private readonly config: ConfigStore,
     private readonly clock: Clock,
     private readonly log: Logger,
+    /** False in database-down mode: jobs wait (and catch up) until it's back. */
+    private readonly active: () => boolean = () => true,
   ) {}
 
   register(name: string, job: DailyJob): void {
@@ -42,6 +44,7 @@ export class DailyScheduler {
   }
 
   async check(): Promise<void> {
+    if (!this.active()) return;
     const period = this.duePeriod();
     for (const [name, job] of this.#jobs) {
       if (this.#running.has(name)) continue;

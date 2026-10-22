@@ -1,5 +1,6 @@
 import { hostname } from 'node:os';
-import { EmbedBuilder, time, TimestampStyles } from 'discord.js';
+import { EmbedBuilder, IntentsBitField, time, TimestampStyles } from 'discord.js';
+import { MANUAL_RESHUFFLE_JOB, RESHUFFLE_JOB } from '../../services/vipService.js';
 import { serverDayAt } from '../../core/serverDay.js';
 import { VERSION } from '../../version.js';
 import { REQUIRED_INTENT_NAMES } from '../client.js';
@@ -26,6 +27,26 @@ export const botCommand = defineAdminCommand(
     }
 
     const copy = `pid ${process.pid}, ${hostname()}`;
+    const lostSince = leader.lostSince();
+
+    let reshuffleLine = 'never run';
+    try {
+      const last = await db.jobRun.findFirst({ where: { job: { in: [RESHUFFLE_JOB, MANUAL_RESHUFFLE_JOB] } }, orderBy: { startedAt: 'desc' } });
+      if (last) {
+        const d = last.detail as { added?: unknown[]; removed?: unknown[]; error?: string } | null;
+        const when = time(last.finishedAt ?? last.startedAt, TimestampStyles.RelativeTime);
+        reshuffleLine =
+          last.status === 'succeeded'
+            ? `✅ ${when}: ${d?.added?.length ?? 0} added, ${d?.removed?.length ?? 0} removed`
+            : last.status === 'failed'
+              ? `❌ ${when}: ${String(d?.error ?? 'failed').slice(0, 150)} (retries automatically)`
+              : `⏳ running since ${when}`;
+      }
+    } catch {
+      reshuffleLine = 'unavailable (database down)';
+    }
+    const granted = new IntentsBitField(client.options.intents).toArray();
+    const missingIntents = REQUIRED_INTENT_NAMES.filter((n) => !granted.includes(n as never));
 
     const embed = new EmbedBuilder().setTitle('Bot health').addFields(
       { name: 'Version', value: VERSION, inline: true },
@@ -36,12 +57,14 @@ export const botCommand = defineAdminCommand(
         name: 'Gateway leader',
         value: leader.isHeld()
           ? `✅ this copy (${copy}) since ${time(leader.acquiredAt, TimestampStyles.RelativeTime)}`
-          : '❌ lock lost; this copy is shutting down',
+          : lostSince
+            ? `⚠️ database-down mode since ${time(lostSince, TimestampStyles.RelativeTime)}: counting in memory, jobs paused, reconnecting`
+            : '❌ lock released; this copy is shutting down',
       },
-      // Logging in succeeds only if every requested privileged intent is enabled.
-      { name: 'Intents', value: `✅ ${REQUIRED_INTENT_NAMES.join(', ')}` },
+      // Logging in only succeeds if every requested privileged intent is enabled in the portal.
+      { name: 'Intents', value: missingIntents.length ? `⚠️ not requested: ${missingIntents.join(', ')}` : `✅ ${granted.join(', ')}` },
       { name: 'Server-day', value: dayLine },
-      { name: 'Last reshuffle', value: 'not built yet (Phase 4)', inline: true },
+      { name: 'Last reshuffle', value: reshuffleLine },
       {
         name: 'Pending writes',
         value: `${ctx.activity.pendingCount}${ctx.activity.lastFlushError ? ' ⚠️ last save failed, retrying' : ''}${

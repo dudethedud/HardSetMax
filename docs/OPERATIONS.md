@@ -112,8 +112,8 @@ GitHub never sees your data unencrypted. Only the private key (`vipbot-backup-ke
 
 Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → restore into an empty database gave identical rows, and the bot's migrations ran on the copy. Restoring over a database with tables, decrypting with the wrong key, and connecting with a wrong certificate all fail. The full drill on Supabase is still Phase 10.
 
-## Admin commands so far
-All are admin-only and reply privately.
+## Admin commands
+All are admin-only and reply privately. The full list is also in the README.
 
 | Command | What it does |
 |---|---|
@@ -201,6 +201,43 @@ All are admin-only and reply privately.
 
 ### Testing midnight without waiting (test server only)
 Set `CLOCK_OFFSET_MINUTES` in `.env` to shift the bot's clock for the schedule. For example, if it's 14:00 now, `CLOCK_OFFSET_MINUTES=605` makes the bot think it's 00:05 tomorrow, so the reshuffle runs right after start. Restart mid-day with the same offset and check in `/bot health` and the mod-log that it neither repeats nor gets skipped. **Remove the setting afterwards.** Message and voice counts always use the real time.
+
+## 6. When something goes wrong (SPEC §13)
+- **Database unreachable:** the bot goes into **database-down mode**:
+  - it keeps counting activity in memory (unsaved writes show in `/bot health`)
+  - it pauses the reshuffle and other scheduled jobs, and posts a mod-log notice
+  - it reconnects with growing waits (2 s up to 1 min)
+
+  When the database is back, it takes its lock back, saves everything and runs any missed job (catch-up). If another copy of the bot got the lock first, this copy stops. Activity is only lost if the bot itself crashes during the outage.
+- **Missing permissions or role order:** the bot doesn't crash. An hourly check posts what to fix in the mod-log, once per new problem and again when it's fixed. Failed role changes also post the reason and the fix.
+- **Discord rate limits:** role changes go one at a time through a queue.
+- **Buttons, forms and commands** answer within Discord's 3 seconds ("working on it…") and then finish.
+- **Unexpected errors** are logged with context. The bot shuts down cleanly and Wispbyte restarts it.
+- **Old data:** a daily `prune` job deletes activity, adjustments, poll records, voice sessions, timeout records and AI usage older than 60 days. The audit log, VIP stints, badges and Crown history are kept.
+
+## 7. Backup restore drill (do this once)
+Prove a backup can really be restored, without touching live data:
+1. In Supabase, create a **second** free project (e.g. `vip-bot-restore-test`). Get its session pooler string and certificate (SETUP part 3).
+2. In GitHub **Actions**, download the newest **Nightly database backup** artifact and unzip it.
+3. On your computer:
+   - Install Node 22+, `age` and the PostgreSQL 18 client tools (OPERATIONS §5 "Restoring").
+   - Clone the repo and run `npm install`.
+   - Run `scripts/restore.mjs` with the new project's string, its certificate, the backup file and your `vipbot-backup-key.txt`.
+4. In the new project's **Table Editor**, check that `ActivityDay`, `VipMember` and `GuildConfig` have rows, and that the numbers look like the live ones.
+5. Write down the date you did it here: _not done yet_. Then delete the test project, or keep it for the next drill.
+
+## 8. Going live on the real server
+1. Do SETUP parts 1–5 for the real server: invite the bot with all the permissions, and in `.env` set `GUILD_ID` to the real server and remove `CLOCK_OFFSET_MINUTES`.
+   - **Tip:** use a fresh Supabase project for the real server, so test-server data doesn't mix in.
+2. Drag the bot's role above bleed's level roles. Then:
+   - `/config level-roles-top`
+   - `/config channel` for announcements, mod-log and main-chat
+   - `/config staff-roles add` for each staff role
+   - `/config channel-weight` (e.g. memes 0.5, bot-spam 0)
+3. `/setup run`, then read the report. Then `/bot health`: everything should be ✅.
+4. Check the role order in **Server Settings → Roles**, top to bottom: bot role, custom crown role, 👑 Crown, the colour roles, VIP, bleed's level roles, badge roles, @everyone.
+5. Let it collect activity. The first reshuffle runs at the next midnight. `/vip preview` shows what it will do.
+6. After that first midnight, check the VIP update post, the mod-log entries and `/vip list`.
 
 ## Local development
 1. Run Postgres locally, copy `.env.example` to `.env` and fill in a **test** bot's token and IDs. For a local database, `DATABASE_URL=postgresql://user:pass@localhost:5432/vipbot` needs no certificate.

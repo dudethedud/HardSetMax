@@ -12,6 +12,8 @@ import { ActivityBuffer } from './services/activityBuffer.js';
 import { acquireGatewayLeader } from './services/gatewayLeader.js';
 import { MessageTracker } from './services/messageTracker.js';
 import { createClock } from './services/clock.js';
+import { PermissionCheck } from './services/permissionCheck.js';
+import { PRUNE_JOB, runPruneJob } from './services/prune.js';
 import { ColourService } from './services/colours.js';
 import { BadgeService } from './services/badges.js';
 import { CrownService } from './services/crown.js';
@@ -54,9 +56,15 @@ log.info({ version: VERSION }, 'starting');
 const connection = pgConfig(env.DATABASE_URL, { caCertPath: env.DATABASE_CA_CERT });
 
 // 1. Become the only connected copy before touching Discord (SPEC §11).
+// Set once the services exist; the lock can only be lost after startup.
+let onDatabaseDown: () => void = () => undefined;
+let onDatabaseBack: () => void = () => undefined;
 const leader = await acquireGatewayLeader(connection, log, {
   signal: waiting.signal,
-  onLost: () => void shutdown.run('gateway-leader lost', 1),
+  // Database-down mode (SPEC §13): keep counting in memory, pause jobs, reconnect.
+  onLost: () => onDatabaseDown(),
+  onRegained: () => onDatabaseBack(),
+  onTakenOver: () => void shutdown.run('another copy took gateway-leader', 1),
 }).catch((err: unknown) => {
   if (waiting.signal.aborted) return null; // Shutting down; shutdown.run exits.
   log.fatal({ err, hint: explainDbError(err) ?? undefined }, 'could not connect to the database');
@@ -98,9 +106,17 @@ vip.onReshuffled.push(async (today, result) => {
 });
 vip.onAdded.push((userId) => colours.onVipAdded(userId));
 const panels = new Panels(client, db, config, log, [loungePanel(() => colours.options())]);
-const scheduler = new DailyScheduler(config, clock, log);
+const scheduler = new DailyScheduler(config, clock, log, () => leader!.isHeld());
 scheduler.register(RESHUFFLE_JOB, (period) => vip.runReshuffle(RESHUFFLE_JOB, period));
 scheduler.register(POLL_UNLOCK_JOB, (period) => polls.runUnlockJob(period));
+scheduler.register(PRUNE_JOB, (period) => runPruneJob(db, config, clock, log, period));
+const permissionCheck = new PermissionCheck(client, env.GUILD_ID, db, config, modLog);
+onDatabaseDown = () => void modLog.post('⚠️ The database is unreachable. Activity is kept in memory and scheduled jobs are paused until it’s back.');
+onDatabaseBack = () => {
+  void modLog.post('✅ The database is back. Saving what was counted and catching up on scheduled jobs.');
+  void flush().catch(logErrors('saving after the database came back'));
+  void scheduler.check();
+};
 const timers: NodeJS.Timeout[] = [];
 
 const FLUSH_MS = 30_000;
@@ -203,6 +219,7 @@ client.once(Events.ClientReady, (c) => {
     await panels.ensureAll();
     await vip.postPendingAnnouncements();
     scheduler.start();
+    await permissionCheck.run();
   })().catch(logErrors('startup catch-up'));
 
   timers.push(
@@ -212,6 +229,7 @@ client.once(Events.ClientReady, (c) => {
     setInterval(() => void voice.tick().catch(logErrors('voice tick')), VOICE_TICK_MS),
     setInterval(() => messages.sweep(), SWEEP_MS),
     setInterval(() => void tempVoice.sweep().catch(logErrors('temp voice check')), 15_000),
+    setInterval(() => void permissionCheck.run().catch(logErrors('permission check')), 60 * 60_000),
   );
 });
 client.on(Events.InteractionCreate, (interaction) => {
