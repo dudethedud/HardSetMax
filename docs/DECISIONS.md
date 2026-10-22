@@ -14,3 +14,12 @@
 | 2026-10-22 | Poll discussion happens in a bot-created thread on each poll; everyone can chat in threads only | Keeps #polls clean while letting people discuss |
 | 2026-10-22 | Staff can post polls with no limits; their polls get the ping and thread and don't use the VIP cap | Carson's choice |
 | 2026-10-22 | Losing VIP is immediate and complete (colour, Crown, custom role, temp voice) through one shared routine; the slot refills at the next reshuffle | Mid-day removals shouldn't leave people with VIP perks until midnight |
+| 2026-10-22 | Single-instance lock before connecting to Discord | Railway redeploys can overlap; two connected copies would double-count activity and double-answer buttons |
+| 2026-10-22 | One "server-day" boundary (default 00:00 local, DST-aware) used by everything | The old 00:00 day vs 00:05 reset mismatch could unlock polls wrongly |
+| 2026-10-22 | Spam filter (repeats, low effort, bursts) + 60 s cooldown instead of a daily message cap | Carson's choice: filter spam, don't cap genuine chatting |
+| 2026-10-22 | Voice capped at 240 counted minutes per day | Stops overnight voice farming |
+| 2026-10-22 | Threads use their parent channel's weight | Threads are separate channels in Discord and would otherwise dodge ignored channels |
+| 2026-10-22 | Pinned time doesn't count toward history badges | Badges should be earned, not given by a pin |
+| 2026-10-22 | Bot keeps its own timeout history + audit-log catch-up on startup | Discord only exposes active timeouts |
+| 2026-10-22 | `/polls unlock` works even past the daily cap | Otherwise the command does nothing once the cap is hit |
+| 2026-10-22 | Fixed tie-breaker order ending in Discord user ID | Preview and real reshuffle must always agree |

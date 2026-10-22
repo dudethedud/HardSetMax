@@ -22,23 +22,50 @@ Level roles are handled by **bleed** (another bot). This bot does not do levels 
 ### What counts
 | Source | Counts when | Doesn't count when |
 |---|---|---|
-| **Message** | At most **1 per user per 60 s** (configurable) | Under 4 characters after trimming, emoji/sticker-only, in an ignored channel, from a bot, in DMs |
-| **Voice minute** | User is in a voice channel with at least 1 other non-bot member | Alone, in the AFK channel, self-deafened, server-deafened |
+| **Message** | At most **1 per user per 60 s** (configurable), and it passes the spam filter below | Under 4 characters after trimming, emoji/sticker-only, flagged as spam, in an ignored channel, from a bot, in DMs |
+| **Voice minute** | User is in a voice channel with at least 1 other non-bot member | Alone, in the AFK channel, self-deafened, server-deafened, or over the daily voice cap |
+
+### Spam filter (messages)
+A message that would otherwise count is **not counted** if any of these are true:
+- **Repeat:** it's the same as, or nearly the same as, one of that user's last 5 messages (e.g. compare after lowercasing and stripping spaces/punctuation).
+- **Low effort:** fewer than 3 distinct letters/digits ("aaaa", "!!!!!!", "hahahaha" passes, "hhhhhh" doesn't), or it's only mentions, links or emoji.
+- **Burst:** the user sent 8+ messages in 30 s. Nothing from them counts for the next 10 minutes.
+
+Thresholds are configurable. The filter is pure logic with unit tests. **Message text is only looked at in memory**: for the repeat check, the bot keeps short fingerprints of each user's last 5 messages in memory for 10 minutes, then drops them. Nothing about message text is ever written to the database. Flagged messages are just not counted; they are not deleted and nobody is warned. `/stats` shows how many messages were filtered.
+
+### Voice cap
+At most **240 counted voice minutes per user per day** (configurable). Stops people sitting in voice overnight to farm score.
 
 ### Channel weighting
 - Each text channel has a weight, default `1.0`. Example: main chat `1.0`, memes `0.5`, bot-spam `0` (ignored).
+- **Threads and forum posts always use their parent channel's weight** (a thread under an ignored channel is ignored too).
 - Voice minutes have a global weight, default `0.2` (5 voice minutes ≈ 1 message).
 
 ### Score
 ```
 score(user) = Σ over the last 7 days of (weighted messages + voice_minutes × voice_weight)
 ```
-- Window length (default **7 days**) is configurable.
-- Stored as **daily buckets per user** (date in the server's timezone, default `America/Edmonton`). Days are counted as "active" if the user had any counted activity.
+- Window length (default **7 days**) is configurable. The window is the **last 7 complete server-days** (see "Server-day" below), so at the reshuffle it never includes a few minutes of the new day.
+- Stored as **daily buckets per user**, one per server-day. Days are counted as "active" if the user had any counted activity.
 - Buckets older than 60 days are pruned.
 
+### Server-day (one definition used everywhere)
+- The bot has **one day boundary**: a time of day in the server's timezone (default **00:00**, timezone default `America/Edmonton`).
+- A **server-day** runs from one boundary to the next. Activity buckets, the poll limits, poll locks, the daily reshuffle and the weekly Crown all use this same definition. Nothing in the code uses UTC dates or a separate "midnight".
+- Daily jobs run **at** the boundary. Each job's `job_runs` key is the server-day it closes.
+- **Daylight saving time:** the boundary is scheduled in the server's timezone (not as a fixed UTC time), so it stays at the same local time all year. Server-days on the two DST change dates are 23 or 25 hours long, and that's fine. If the boundary is set to a local time that doesn't exist on the spring-forward day (e.g. 02:30), it runs at the next valid time. Tests cover both DST dates.
+
+### Timeout tracking
+Discord only shows timeouts that are active right now, so the bot keeps its own record:
+- Every timeout the bot sees (member update) is saved in a `TimeoutEvent` table with start and end.
+- **On startup**, the bot reads the server audit log back to the last timeout it saved and records any it missed while it was offline (needs the **View Audit Log** permission).
+- Eligibility ("timed out within the last N days") is always checked against `TimeoutEvent`.
+
+### Saved names
+The bot saves each member's **last known display name** whenever it sees them, so announcements and logs still show a name for people who left the server.
+
 ### Required Discord intents
-`Guilds`, `GuildMembers` (privileged), `GuildMessages`, `MessageContent` (privileged — needed for the length/emoji check), `GuildVoiceStates`. Turn both privileged intents on in the Developer Portal.
+`Guilds`, `GuildMembers` (privileged), `GuildMessages`, `MessageContent` (privileged — needed for the spam filter and to see polls), `GuildVoiceStates`, `GuildModeration` (for audit log/timeout events). Turn both privileged intents on in the Developer Portal.
 
 ---
 
@@ -69,12 +96,16 @@ The freed slot is filled at the **next daily reshuffle**, not instantly.
 
 ## 4. Daily reshuffle
 
-Runs **once a day** at a configured time (default 00:05 server time). Never live.
+Runs **once a day at the day boundary** (default 00:00 server time, see §2 "Server-day"). Never live.
 
 ### Algorithm (pure function, fully unit-tested)
 Inputs: eligible members with scores and last-active dates, current VIPs (with `vipSince`), pinned users, blocked users, config.
 
-1. **Rank** all eligible members by score (ties broken by more active days, then earlier last-active).
+1. **Rank** all eligible members by score. Ties are broken in this order, so the result is always the same for the same data:
+   1. current VIPs before non-VIPs (keeps things stable),
+   2. more active days in the window,
+   3. higher score on the most recent day,
+   4. smaller Discord user ID (never changes, so `/vip preview` and the real reshuffle always agree).
 2. **Forced removals** — a current VIP is removed regardless of rank if any:
    - became ineligible (left, staff, timed out, blocked), or
    - no counted activity for `inactivityDays` (default **3**).
@@ -127,8 +158,8 @@ A **#polls** channel where only VIPs and staff can post Discord's built-in polls
 
 ### Posting
 1. A VIP or staff member posts a Discord poll in #polls.
-2. The bot **immediately locks the channel for that VIP only**: a member-specific permission overwrite denying Send Messages and Send Polls. The lock is saved in the DB (`PollLock`) with the reset time.
-3. If that poll **reaches the daily cap**, the bot also **locks the channel for the whole VIP role** (a role overwrite denying Send Messages and Send Polls) until the reset. Saved in the DB as a role-level lock.
+2. The bot **immediately locks the channel for that VIP only**: a member-specific permission overwrite denying Send Messages and Send Polls. The lock is saved in the DB (`PollLock`) and **expires at the end of the server-day the poll was posted in**.
+3. If that poll **reaches the daily cap**, the bot also **locks the channel for the whole VIP role** (a role overwrite denying Send Messages and Send Polls), expiring the same way. Saved in the DB as a role-level lock.
 4. The bot **replies to the poll** with `<@&PollsRole> 📊 New poll from @vipname`, using `allowed_mentions` so only the Polls role and the author are pinged.
 5. The bot **creates a discussion thread** on the poll (named after the poll question, auto-archive 24 h), where everyone can chat.
 6. **VIPs never ping the Polls role themselves.** The Polls role is not mentionable, and VIPs don't have Mention Everyone, so typing `@Polls` does nothing.
@@ -136,12 +167,13 @@ A **#polls** channel where only VIPs and staff can post Discord's built-in polls
 Steps 2–3 (locks) apply to VIPs only. **Staff polls** skip the limits and locks, don't count toward the cap, and still get the bot's ping and discussion thread.
 
 ### Rules
-- **Server cap: 2 polls per server-day** across all VIPs (config `polls-daily-cap`, default 2). Days use the same timezone as the reshuffle.
+- **Server cap: 2 polls per server-day** across all VIPs (config `polls-daily-cap`, default 2). A poll belongs to the server-day of its Discord timestamp (§2 "Server-day").
 - **Per VIP: 1 poll per server-day.**
 - **Race safety:** polls are counted in the order Discord received them. Any poll over either limit (the same VIP's second, or the server's third) that lands before a lock is applied is deleted and logged, and gets no ping.
 - **Non-poll messages** from VIPs in #polls are deleted and logged. Discussion goes in the poll's thread. (Staff and admins can post normal messages there, e.g. for announcements.)
 - **Deleting your own poll doesn't give your daily poll back.**
-- **Daily reset:** at the reshuffle time, a `poll-unlock` job (same `job_runs` + advisory lock + catch-up rules as §11) removes every expired lock overwrite, including the role-level cap lock.
+- **Daily reset:** at the day boundary, a `poll-unlock` job (same `job_runs` + advisory lock + catch-up rules as §11) removes **only locks that have expired**, including the role-level cap lock. A lock created a moment after the boundary (before the job ran) belongs to the new day and is left alone.
+- **`/polls unlock @user`** gives that VIP one more poll today **even if the daily cap is already hit**. The bot removes their personal lock and adds a personal *allow* overwrite (which Discord applies over the role-level lock) until the end of the day. That poll is logged as an admin-granted extra and doesn't change the cap for anyone else.
 - **Losing VIP:** access is lost through the VIP role; any lock overwrite for that person is removed at the next reset so overwrites don't pile up.
 - **Staff and admins are not limited** by the per-person limit, the daily cap or the locks.
 - **Startup reconciliation:** lock overwrites in Discord are made to match `PollLock` rows (missing locks re-applied, expired or orphaned ones removed).
@@ -165,7 +197,7 @@ Slash commands would be visible to everyone, so this uses a button instead, whic
    - **Role name** (required, 2–32 chars)
    - **Hex colour** (required, e.g. `#ff8800`)
    - **Emoji icon** (optional; only applied if the server has Boost Level 2, otherwise ignored with a note)
-3. Validation (show errors in a private reply, keep what they typed where possible):
+3. Validation. Discord doesn't let a form open another form, so on an error the bot sends a private reply listing what's wrong with a **"Try again" button**. That button reopens the form **with their previous answers filled in** (the draft is saved in the DB for 15 minutes, then deleted). Checks:
    - Hex must be valid; reject near-black (invisible on dark mode).
    - Name checked against an admin-managed **blocked words list**.
    - Name can't match or imitate any existing role name (case-insensitive, ignoring spaces/symbols), especially staff roles.
@@ -179,7 +211,7 @@ Slash commands would be visible to everyone, so this uses a button instead, whic
 ## 7. VIP history badges
 
 - The bot records every VIP **stint** (start, end, reason).
-- **Total weeks held** = total VIP days ÷ 7, across all stints.
+- **Total weeks held** = total VIP days ÷ 7, across all stints. **Time spent pinned doesn't count**: pinning or unpinning someone splits their stint, and only unpinned time counts toward badges.
 - At **4, 12 and 26 weeks** the member gets a **permanent badge role** (e.g. "VIP Regular", "VIP Veteran", "VIP Legend"). Badges stay after VIP is lost.
 - Badge roles are created by the bot, **hoisted = false and colourless** so they never override VIP/level colours.
 - Milestones are configurable. Earning a badge is mentioned in the next announcement.
@@ -214,7 +246,7 @@ All registered to the guild only, Administrator-only, and replying privately (ep
 | Command | Purpose |
 |---|---|
 | `/setup run` | Creates or repairs all roles, the VIP category/channels and the lounge panels. Safe to run again. Checks role positions and warns if the bot's role is too low. |
-| `/config view` · `/config set <key> <value>` | Slots, window, buffer, min hold, inactivity days, min score, reshuffle time, timezone, voice weight, channels (announce, mod-log), staff roles |
+| `/config view` · `/config set <key> <value>` | Slots, window, buffer, min hold, inactivity days, min score, day boundary, timezone, voice weight, daily voice cap, spam filter thresholds, channels (announce, mod-log), staff roles |
 | `/config channel-weight <channel> <weight>` | Set weight; `0` ignores the channel |
 | `/vip list` | Current VIPs with rank, score, days held, pinned flag |
 | `/vip preview` | What the next reshuffle would do (adds/removes + reasons), plus **bubble watch: ranks 11–15** |
@@ -239,6 +271,13 @@ All registered to the guild only, Administrator-only, and replying privately (ep
 
 Railway containers are wiped on every deploy, so **no state may live in the bot's filesystem**.
 
+### Only one bot connected at a time
+During a redeploy Railway can briefly run the old and new copy together. If both were connected to Discord, activity would be counted twice, buttons would get answered twice, and locks would be applied twice. So:
+- On startup, **before logging in to Discord**, the bot takes a Postgres advisory lock called `gateway-leader`, held on its **own dedicated database connection** (not the Prisma pool, which can't hold a lock reliably). If another copy holds it, the new copy waits and retries every 2 s.
+- On `SIGTERM`, the old copy flushes its data, disconnects from Discord, then releases the lock and exits. If it dies instead, Postgres releases the lock when its connection drops.
+- So the new copy connects to Discord only after the old one is gone. `/bot health` shows which copy is the leader.
+- Setup also tells Carson to turn off deploy overlap in Railway's service settings where available. The lock is what guarantees it either way.
+
 - **Database:** a **Railway Postgres service** in the same project, separate from the bot service. The bot reads `DATABASE_URL` through a Railway **reference variable**. Redeploying the bot doesn't touch the database.
 - **Backups:** enable scheduled backups in the Postgres service's **Backups** tab. Document a restore drill in `docs/OPERATIONS.md`.
 - **Migrations:** Prisma. Production start runs `prisma migrate deploy` only. **Never** `migrate reset`, `db push`, or any migration that drops tables/columns with data without an explicit, documented data-preserving step.
@@ -249,9 +288,10 @@ Railway containers are wiped on every deploy, so **no state may live in the bot'
   - Jobs take a **Postgres advisory lock**, so if Railway briefly runs the old and new instance together during a deploy, the reshuffle still runs **exactly once**.
 - **Role/channel IDs** (not names) are stored in the DB. If a role was deleted, `/setup run` recreates it and updates the ID.
 - **Reconciliation on startup and after each reshuffle:** compare DB state with actual Discord roles. Fix drift (e.g. someone manually gave VIP → removed, logged with a hint to use `/vip pin`).
+- **Panels keep working after restarts.** Every button and dropdown uses a fixed ID (e.g. `vip:colour-picker`, `crown:create-role`) handled by a global interaction handler, never by temporary collectors. The channel and message ID of each panel is stored in the DB. On startup and on `/setup run`, missing or deleted panels are re-posted.
 
 ### Data model (starting point)
-`GuildConfig`, `ChannelWeight`, `ActivityDay (userId, date, weightedMessages, voiceMinutes)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId or role-level, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `JobRun`, `AuditLog`.
+`GuildConfig`, `ChannelWeight`, `MemberName (userId, lastKnownName)`, `ActivityDay (userId, serverDay, weightedMessages, voiceMinutes, filteredMessages)`, `TimeoutEvent (userId, start, end)`, `Panel (kind, channelId, messageId)`, `ModalDraft (userId, data, expiresAt)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason, pinned)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId or role-level, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `JobRun`, `AuditLog`.
 
 ---
 
@@ -273,6 +313,7 @@ History badge roles      (colourless)
 
 ## 13. Failure handling
 
+- **Discord's 3-second rule:** any button, dropdown, form or command that changes roles, channels or permissions **replies "working on it…" first** (deferred reply), then edits the reply with the result. Otherwise Discord shows "interaction failed".
 - Missing permissions or role-hierarchy problem → no crash; log to mod-log with what to fix.
 - Discord rate limits → role changes are queued and applied one at a time.
 - Postgres unreachable → buffer in memory, retry with backoff, show it in `/bot health`; skip the reshuffle (catch-up runs it later).
