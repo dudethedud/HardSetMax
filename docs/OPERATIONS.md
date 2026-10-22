@@ -112,11 +112,24 @@ GitHub never sees your data unencrypted. Only the private key (`vipbot-backup-ke
 
 Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → restore into an empty database gave identical rows, and the bot's migrations ran on the copy. Restoring over a database with tables, decrypting with the wrong key, and connecting with a wrong certificate all fail. The full drill on Supabase is still Phase 10.
 
+## Admin commands so far
+All are admin-only and reply privately.
+
+| Command | What it does |
+|---|---|
+| `/bot health` | Version, uptime, database, lock, intents, current server-day, writes waiting to be saved |
+| `/config view` | All settings and channel weights |
+| `/config set key value` | Change a setting: timezone, day boundary, window, cooldown, voice weight and cap, spam filter limits |
+| `/config channel-weight channel weight` | 0 ignores a channel, 0.5 counts half, 1 is normal (max 5). Threads use their parent's weight |
+| `/stats user` | Score, rank, active days, points to reach #10, today so far, 7-day breakdown |
+| `/leaderboard [count]` | Top members this window |
+| `/activity adjust user amount reason` | Add or remove points (saved with the reason, counts from tomorrow's window) |
+
 ## Local development
 1. Run Postgres locally, copy `.env.example` to `.env` and fill in a **test** bot's token and IDs. For a local database, `DATABASE_URL=postgresql://user:pass@localhost:5432/vipbot` needs no certificate.
 2. `npm install`, then `npx prisma migrate dev` to apply migrations.
 3. `npm run dev` starts the bot with reload on save.
-4. Checks: `npm run typecheck`, `npm run lint`, `npm test`. To also run the `gateway-leader` lock tests against a real database, set `TEST_DATABASE_URL` first (otherwise they're skipped).
+4. Checks: `npm run typecheck`, `npm run lint`, `npm test`. To also run the database tests, point `TEST_DATABASE_URL` at a **separate, migrated test database** (`DATABASE_URL=<test db> npx prisma migrate deploy` first). Otherwise they're skipped. They empty the activity tables in that database, so never point it at real data.
 5. Schema changes: edit `prisma/schema.prisma`, then `npx prisma migrate dev --name <what-changed>` and commit the new migration folder. Migrations must not drop or rename columns that hold data without an approved plan (CLAUDE.md).
 
 Slash commands are registered to `GUILD_ID` every time the bot starts. `npm run register-commands` does the same thing by hand.

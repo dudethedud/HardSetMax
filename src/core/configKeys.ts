@@ -1,35 +1,81 @@
 // Keys accepted by `/config set`. Later phases add their keys here.
+import type { MessageRulesConfig } from './messageRules.js';
 import { isValidBoundaryTime, isValidTimezone } from './serverDay.js';
 
 export interface ConfigValues {
   timezone: string;
   dayBoundary: string;
+  windowDays: number;
+  messageCooldownSec: number;
+  minMessageLength: number;
+  voiceWeight: number;
+  voiceDailyCapMinutes: number;
+  spamRepeatHistory: number;
+  spamRepeatMinutes: number;
+  spamRepeatSimilarity: number;
+  spamMinDistinctChars: number;
+  spamBurstCount: number;
+  spamBurstSeconds: number;
+  spamBurstMuteMinutes: number;
 }
+
+type Parsed = { ok: true; value: string | number } | { ok: false; error: string };
 
 interface KeyDef {
   field: keyof ConfigValues;
   description: string;
-  /** Returns an error message, or null if the value is valid. */
-  validate: (value: string) => string | null;
+  parse: (raw: string) => Parsed;
+}
+
+const text =
+  (check: (v: string) => boolean, error: (v: string) => string) =>
+  (v: string): Parsed =>
+    check(v) ? { ok: true, value: v } : { ok: false, error: error(v) };
+
+function number(min: number, max: number, { integer = true } = {}) {
+  return (raw: string): Parsed => {
+    const value = Number(raw);
+    if (raw === '' || !Number.isFinite(value) || (integer && !Number.isInteger(value))) {
+      return { ok: false, error: `"${raw}" is not ${integer ? 'a whole number' : 'a number'}.` };
+    }
+    if (value < min || value > max) return { ok: false, error: `Must be between ${min} and ${max}.` };
+    return { ok: true, value };
+  };
 }
 
 export const CONFIG_KEYS = {
   timezone: {
     field: 'timezone',
     description: 'IANA timezone for the server-day, e.g. America/Edmonton',
-    validate: (v) => (isValidTimezone(v) ? null : `"${v}" is not a known IANA timezone (e.g. America/Edmonton).`),
+    parse: text(isValidTimezone, (v) => `"${v}" is not a known IANA timezone (e.g. America/Edmonton).`),
   },
   'day-boundary': {
     field: 'dayBoundary',
     description: 'Local time a server-day starts, HH:mm (24 h)',
-    validate: (v) => (isValidBoundaryTime(v) ? null : `"${v}" is not a valid time. Use HH:mm, e.g. 00:00 or 04:30.`),
+    parse: text(isValidBoundaryTime, (v) => `"${v}" is not a valid time. Use HH:mm, e.g. 00:00 or 04:30.`),
   },
+  window: { field: 'windowDays', description: 'Score window in days', parse: number(1, 30) },
+  'message-cooldown': { field: 'messageCooldownSec', description: 'Seconds between counted messages per person', parse: number(0, 3600) },
+  'min-message-length': { field: 'minMessageLength', description: 'Shortest message that counts (characters)', parse: number(1, 100) },
+  'voice-weight': { field: 'voiceWeight', description: 'Points per voice minute', parse: number(0, 10, { integer: false }) },
+  'voice-daily-cap': { field: 'voiceDailyCapMinutes', description: 'Max counted voice minutes per person per day', parse: number(0, 1440) },
+  'spam-repeat-history': { field: 'spamRepeatHistory', description: 'How many recent messages the repeat check compares to', parse: number(1, 20) },
+  'spam-repeat-minutes': { field: 'spamRepeatMinutes', description: 'How long recent messages are remembered (minutes)', parse: number(1, 60) },
+  'spam-repeat-similarity': {
+    field: 'spamRepeatSimilarity',
+    description: 'How similar (0.5–1) a message must be to count as a repeat',
+    parse: number(0.5, 1, { integer: false }),
+  },
+  'spam-min-distinct': { field: 'spamMinDistinctChars', description: 'Fewest different letters/digits a message needs', parse: number(1, 10) },
+  'spam-burst-count': { field: 'spamBurstCount', description: 'Messages in the burst window that trigger a mute', parse: number(2, 100) },
+  'spam-burst-seconds': { field: 'spamBurstSeconds', description: 'Burst window (seconds)', parse: number(5, 600) },
+  'spam-burst-mute': { field: 'spamBurstMuteMinutes', description: 'Minutes nothing counts after a burst', parse: number(1, 120) },
 } as const satisfies Record<string, KeyDef>;
 
 export type ConfigKey = keyof typeof CONFIG_KEYS;
 
 export type ParsedConfigValue =
-  | { ok: true; key: ConfigKey; field: keyof ConfigValues; value: string }
+  | { ok: true; key: ConfigKey; field: keyof ConfigValues; value: string | number }
   | { ok: false; error: string };
 
 export function isConfigKey(key: string): key is ConfigKey {
@@ -38,8 +84,21 @@ export function isConfigKey(key: string): key is ConfigKey {
 
 export function parseConfigValue(key: string, raw: string): ParsedConfigValue {
   if (!isConfigKey(key)) return { ok: false, error: `Unknown config key "${key}".` };
-  const value = raw.trim();
   const def: KeyDef = CONFIG_KEYS[key];
-  const error = def.validate(value);
-  return error ? { ok: false, error } : { ok: true, key, field: def.field, value };
+  const parsed = def.parse(raw.trim());
+  return parsed.ok ? { ok: true, key, field: def.field, value: parsed.value } : parsed;
+}
+
+export function messageRulesConfig(c: ConfigValues): MessageRulesConfig {
+  return {
+    cooldownSec: c.messageCooldownSec,
+    minLength: c.minMessageLength,
+    repeatHistory: c.spamRepeatHistory,
+    repeatMinutes: c.spamRepeatMinutes,
+    repeatSimilarity: c.spamRepeatSimilarity,
+    minDistinctChars: c.spamMinDistinctChars,
+    burstCount: c.spamBurstCount,
+    burstSeconds: c.spamBurstSeconds,
+    burstMuteMinutes: c.spamBurstMuteMinutes,
+  };
 }

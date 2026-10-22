@@ -19,8 +19,93 @@ model GuildConfig {
   timezone    String   @default("America/Edmonton")
   // Local time of day ("HH:mm") when a server-day starts.
   dayBoundary String   @default("00:00")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  // Activity tracking (SPEC §2). All configurable with /config set.
+  windowDays           Int   @default(7)
+  messageCooldownSec   Int   @default(60)
+  minMessageLength     Int   @default(4)
+  voiceWeight          Float @default(0.2)
+  voiceDailyCapMinutes Int   @default(240)
+  spamRepeatHistory    Int   @default(5)
+  spamRepeatMinutes    Int   @default(10)
+  spamRepeatSimilarity Float @default(0.8)
+  spamMinDistinctChars Int   @default(3)
+  spamBurstCount       Int   @default(8)
+  spamBurstSeconds     Int   @default(30)
+  spamBurstMuteMinutes Int   @default(10)
+
+  // Newest audit log entry already scanned for timeouts (startup catch-up).
+  timeoutAuditCursor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Text channel weight; 0 ignores the channel. Threads use their parent's weight.
+model ChannelWeight {
+  channelId String   @id
+  weight    Float
+  updatedAt DateTime @updatedAt
+}
+
+// Last display name seen, so logs and announcements can name people who left.
+model MemberName {
+  userId    String   @id
+  name      String
+  updatedAt DateTime @updatedAt
+}
+
+// One row per user per server-day (SPEC §2 "Score"). Counts only, never content.
+model ActivityDay {
+  userId           String
+  serverDay        String // server-day key, YYYY-MM-DD
+  messages         Int    @default(0)
+  weightedMessages Float  @default(0)
+  voiceMinutes     Int    @default(0)
+  filteredMessages Int    @default(0)
+
+  @@id([userId, serverDay])
+  @@index([serverDay])
+}
+
+// Manual score corrections from /activity adjust.
+model ActivityAdjustment {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  serverDay String
+  amount    Float
+  reason    String
+  actorId   String
+  createdAt DateTime @default(now())
+
+  @@index([serverDay])
+}
+
+// Time someone spent in a voice channel. Minutes are counted separately, per minute.
+model VoiceSession {
+  id            Int       @id @default(autoincrement())
+  userId        String
+  channelId     String
+  startedAt     DateTime  @default(now())
+  lastHeartbeat DateTime  @default(now())
+  endedAt       DateTime?
+
+  @@index([endedAt])
+}
+
+// The bot's own timeout history (Discord only shows active timeouts).
+// A timeout is identified by who and its scheduled end, which both the live member
+// update and the audit log entry carry, so it's never saved twice.
+model TimeoutEvent {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  startedAt DateTime
+  until     DateTime // scheduled end
+  endedAt   DateTime // actual end: `until`, or earlier if removed
+  source    String // "member-update" | "audit-log" | "startup"
+
+  @@unique([userId, until])
+  @@index([userId, endedAt])
 }
 
 enum JobStatus {
