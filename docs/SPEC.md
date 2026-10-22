@@ -329,25 +329,25 @@ All registered to the guild only, Administrator-only, and replying privately (ep
 
 ---
 
-## 11. Data persistence on Railway (must survive every redeploy)
+## 11. Data persistence (must survive every restart and redeploy)
 
-Railway containers are wiped on every deploy, so **no state may live in the bot's filesystem**.
+The bot runs on **Wispbyte** (free Node.js server) and the database is **Supabase** (free Postgres). See `docs/DECISIONS.md` for why. **No state may live in the bot's filesystem**: the server can be reinstalled, moved or stopped, and the code must also work on hosts that wipe their disk on deploy.
 
 ### Only one bot connected at a time
-During a redeploy Railway can briefly run the old and new copy together. If both were connected to Discord, activity would be counted twice, buttons would get answered twice, and locks would be applied twice. So:
+Two copies can end up running at once: a host restarting the bot while the old process is still exiting, or someone running the bot locally with the production token. If both were connected to Discord, activity would be counted twice, buttons would get answered twice, and locks would be applied twice. So:
 - On startup, **before logging in to Discord**, the bot takes a Postgres advisory lock called `gateway-leader`, held on its **own dedicated database connection** (not the Prisma pool, which can't hold a lock reliably). If another copy holds it, the new copy waits and retries every 2 s.
 - On `SIGTERM`, the old copy flushes its data, disconnects from Discord, then releases the lock and exits. If it dies instead, Postgres releases the lock when its connection drops.
 - So the new copy connects to Discord only after the old one is gone. `/bot health` shows which copy is the leader.
-- Setup also tells Carson to turn off deploy overlap in Railway's service settings where available. The lock is what guarantees it either way.
+- The lock is what guarantees this on any host.
 
-- **Database:** a **Railway Postgres service** in the same project, separate from the bot service. The bot reads `DATABASE_URL` through a Railway **reference variable**. Redeploying the bot doesn't touch the database.
-- **Backups:** enable scheduled backups in the Postgres service's **Backups** tab. Document a restore drill in `docs/OPERATIONS.md`.
+- **Database:** a **Supabase** project, separate from the bot's host. The bot reads `DATABASE_URL` (Supabase's **session pooler** string, needed for advisory locks) and verifies the TLS certificate against Supabase's CA (`DATABASE_CA_CERT`). Reinstalling or restarting the bot doesn't touch the database.
+- **Backups:** a nightly GitHub Actions job makes an encrypted, off-site backup (`docs/OPERATIONS.md` §5), since Supabase's free plan has no self-service restores. Document a restore drill in `docs/OPERATIONS.md`.
 - **Migrations:** Prisma. Production start runs `prisma migrate deploy` only. **Never** `migrate reset`, `db push`, or any migration that drops tables/columns with data without an explicit, documented data-preserving step.
-- **Write buffering:** activity counters are batched in memory and flushed to Postgres every 30 s. On `SIGTERM`/`SIGINT` (Railway sends SIGTERM on redeploy) the bot **flushes everything, closes voice sessions, then exits**. Max data loss on a hard crash: 30 s of activity.
+- **Write buffering:** activity counters are batched in memory and flushed to Postgres every 30 s. On `SIGTERM`/`SIGINT` (sent when the host stops or restarts the bot) the bot **flushes everything, closes voice sessions, then exits**. Max data loss on a hard crash: 30 s of activity.
 - **Voice sessions** are stored in the DB when they start. On startup, the bot closes stale sessions (capped at their last heartbeat) and opens new ones for members currently in voice.
 - **Scheduled jobs survive restarts:** every job run is recorded in a `job_runs` table with a unique `(job, period)` key, e.g. `("reshuffle", "2026-10-23")`.
   - On startup, any job whose time has passed and has no row runs immediately (**catch-up**).
-  - Jobs take a **Postgres advisory lock**, so if Railway briefly runs the old and new instance together during a deploy, the reshuffle still runs **exactly once**.
+  - Jobs take a **Postgres advisory lock**, so if two copies briefly run together, the reshuffle still runs **exactly once**.
 - **Role/channel IDs** (not names) are stored in the DB. If a role was deleted, `/setup run` recreates it and updates the ID.
 - **Reconciliation on startup and after each reshuffle:** compare DB state with actual Discord roles. Fix drift (e.g. someone manually gave VIP → removed, logged with a hint to use `/vip pin`).
 - **Panels keep working after restarts.** Every button and dropdown uses a fixed ID (e.g. `vip:colour-picker`, `crown:create-role`) handled by a global interaction handler, never by temporary collectors. The channel and message ID of each panel is stored in the DB. On startup and on `/setup run`, missing or deleted panels are re-posted.
@@ -379,10 +379,10 @@ History badge roles      (colourless)
 - Missing permissions or role-hierarchy problem → no crash; log to mod-log with what to fix.
 - Discord rate limits → role changes are queued and applied one at a time.
 - Postgres unreachable → buffer in memory, retry with backoff, show it in `/bot health`; skip the reshuffle (catch-up runs it later).
-- Unhandled errors are logged with context; the process restarts cleanly (Railway restart policy).
+- Unhandled errors are logged with context; the process exits and the host restarts it.
 
 ---
 
 ## 14. Stack
 
-TypeScript (strict), Node LTS, discord.js v14, Prisma + PostgreSQL, Vitest for tests, pino for logging, zod for env/config validation. Deployed on Railway from GitHub (push to `main` = deploy).
+TypeScript (strict), Node LTS, discord.js v14, Prisma + PostgreSQL, Vitest for tests, pino for logging, zod for env/config validation. Bot hosted on Wispbyte (updated by restarting the server, which pulls `main` from GitHub); database on Supabase.

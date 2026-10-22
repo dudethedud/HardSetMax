@@ -16,7 +16,7 @@ Discord bot that tracks activity and runs a rotating VIP system. Full requiremen
 - **All day/date logic goes through the server-day helper** (SPEC §2). No UTC dates, no separate "midnight".
 - **The AI only produces text.** It gets no tools and nothing it outputs is ever turned into an action. AI text is sent with mentions locked down. Numbers in announcements always come from code. Only ever give the AI the asker's own stats.
 - **Buttons, dropdowns and forms use fixed IDs and a global handler**, so they work after restarts. Anything slow gets a deferred reply first.
-- **No state on local disk.** Everything persistent goes in Postgres via Prisma. The bot must survive a Railway redeploy with zero data loss (SPEC §11).
+- **No state on local disk.** Everything persistent goes in Postgres via Prisma. The bot must survive a restart or reinstall with zero data loss (SPEC §11).
 - **Migrations must not destroy data.** Use `prisma migrate dev` locally and `prisma migrate deploy` in production. Never use `migrate reset`, `db push`, or drop/rename columns holding data without a written data-preserving plan approved by Carson.
 - **DB is the source of truth;** Discord roles are reconciled to match it.
 - **Scheduled jobs are idempotent:** unique `(job, period)` in `job_runs` + Postgres advisory lock + catch-up on startup.
@@ -25,7 +25,7 @@ Discord bot that tracks activity and runs a rotating VIP system. Full requiremen
 - Never commit secrets. Config comes from environment variables validated with zod.
 
 ## Stack
-TypeScript (strict), Node LTS, discord.js v14, Prisma + PostgreSQL, Vitest, pino, zod. Deployed on Railway (push to `main` deploys).
+TypeScript (strict), Node LTS, discord.js v14, Prisma + PostgreSQL, Vitest, pino, zod. Bot on Wispbyte (restart pulls `main`), database on Supabase.
 
 ## Suggested layout
 ```

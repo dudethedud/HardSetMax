@@ -1,0 +1,57 @@
+// Migrations: `prisma migrate dev` locally, `prisma migrate deploy` in production.
+// Never `migrate reset` or `db push` (CLAUDE.md).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  moduleFormat = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// One row per Discord server. Later phases add their settings here.
+model GuildConfig {
+  guildId     String   @id
+  // IANA timezone for the server-day boundary (SPEC §2).
+  timezone    String   @default("America/Edmonton")
+  // Local time of day ("HH:mm") when a server-day starts.
+  dayBoundary String   @default("00:00")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum JobStatus {
+  running
+  succeeded
+  failed
+}
+
+// One row per scheduled job run; (job, period) is unique so a job can't run twice
+// for the same period (SPEC §11).
+model JobRun {
+  id         Int       @id @default(autoincrement())
+  job        String
+  period     String
+  status     JobStatus @default(running)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  detail     Json?
+
+  @@unique([job, period])
+}
+
+// Admin actions and bot-made changes. Never holds message content.
+model AuditLog {
+  id       Int      @id @default(autoincrement())
+  at       DateTime @default(now())
+  actorId  String?
+  action   String
+  targetId String?
+  reason   String?
+  data     Json?
+
+  @@index([at])
+}
