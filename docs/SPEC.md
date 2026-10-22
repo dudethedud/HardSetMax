@@ -341,7 +341,7 @@ Two copies can end up running at once: a host restarting the bot while the old p
 - The lock is what guarantees this on any host.
 
 - **Database:** a **Supabase** project, separate from the bot's host. The bot reads `DATABASE_URL` (Supabase's **session pooler** string, needed for advisory locks) and verifies the TLS certificate against Supabase's CA (`DATABASE_CA_CERT`). Reinstalling or restarting the bot doesn't touch the database.
-- **Backups:** the bot's data must be backed up off Supabase on a schedule, since the free plan's own backups can't be relied on for restores. Document a restore drill in `docs/OPERATIONS.md`.
+- **Backups:** a nightly GitHub Actions job makes an encrypted, off-site backup (`docs/OPERATIONS.md` §5), since Supabase's free plan has no self-service restores. Document a restore drill in `docs/OPERATIONS.md`.
 - **Migrations:** Prisma. Production start runs `prisma migrate deploy` only. **Never** `migrate reset`, `db push`, or any migration that drops tables/columns with data without an explicit, documented data-preserving step.
 - **Write buffering:** activity counters are batched in memory and flushed to Postgres every 30 s. On `SIGTERM`/`SIGINT` (sent when the host stops or restarts the bot) the bot **flushes everything, closes voice sessions, then exits**. Max data loss on a hard crash: 30 s of activity.
 - **Voice sessions** are stored in the DB when they start. On startup, the bot closes stale sessions (capped at their last heartbeat) and opens new ones for members currently in voice.

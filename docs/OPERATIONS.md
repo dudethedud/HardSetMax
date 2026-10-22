@@ -2,6 +2,8 @@
 
 The bot runs on a free **Wispbyte** Node.js server. Its data lives in a free **Supabase** Postgres database. Nothing important is stored on the Wispbyte server itself (SPEC §11).
 
+**First-time setup, click by click: `docs/SETUP.md`.** This file is the reference.
+
 ## 1. Supabase (database)
 1. Create a project at https://supabase.com. Save the database password somewhere safe. Pick the region closest to your Wispbyte server.
 2. Click **Connect** and copy the **Session pooler** connection string. It looks like:
@@ -85,7 +87,30 @@ Every `/config set` is also saved in the `AuditLog` table (`action = 'config.set
 - The session pooler allows a limited number of connections. The bot uses up to `DATABASE_POOL_MAX` (default 5), plus one for `gateway-leader` and one during migrations.
 
 ## 5. Backups
-Supabase's free plan doesn't give you backups you can restore yourself. A scheduled off-site backup and the restore drill are still to do (SPEC §11, Phase 10). Until then, you can export tables from Supabase's Table Editor as CSV if needed.
+`.github/workflows/backup.yml` runs every night at 09:17 UTC (early morning in Edmonton), and can also be run by hand from the **Actions** tab. It:
+1. dumps the bot's tables (schema `public` only) with `pg_dump` over verified TLS,
+2. checks the dump can be read,
+3. encrypts it with `age` for your public key, and keeps it as a workflow artifact for **30 days**.
+
+GitHub never sees your data unencrypted. Only the private key (`vipbot-backup-key.txt`, kept by you) can open a backup. Setup is in `docs/SETUP.md` part 5. It needs secrets `BACKUP_DATABASE_URL` and `SUPABASE_CA_CERT`, and variable `BACKUP_AGE_RECIPIENT`.
+
+- **Failures:** GitHub emails you when a scheduled run fails. Check the run's log: errors name the missing secret or the connection problem.
+- **Inactive repos:** GitHub turns off scheduled workflows in a repo with no activity for 60 days, and emails before it does. Click **Enable workflow** in the Actions tab if that happens.
+- **Postgres version:** the workflow installs `pg_dump` 18. If Supabase ever moves to a newer Postgres, the run fails with a version mismatch. Change `postgresql-client-18` and `PG_BIN` in the workflow to the new version.
+
+### Restoring
+`scripts/restore.mjs` only restores into an **empty** database. It refuses if the target already has tables, so it can't overwrite live data. To recover:
+1. Download the backup: **Actions** → a successful **Nightly database backup** run → **Artifacts**. Unzip it to get `vipbot-<date>.dump.age`.
+2. Create a **new** Supabase project (free allows two), and get its session pooler string and certificate (`docs/SETUP.md` part 3).
+3. On a computer with Node 22+, `age` and the PostgreSQL client tools (`psql`, `pg_restore`, version 18 or newer, the same as the workflow's `pg_dump`; on Windows, the EDB PostgreSQL installer with only **Command Line Tools** ticked), from a clone of this repo:
+   ```
+   RESTORE_DATABASE_URL='<new session pooler string>' RESTORE_CA_CERT=path/to/supabase-ca.crt \
+     node scripts/restore.mjs vipbot-<date>.dump.age path/to/vipbot-backup-key.txt
+   ```
+   (PowerShell: set each variable first with `$env:RESTORE_DATABASE_URL='...'`.)
+4. Put the new string in Wispbyte's `.env` and in the `BACKUP_DATABASE_URL` secret, then restart the bot.
+
+Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → restore into an empty database gave identical rows, and the bot's migrations ran on the copy. Restoring over a database with tables, decrypting with the wrong key, and connecting with a wrong certificate all fail. The full drill on Supabase is still Phase 10.
 
 ## Local development
 1. Run Postgres locally, copy `.env.example` to `.env` and fill in a **test** bot's token and IDs. For a local database, `DATABASE_URL=postgresql://user:pass@localhost:5432/vipbot` needs no certificate.

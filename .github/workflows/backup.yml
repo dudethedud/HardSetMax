@@ -1,0 +1,48 @@
+# Nightly encrypted backup of the bot's database (SPEC §11, docs/OPERATIONS.md §5).
+# Setup: repo secrets BACKUP_DATABASE_URL and SUPABASE_CA_CERT, repo variable
+# BACKUP_AGE_RECIPIENT. Backups are kept as workflow artifacts for 30 days.
+name: Nightly database backup
+
+on:
+  schedule:
+    - cron: '17 9 * * *' # 09:17 UTC, early morning in Edmonton
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # pg_dump must be at least the server's major version, so install the newest
+      # client from the PostgreSQL project's own apt repository.
+      - name: Install pg_dump and age
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q postgresql-common age
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -q postgresql-client-18
+
+      - name: Dump and encrypt
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_CA_CERT: ${{ secrets.SUPABASE_CA_CERT }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+          PG_BIN: /usr/lib/postgresql/18/bin
+        run: node scripts/backup.mjs backup
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ github.run_number }}
+          path: backup/*.dump.age
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0 # already encrypted, won't compress
