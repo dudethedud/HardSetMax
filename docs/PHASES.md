@@ -17,7 +17,7 @@ Step-by-step instructions: `docs/SETUP.md`.
 - [ ] Create a free **Supabase** project. Copy its **session pooler** connection string and download its **SSL certificate** (`docs/OPERATIONS.md`).
 - [ ] Create a free **Wispbyte** Node.js server linked to this GitHub repo, with a `.env` holding `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `GUILD_ID`, `DATABASE_URL` and `DATABASE_CA_CERT` (`docs/OPERATIONS.md`).
 - [ ] Set a reminder to log in to Wispbyte at least every 2 weeks, or the free server stops.
-- [ ] Set up nightly backups: an `age` key pair, GitHub secrets `BACKUP_DATABASE_URL` and `SUPABASE_CA_CERT`, and variable `BACKUP_AGE_RECIPIENT` (`docs/SETUP.md` part 5).
+- [ ] Set up nightly backups: an `age` key pair, GitHub secrets `BACKUP_DATABASE_URL` and `SUPABASE_CA_CERT`, and variable `BACKUP_AGE_RECIPIENT` (`docs/SETUP.md` part 6).
 - [ ] Create a free **Groq** account and API key, and a free **Cloudflare** account with a Workers AI API token. Check each one's free limits and data policy. Add `GROQ_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_TOKEN` to the bot's `.env` (only needed by Phase 9).
 - [ ] Set the bot's server nickname to **Puppyboy Carter**.
 - [ ] When inviting the bot, include **View Audit Log** along with Manage Roles, Manage Channels, Manage Messages and Mention @everyone.

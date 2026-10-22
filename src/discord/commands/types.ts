@@ -4,6 +4,7 @@ import {
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
   type Client,
+  type Guild,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
 import type { ConfigStore } from '../../config/configStore.js';
@@ -11,6 +12,9 @@ import type { Env } from '../../config/env.js';
 import type { Db } from '../../db/prisma.js';
 import type { Logger } from '../../logger.js';
 import type { ActivityBuffer } from '../../services/activityBuffer.js';
+import type { Clock } from '../../services/clock.js';
+import type { ModLog } from '../../services/modLog.js';
+import type { VipService } from '../../services/vipService.js';
 import type { GatewayLeader } from '../../services/gatewayLeader.js';
 
 export interface AppContext {
@@ -22,6 +26,10 @@ export interface AppContext {
   startedAt: Date;
   config: ConfigStore;
   activity: ActivityBuffer;
+  clock: Clock;
+  modLog: ModLog;
+  vip: VipService;
+  runSetup: (guild: Guild) => Promise<string[]>;
 }
 
 export interface AdminCommand {

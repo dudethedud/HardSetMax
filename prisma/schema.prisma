@@ -37,6 +37,24 @@ model GuildConfig {
   // Newest audit log entry already scanned for timeouts (startup catch-up).
   timeoutAuditCursor String?
 
+  // VIP reshuffle (SPEC §4). All configurable with /config set.
+  vipSlots          Int    @default(10)
+  vipBuffer         Int    @default(3)
+  vipMinHoldDays    Int    @default(5)
+  vipInactivityDays Int    @default(3)
+  vipMinScore       Float  @default(20)
+  timeoutBlockDays  Int    @default(3)
+  vipColour         String @default("#F1C40F")
+
+  // Discord IDs (not names), so renamed roles/channels keep working (SPEC §11).
+  vipRoleId         String?
+  levelRolesTopId   String? // highest bleed level role; VIP goes directly above it
+  loungeCategoryId  String?
+  loungeTextId      String?
+  loungeVoiceId     String?
+  announceChannelId String?
+  modLogChannelId   String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -139,4 +157,48 @@ model AuditLog {
   data     Json?
 
   @@index([at])
+}
+
+// Current VIPs. The database is the source of truth; Discord roles are made to match.
+model VipMember {
+  userId  String   @id
+  since   String // server-day key they got VIP (for the minimum hold)
+  sinceAt DateTime @default(now())
+  pinned  Boolean  @default(false)
+}
+
+// Every stretch of holding VIP. Pinning or unpinning splits a stint, so pinned
+// time can be left out of history badges (SPEC §7).
+model VipStint {
+  id        Int       @id @default(autoincrement())
+  userId    String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  endReason String?
+  pinned    Boolean   @default(false)
+
+  @@index([userId])
+  @@index([endedAt])
+}
+
+// Blocked from VIP until a time (/vip remove with block_days).
+model VipBlock {
+  userId    String   @id
+  until     DateTime
+  reason    String
+  actorId   String
+  createdAt DateTime @default(now())
+}
+
+// Members with any of these roles can't be VIP.
+model StaffRole {
+  roleId String @id
+}
+
+// Bot-posted messages with buttons/dropdowns, re-posted if deleted (SPEC §11).
+model Panel {
+  kind      String   @id
+  channelId String
+  messageId String
+  updatedAt DateTime @updatedAt
 }

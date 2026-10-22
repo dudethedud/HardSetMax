@@ -34,6 +34,15 @@ export const statsCommand = defineAdminCommand(
     const table = ['day         msgs  weight  voice  spam   score', ...rows].join('\n');
     const adjTotal = adjustments.reduce((sum, a) => sum + a.amount, 0);
 
+    const vip = ctx.vip.vips.get(user.id);
+    const stints = await ctx.db.vipStint.findMany({ where: { userId: user.id }, orderBy: { startedAt: 'asc' } });
+    const firstVip = stints[0]?.startedAt;
+    const vipLine = [
+      vip ? `⭐ VIP since ${vip.since}${vip.pinned ? ' (📌 pinned)' : ''}` : 'Not VIP',
+      firstVip ? `first VIP <t:${Math.floor(firstVip.getTime() / 1000)}:D>` : 'never VIP before',
+      'badges: Phase 7',
+    ].join(' · ');
+
     const embed = new EmbedBuilder()
       .setTitle(`Stats for ${escapeMarkdown(user.displayName)}`)
       .setDescription(`Window: ${window[0]} to ${window.at(-1)} (last ${window.length} complete days)`)
@@ -49,7 +58,7 @@ export const statsCommand = defineAdminCommand(
         { name: 'Today so far', value: fmt(todayRow ? dayScore(todayRow, vw) : 0), inline: true },
         { name: 'Adjustments', value: adjustments.length ? fmt(adjTotal) : 'none', inline: true },
         { name: 'Breakdown', value: codeBlock(table) },
-        { name: 'VIP history & badges', value: 'coming in Phases 4 and 7' },
+        { name: 'VIP', value: vipLine, inline: false },
       )
       .setFooter({ text: `Voice minutes count ${vw} points each. "spam" = messages the spam filter didn't count.` });
     await interaction.editReply({ embeds: [embed] });

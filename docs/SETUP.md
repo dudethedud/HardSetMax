@@ -11,7 +11,7 @@ Keep a private note open (e.g. a password manager or a note only you can see) to
 | `GUILD_ID` | Discord, part 2 | No |
 | `DATABASE_URL` | Supabase, part 3 | **Yes**: contains the database password |
 | Supabase certificate file | Supabase, part 3 | No |
-| Backup private key file | Your computer, part 5 | **Yes**: needed to open backups |
+| Backup private key file | Your computer, part 6 | **Yes**: needed to open backups |
 
 Never paste secret values into Discord, GitHub issues or chats (including with Claude).
 
@@ -37,7 +37,12 @@ Use a test server first, not the real one.
 1. In Discord, create a server (the **+** at the bottom of the server list → **Create My Own**). Copy a few channels and the bleed level roles from the real server.
 2. Back in the Developer Portal, click **OAuth2** in the left menu, then find the **OAuth2 URL Generator**.
 3. Under **Scopes**, tick `bot` and `applications.commands`.
-4. Under **Bot Permissions**, tick: **Manage Roles**, **Manage Channels**, **Manage Messages**, **Mention Everyone**, **View Audit Log**, **Send Messages**, **Read Message History**.
+4. Under **Bot Permissions**, tick:
+   - **Manage Roles**, **Manage Channels**, **Manage Messages**, **View Audit Log**
+   - **View Channels**, **Send Messages**, **Read Message History**, **Mention Everyone**, **Connect**
+   - and everything VIP gives, because Discord only lets the bot give permissions it has itself: **Attach Files**, **Embed Links**, **Use External Emojis**, **Use External Stickers**, **Use Soundboard**, **Use External Sounds**, **Create Public Threads**, **Send Messages in Threads**
+
+   If you already added the bot, add any missing ones to the bot's role in **Server Settings → Roles** instead.
 5. Copy the **Generated URL** at the bottom, open it in your browser, pick your test server and click **Authorize**.
 6. Get the server ID:
    - In Discord, open **User Settings** (gear icon) → **Advanced** → turn on **Developer Mode**.
@@ -101,11 +106,21 @@ Use a test server first, not the real one.
 5. In your test server, type `/bot health`. Database, Gateway leader and Intents should all show ✅.
 6. **Set a phone reminder to log in to Wispbyte every 2 weeks.** If you don't, the free server stops.
 
-## Part 5: Nightly backups (GitHub)
+## Part 5: First-time setup in Discord
+
+Once `/bot health` works, in your test server:
+1. **Server Settings → Roles:** drag the bot's role **above** bleed's level roles, so the bot can manage the roles it creates.
+2. `/config level-roles-top role:<bleed's highest level role>`. The VIP role will go directly above it.
+3. `/config channel purpose:announcements channel:#your-announcements` and `/config channel purpose:mod-log channel:#a-private-staff-channel`.
+4. `/config staff-roles add role:<each staff role>`. Members with these can't be VIP.
+5. `/setup run`. It creates the VIP role, the private VIP Lounge (text and voice) and its panel, and tells you if anything's wrong. Run it again whenever something looks off; it's safe.
+6. `/vip preview` shows what the first reshuffle will do. The reshuffle runs every night at midnight (server time). It also runs once right after setup, for the day that just ended.
+
+## Part 6: Nightly backups (GitHub)
 
 Every night, GitHub makes an **encrypted** copy of the database and keeps the last 30 days. It's encrypted with a key that only you have, so nobody else (not GitHub, not anyone with access to the repo) can read it.
 
-### 5a. Make your backup key (on your own computer, once)
+### 6a. Make your backup key (on your own computer, once)
 1. Install **age**, a small encryption tool:
    - **Windows:** open **PowerShell** and run `winget install FiloSottile.age`, then close and reopen PowerShell.
    - **Mac:** `brew install age` (needs Homebrew).
@@ -116,7 +131,7 @@ Every night, GitHub makes an **encrypted** copy of the database and keeps the la
    It prints `Public key: age1...`. Copy that `age1...` line into your note. It's **not** secret.
 3. The file `vipbot-backup-key.txt` is your **private key**. Store it somewhere safe and private: a password manager, a USB stick, or a private cloud folder, ideally two of these. **If you lose it, the backups can't be opened by anyone.** Never upload it to GitHub, Wispbyte or a chat.
 
-### 5b. Give GitHub what it needs
+### 6b. Give GitHub what it needs
 1. Go to https://github.com/dudethedud/HardSetMax → **Settings** (top bar of the repo) → **Secrets and variables** → **Actions**.
 2. On the **Secrets** tab, click **New repository secret** twice:
    - Name `BACKUP_DATABASE_URL`, value: your `DATABASE_URL` (the same one as in `.env`).
@@ -124,7 +139,7 @@ Every night, GitHub makes an **encrypted** copy of the database and keeps the la
 3. On the **Variables** tab, click **New repository variable**:
    - Name `BACKUP_AGE_RECIPIENT`, value: your `age1...` public key.
 
-### 5c. Check it works
+### 6c. Check it works
 Backups start once the pull request is merged into `main`.
 1. In the repo, click **Actions** → **Nightly database backup** → **Run workflow** → **Run workflow**.
 2. After a minute or two, it should show a green tick. Click the run: under **Artifacts** there's a `database-backup-…` file.

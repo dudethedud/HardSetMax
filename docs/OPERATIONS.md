@@ -92,7 +92,7 @@ Every `/config set` is also saved in the `AuditLog` table (`action = 'config.set
 2. checks the dump can be read,
 3. encrypts it with `age` for your public key, and keeps it as a workflow artifact for **30 days**.
 
-GitHub never sees your data unencrypted. Only the private key (`vipbot-backup-key.txt`, kept by you) can open a backup. Setup is in `docs/SETUP.md` part 5. It needs secrets `BACKUP_DATABASE_URL` and `SUPABASE_CA_CERT`, and variable `BACKUP_AGE_RECIPIENT`.
+GitHub never sees your data unencrypted. Only the private key (`vipbot-backup-key.txt`, kept by you) can open a backup. Setup is in `docs/SETUP.md` part 6. It needs secrets `BACKUP_DATABASE_URL` and `SUPABASE_CA_CERT`, and variable `BACKUP_AGE_RECIPIENT`.
 
 - **Failures:** GitHub emails you when a scheduled run fails. Check the run's log: errors name the missing secret or the connection problem.
 - **Inactive repos:** GitHub turns off scheduled workflows in a repo with no activity for 60 days, and emails before it does. Click **Enable workflow** in the Actions tab if that happens.
@@ -124,6 +124,24 @@ All are admin-only and reply privately.
 | `/stats user` | Score, rank, active days, points to reach #10, today so far, 7-day breakdown |
 | `/leaderboard [count]` | Top members this window |
 | `/activity adjust user amount reason` | Add or remove points (saved with the reason, counts from tomorrow's window) |
+| `/setup run` | Create or repair the VIP role, VIP Lounge and panels; checks role order and bot permissions. Safe to rerun |
+| `/config channel purpose channel` | Announcements and mod-log channels |
+| `/config staff-roles add/remove/list` | Members with a staff role can't be VIP |
+| `/config level-roles-top role` | bleed's highest level role; VIP goes directly above it on `/setup run` |
+| `/vip list` | VIPs with rank, score, days held, 📌 if pinned |
+| `/vip preview` | What a reshuffle would do now, plus ranks 11–15 |
+| `/vip pin user` / `/vip unpin user` | Lock someone into VIP (gives VIP now if needed) / let the reshuffle decide again |
+| `/vip remove user [block_days]` | Remove VIP now; optionally block from VIP for N days |
+| `/vip unblock user` | Clear a block |
+| `/vip reshuffle-now` | Run a reshuffle now, after a confirm button. The nightly one still runs |
+
+### How the daily reshuffle runs
+- Every 15 s the bot checks whether the server-day that just ended has a reshuffle in `JobRun` (job `reshuffle`, period = that day). If not, it runs it. This also covers catch-up: if the bot was offline at midnight, it runs as soon as it's back, once, for the most recent day only.
+- The reshuffle saves all VIP changes and marks itself done in **one transaction**, so it can't half-apply or run twice. Roles are applied after that, one at a time. Then the mod-log entries and the VIP update post go out. If the bot dies in between, startup fixes roles to match the database and posts any VIP update that didn't go out.
+- It's skipped (and retried) until `/setup run` has created the VIP role.
+
+### Testing midnight without waiting (test server only)
+Set `CLOCK_OFFSET_MINUTES` in `.env` to shift the bot's clock for the schedule. For example, if it's 14:00 now, `CLOCK_OFFSET_MINUTES=605` makes the bot think it's 00:05 tomorrow, so the reshuffle runs right after start. Restart mid-day with the same offset and check in `/bot health` and the mod-log that it neither repeats nor gets skipped. **Remove the setting afterwards.** Message and voice counts always use the real time.
 
 ## Local development
 1. Run Postgres locally, copy `.env.example` to `.env` and fill in a **test** bot's token and IDs. For a local database, `DATABASE_URL=postgresql://user:pass@localhost:5432/vipbot` needs no certificate.

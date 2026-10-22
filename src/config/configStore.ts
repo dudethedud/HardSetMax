@@ -1,7 +1,8 @@
 // In-memory copy of the guild's settings and channel weights, used on every
 // message. Reloaded after any /config change.
-import { messageRulesConfig } from '../core/configKeys.js';
+import { messageRulesConfig, reshuffleConfig } from '../core/configKeys.js';
 import type { MessageRulesConfig } from '../core/messageRules.js';
+import type { ReshuffleConfig } from '../core/reshuffle.js';
 import type { DayBoundary } from '../core/serverDay.js';
 import type { Db } from '../db/prisma.js';
 import type { GuildConfig } from '../generated/prisma/client.js';
@@ -11,6 +12,7 @@ export interface RuntimeConfig {
   guild: GuildConfig;
   boundary: DayBoundary;
   rules: MessageRulesConfig;
+  reshuffle: ReshuffleConfig;
   channelWeights: ReadonlyMap<string, number>;
 }
 
@@ -33,6 +35,7 @@ export class ConfigStore {
       guild,
       boundary: dayBoundaryOf(guild),
       rules: messageRulesConfig(guild),
+      reshuffle: reshuffleConfig(guild),
       channelWeights: new Map(weights.map((w) => [w.channelId, w.weight])),
     };
     return this.#current;
