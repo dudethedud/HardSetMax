@@ -104,3 +104,8 @@ export function completedServerDays(now: Date, count: number, b: DayBoundary): s
   const current = serverDayAt(now, b).key;
   return Array.from({ length: count }, (_, i) => addServerDays(current, i - count));
 }
+
+/** Whole server-days from `from` to `to` (negative if `to` is earlier). */
+export function serverDaysBetween(from: string, to: string): number {
+  return Math.round(parseKey(to, 'UTC').diff(parseKey(from, 'UTC'), 'days').days);
+}
