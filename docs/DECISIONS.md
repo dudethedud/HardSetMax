@@ -23,3 +23,6 @@
 | 2026-10-22 | Bot keeps its own timeout history + audit-log catch-up on startup | Discord only exposes active timeouts |
 | 2026-10-22 | `/polls unlock` works even past the daily cap | Otherwise the command does nothing once the cap is hit |
 | 2026-10-22 | Fixed tie-breaker order ending in Discord user ID | Preview and real reshuffle must always agree |
+| 2026-10-22 | AI chat as "Puppyboy Carter": hyper and friendly, puppy theme as a light touch; main chat only; replies to mentions and to replies | Carson's choices |
+| 2026-10-22 | AI shows the asker their exact rank, never anyone else's stats | Carson chose exact rank; others' stats stay private |
+| 2026-10-22 | Free AI provider (Groq free plan by default), provider-agnostic, with daily cap and pre-written fallback | Carson wants it free; free tiers have daily limits, so the bot must degrade gracefully |

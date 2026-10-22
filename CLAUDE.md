@@ -14,6 +14,7 @@ Discord bot that tracks activity and runs a rotating VIP system. Full requiremen
 - **Never store message content.** Counts and timestamps only. The spam filter looks at text in memory only and keeps short-lived fingerprints in memory, never in the DB or logs.
 - **Only one copy of the bot connects to Discord at a time** (`gateway-leader` advisory lock, SPEC §11).
 - **All day/date logic goes through the server-day helper** (SPEC §2). No UTC dates, no separate "midnight".
+- **The AI only produces text.** It gets no tools and nothing it outputs is ever turned into an action. AI text is sent with mentions locked down. Numbers in announcements always come from code. Only ever give the AI the asker's own stats.
 - **Buttons, dropdowns and forms use fixed IDs and a global handler**, so they work after restarts. Anything slow gets a deferred reply first.
 - **No state on local disk.** Everything persistent goes in Postgres via Prisma. The bot must survive a Railway redeploy with zero data loss (SPEC §11).
 - **Migrations must not destroy data.** Use `prisma migrate dev` locally and `prisma migrate deploy` in production. Never use `migrate reset`, `db push`, or drop/rename columns holding data without a written data-preserving plan approved by Carson.

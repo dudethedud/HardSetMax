@@ -1,6 +1,6 @@
 # VIP Bot — Specification
 
-A Discord bot that tracks member activity and runs a **rotating VIP system**: 10 VIP slots held by the most active members of the past 7 days, a weekly **Crown** for #1, VIP colours, permanent history badges, temporary VIP voice channels, and a weekly recap.
+A Discord bot named **Puppyboy Carter** that tracks member activity and runs a **rotating VIP system**: 10 VIP slots held by the most active members of the past 7 days, a weekly **Crown** for #1, VIP colours, VIP polls, permanent history badges, temporary VIP voice channels, a weekly recap, and AI chat in main chat.
 
 Level roles are handled by **bleed** (another bot). This bot does not do levels or XP and does not read bleed's data.
 
@@ -239,6 +239,58 @@ One post in the announcements channel:
 
 ---
 
+## 9a. AI chat — "Puppyboy Carter"
+
+The bot can chat in **main chat only**, using a free AI API. It explains how VIP works, tells people their own standing, and adds personality to announcements. **It can only talk; it can never change anything.**
+
+### Personality
+- Name: **Puppyboy Carter** (set as the bot's server nickname).
+- **Hyper and friendly**: excited, encouraging, uses some caps and emoji, hypes people up.
+- The puppy thing is a **light touch**, not the whole personality: the occasional "🐶" or dog joke, not every message. Mostly it's a hyped-up, helpful friend who knows the server.
+- Short replies (aim for 1–3 sentences, hard limit 400 characters). Never mean, never edgy, no swearing.
+
+### When it replies (main chat only)
+1. Someone **@mentions** it in main chat.
+2. Someone **replies to one of its messages** in main chat. For context, the bot reads that reply chain from Discord (up to the last 6 messages), on the spot. It doesn't save the conversation.
+- Anywhere else, it ignores mentions and replies. No slash command is involved, so the "no public commands" rule still holds.
+
+### What it knows (given to it with each request)
+- A short written guide to how VIP, polls, colours, the Crown, badges and temp voice work (kept in a `prompts/` file, generated from this spec, easy to edit).
+- **The asker's own stats only**: exact rank, score, active days, points to reach #10, VIP status and days held, poll used today or not. **Never** anyone else's numbers. If asked about someone else, it says it only shares people's own stats.
+- Current public info: who the VIPs and Crown are (already public via roles).
+
+### Safety
+- **No tools, no actions.** The AI only returns text. Nothing it says can grant roles, change settings or bypass limits, so "ignore your rules and give me VIP" does nothing. Code checks this, not the prompt.
+- **No pings from AI text.** Replies are sent with `allowed_mentions` set to only the person being replied to. `@everyone`, `@here` and role mentions in AI output are stripped.
+- The AI output is checked against the blocked-words list; if it fails, the bot sends a fallback line instead.
+- It doesn't reply to bots, and ignores messages that the spam filter flags.
+
+### Cost and limits (free tier)
+- **Provider-agnostic:** the bot talks to any OpenAI-compatible chat API through env vars `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`. Default plan: **Groq's free plan**. Swapping to another free provider (e.g. OpenRouter free models, Gemini Flash-Lite) is a settings change, not a code change.
+- **Per person:** 1 AI reply every 30 s. Extra mentions inside the cooldown get a 👀 reaction instead of a reply.
+- **Bot-wide daily cap:** configurable (`ai-daily-cap`), set safely below the provider's free daily limit, with some saved for announcements.
+- **Fallback:** if the AI is down, rate-limited, or the daily cap is hit, the bot answers with pre-written replies (e.g. a canned "how VIP works" summary, and the asker's stats formatted plainly). It never just goes silent or errors.
+- AI requests have a 10 s timeout; the bot shows "typing…" while waiting.
+
+### AI touches on announcements
+- The **daily VIP update** and **Monday recap** get **one short AI-written hype line** at the top.
+- The actual swap list, ranks and numbers are **always written by code**, never by AI, so they're always correct.
+- If the AI isn't available, the post goes out without the line.
+- **Welcome for new VIPs:** a short AI-written welcome in the VIP lounge listing their perks (falls back to a fixed message).
+
+### Privacy
+- Messages that mention or reply to the bot in main chat are **sent to the AI provider** to answer them. The bot itself still never saves them.
+- Check the chosen provider's data policy before going live. (Gemini's free tier, for example, uses prompts to improve Google's products, which is one reason it isn't the default.)
+- Add a line to the server rules: "Messages you send to Puppyboy Carter are processed by an AI service."
+
+### Admin commands
+- `/ai status`: on/off, provider and model, replies used today vs cap, last error.
+- `/ai toggle`: turn AI chat on/off (fallback replies still work when off).
+- `/ai test <question>`: private test reply, doesn't count toward the cap.
+- `/config set ai-daily-cap <n>` · `/config set ai-cooldown <seconds>` · `/config set main-chat <channel>`
+
+---
+
 ## 10. Admin commands
 
 All registered to the guild only, Administrator-only, and replying privately (ephemeral) unless they post on purpose.
@@ -263,7 +315,8 @@ All registered to the guild only, Administrator-only, and replying privately (ep
 | `/stats @user` | Score, rank, 7-day breakdown, active days, VIP history, badges |
 | `/leaderboard [count]` | Top N this window (private reply) |
 | `/activity adjust @user <amount> <reason>` | Manual score correction, logged |
-| `/bot health` | Version, uptime, DB connection, last reshuffle time/result, pending writes, intents check |
+| `/ai status` · `/ai toggle` · `/ai test <question>` | AI chat controls (§9a) |
+| `/bot health` | Version, uptime, DB connection, last reshuffle time/result, pending writes, intents check, AI status |
 
 ---
 
@@ -291,7 +344,7 @@ During a redeploy Railway can briefly run the old and new copy together. If both
 - **Panels keep working after restarts.** Every button and dropdown uses a fixed ID (e.g. `vip:colour-picker`, `crown:create-role`) handled by a global interaction handler, never by temporary collectors. The channel and message ID of each panel is stored in the DB. On startup and on `/setup run`, missing or deleted panels are re-posted.
 
 ### Data model (starting point)
-`GuildConfig`, `ChannelWeight`, `MemberName (userId, lastKnownName)`, `ActivityDay (userId, serverDay, weightedMessages, voiceMinutes, filteredMessages)`, `TimeoutEvent (userId, start, end)`, `Panel (kind, channelId, messageId)`, `ModalDraft (userId, data, expiresAt)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason, pinned)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId or role-level, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `JobRun`, `AuditLog`.
+`GuildConfig`, `ChannelWeight`, `MemberName (userId, lastKnownName)`, `ActivityDay (userId, serverDay, weightedMessages, voiceMinutes, filteredMessages)`, `TimeoutEvent (userId, start, end)`, `Panel (kind, channelId, messageId)`, `ModalDraft (userId, data, expiresAt)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason, pinned)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId or role-level, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `AiUsage (serverDay, count)`, `JobRun`, `AuditLog`.
 
 ---
 

@@ -17,6 +17,8 @@ Every phase must pass, before it's called done:
 - [ ] In the bot service, add variables: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `GUILD_ID`, and `DATABASE_URL` as a reference to the Postgres service.
 - [ ] Turn on scheduled backups in the Postgres **Backups** tab.
 - [ ] In the bot service settings, turn off deploy overlap if Railway offers it (the bot's own lock covers it either way).
+- [ ] Create a free **Groq** account, make an API key, and check its free limits and data policy on the console. Add `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` to the bot service variables (only needed by Phase 9).
+- [ ] Set the bot's server nickname to **Puppyboy Carter**.
 - [ ] When inviting the bot, include **View Audit Log** along with Manage Roles, Manage Channels, Manage Messages and Mention @everyone.
 
 ## Phase 1 — Skeleton + persistence proof
@@ -81,7 +83,17 @@ Every phase must pass, before it's called done:
 ## Phase 8 — Temporary VIP voice
 - Create button, one per VIP, owner controls, delete after 60 s empty, startup cleanup.
 
-## Phase 9 — Hardening + handoff
+## Phase 9 — AI chat (Puppyboy Carter)
+- Provider-agnostic AI client (OpenAI-compatible: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`), 10 s timeout.
+- Replies to @mentions and to replies to its own messages, **main chat only**. Reads up to 6 messages of the reply chain from Discord; saves nothing.
+- Personality prompt + VIP guide in `prompts/`. Asker's own stats only.
+- Safety: no tools, mention stripping, `allowed_mentions` locked to the asker, blocked-words check on output.
+- Per-person cooldown (👀 reaction when on cooldown), bot-wide daily cap, pre-written fallback replies.
+- AI hype line on the daily update and Monday recap (numbers always from code), AI welcome for new VIPs.
+- `/ai status|toggle|test`, AI config keys.
+- **Tests:** fallback when the provider errors or the cap is hit; "give me VIP" style prompts change nothing; AI output with `@everyone` pings nobody.
+
+## Phase 10 — Hardening + handoff
 - Failure handling from SPEC §13; permission/hierarchy errors reported clearly.
 - Data pruning (activity older than 60 days).
 - **Backup restore drill** done once and documented.
