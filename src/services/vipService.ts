@@ -24,6 +24,7 @@ import type { Db } from '../db/prisma.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
 import type { ActivityBuffer } from './activityBuffer.js';
+import type { BadgeService } from './badges.js';
 import type { Clock } from './clock.js';
 import { claimJob, completeJob, failJob } from './jobs.js';
 import type { ModLog } from './modLog.js';
@@ -52,6 +53,7 @@ export interface ReshuffleRun {
 interface StoredDetail {
   added: { userId: string; reason: string }[];
   removed: { userId: string; reason: string }[];
+  badges?: { userId: string; badgeId: number; name: string }[];
   announcement: Announcement | null;
   posted: boolean;
 }
@@ -64,6 +66,8 @@ export class VipService {
   readonly onRemoved: VipRemovedHook[] = [];
   readonly onAdded: VipAddedHook[] = [];
   readonly onReshuffled: ReshuffledHook[] = [];
+  /** Set when history badges are enabled (Phase 7); new badges are saved with each reshuffle. */
+  badges: BadgeService | null = null;
 
   constructor(
     private readonly client: Client,
@@ -177,11 +181,13 @@ export class VipService {
       const result = computeReshuffle((await this.buildInput(now)).input);
       const today = this.#today(now);
 
+      const awards = this.badges ? await this.badges.pending(now) : [];
       const names = await namesFor(this.db, [...result.added, ...result.removed].map((c) => c.userId));
-      const announcement = formatVipUpdate(pairAnnouncements(result.added, result.removed), names);
+      const announcement = formatVipUpdate(pairAnnouncements(result.added, result.removed), names, awards);
       const detail: StoredDetail = {
         added: result.added.map((a) => ({ userId: a.userId, reason: describeAdd(a.reason) })),
         removed: result.removed.map((r) => ({ userId: r.userId, reason: describeRemove(r.reason) })),
+        badges: awards.map(({ userId, badgeId, name }) => ({ userId, badgeId, name })),
         announcement,
         posted: announcement === null,
       };
@@ -190,6 +196,9 @@ export class VipService {
         for (const r of detail.removed) await this.#removalWrites(tx, r.userId, r.reason, actorId, now);
         for (const [i, a] of detail.added.entries()) {
           await this.#additionWrites(tx, a.userId, today, result.added[i]!.reason.kind === 'pinned', a.reason, actorId, now);
+        }
+        if (awards.length) {
+          await tx.userBadge.createMany({ data: awards.map((a) => ({ userId: a.userId, badgeId: a.badgeId, awardedAt: now })), skipDuplicates: true });
         }
         await completeJob(tx, job, period, detail as unknown as Prisma.InputJsonValue, now);
       });
@@ -200,6 +209,7 @@ export class VipService {
 
       for (const r of detail.removed) await this.#removalEffects(r.userId, r.reason);
       for (const a of detail.added) await this.#additionEffects(a.userId, a.reason);
+      if (awards.length) await this.badges?.applyRoles(awards);
       await this.#postAnnouncement(job, period, detail);
       await this.reconcile();
       for (const hook of this.onReshuffled) {

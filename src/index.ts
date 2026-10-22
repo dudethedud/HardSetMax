@@ -13,7 +13,9 @@ import { acquireGatewayLeader } from './services/gatewayLeader.js';
 import { MessageTracker } from './services/messageTracker.js';
 import { createClock } from './services/clock.js';
 import { ColourService } from './services/colours.js';
+import { BadgeService } from './services/badges.js';
 import { CrownService } from './services/crown.js';
+import { RecapService } from './services/recap.js';
 import { POLL_UNLOCK_JOB, PollService } from './services/polls.js';
 import { ModLog } from './services/modLog.js';
 import { loungePanel, Panels } from './services/panels.js';
@@ -76,7 +78,14 @@ const polls = new PollService(client, env.GUILD_ID, db, config, vip, modLog, clo
 const crown = new CrownService(client, env.GUILD_ID, db, config, roleQueue, modLog, clock, log);
 vip.onRemoved.push((userId) => colours.onVipRemoved(userId));
 vip.onRemoved.push((userId, reason) => crown.onVipRemoved(userId, reason));
-vip.onReshuffled.push(async (today, result) => void (await crown.afterReshuffle(today, result)));
+const badges = new BadgeService(client, env.GUILD_ID, db, config, roleQueue, modLog, log);
+const recap = new RecapService(client, db, config, modLog, clock, log);
+vip.badges = badges;
+// Order matters: the recap names the Crown holder that was just picked.
+vip.onReshuffled.push(async (today, result) => {
+  await crown.afterReshuffle(today, result);
+  await recap.afterReshuffle(today, result);
+});
 vip.onAdded.push((userId) => colours.onVipAdded(userId));
 const panels = new Panels(client, db, config, log, [loungePanel(() => colours.options())]);
 const scheduler = new DailyScheduler(config, clock, log);
@@ -133,6 +142,7 @@ const ctx: AppContext = {
   vip,
   colours,
   crown,
+  badges,
   polls,
   panels,
   runSetup: (guild) =>
@@ -140,6 +150,7 @@ const ctx: AppContext = {
       steps: [
         (g, vipRole, report) => colours.setup(g, vipRole, report),
         (g, vipRole, report) => crown.setup(g, vipRole, report),
+        (g, vipRole, report) => badges.setup(g, vipRole, report),
         (g, vipRole, report) => polls.setup(g, vipRole, report),
       ],
       db,
@@ -173,6 +184,7 @@ client.once(Events.ClientReady, (c) => {
     await vip.reconcile();
     await colours.reconcile();
     await crown.reconcile();
+    await badges.reconcile();
     await polls.reconcileLocks();
     await panels.ensureAll();
     await vip.postPendingAnnouncements();

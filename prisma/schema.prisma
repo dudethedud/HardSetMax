@@ -67,6 +67,9 @@ model GuildConfig {
   crownRoleId String?
   crownColour String  @default("#FF00C8")
 
+  // History badges (SPEC §7): defaults are added once, so deleting them sticks.
+  badgesSeeded Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -296,4 +299,25 @@ model ModalDraft {
   userId    String   @id
   data      Json
   expiresAt DateTime
+}
+
+// A VIP history milestone (SPEC §7), e.g. 4 weeks → "VIP Regular".
+model Badge {
+  id     Int     @id @default(autoincrement())
+  weeks  Int     @unique
+  name   String  @unique
+  roleId String?
+
+  earned UserBadge[]
+}
+
+// Badges are permanent: they stay after VIP is lost.
+model UserBadge {
+  userId    String
+  badgeId   Int
+  awardedAt DateTime @default(now())
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, badgeId])
+  @@index([awardedAt])
 }

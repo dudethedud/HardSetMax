@@ -40,6 +40,25 @@ export const vipCommand = defineAdminCommand(
       .addSubcommand((s) => s.setName('reshuffle-now').setDescription('Run the reshuffle now (asks to confirm)'))
       .addSubcommandGroup((g) =>
         g
+          .setName('badges')
+          .setDescription('VIP history badge milestones')
+          .addSubcommand((s) => s.setName('list').setDescription('List badges and how many members have each'))
+          .addSubcommand((s) =>
+            s
+              .setName('set')
+              .setDescription('Add a milestone or rename one')
+              .addIntegerOption((o) => o.setName('weeks').setDescription('Weeks of VIP (pinned time doesn’t count)').setRequired(true).setMinValue(1).setMaxValue(520))
+              .addStringOption((o) => o.setName('name').setDescription('Badge name, e.g. VIP Regular').setRequired(true).setMaxLength(32)),
+          )
+          .addSubcommand((s) =>
+            s
+              .setName('remove')
+              .setDescription('Remove a milestone (deletes its role from everyone)')
+              .addIntegerOption((o) => o.setName('weeks').setDescription('Weeks').setRequired(true).setMinValue(1).setMaxValue(520)),
+          ),
+      )
+      .addSubcommandGroup((g) =>
+        g
           .setName('colours')
           .setDescription('VIP colour options')
           .addSubcommand((s) => s.setName('list').setDescription('List colour options'))
@@ -69,6 +88,27 @@ export const vipCommand = defineAdminCommand(
     const sub = interaction.options.getSubcommand();
     const actor = interaction.user.id;
     const now = ctx.clock.now();
+
+    if (interaction.options.getSubcommandGroup(false) === 'badges') {
+      if (sub === 'list') {
+        const badges = await ctx.db.badge.findMany({ orderBy: { weeks: 'asc' }, include: { _count: { select: { earned: true } } } });
+        await interaction.editReply(
+          badges.length
+            ? badges.map((b) => `• **${b.name}** at ${b.weeks} weeks: ${b._count.earned} member(s)${b.roleId ? ` <@&${b.roleId}>` : ' (no role yet: run /setup run)'}`).join('\n')
+            : 'No badges. Add one with `/vip badges set`.',
+        );
+        return;
+      }
+      const weeks = interaction.options.getInteger('weeks', true);
+      const reply = sub === 'set' ? await ctx.badges.set(weeks, interaction.options.getString('name', true).trim(), actor) : await ctx.badges.remove(weeks, actor);
+      const guild = interaction.guild;
+      const vipRoleId = ctx.config.current.guild.vipRoleId;
+      const vipRole = vipRoleId ? guild.roles.cache.get(vipRoleId) : undefined;
+      const report: string[] = [];
+      if (sub === 'set' && reply.startsWith('✅') && vipRole) await ctx.badges.setup(guild, vipRole, report);
+      await interaction.editReply([reply, ...report.filter((l) => !l.startsWith('✅'))].join('\n'));
+      return;
+    }
 
     if (interaction.options.getSubcommandGroup(false) === 'colours') {
       if (sub === 'list') {

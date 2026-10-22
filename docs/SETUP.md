@@ -115,7 +115,7 @@ Once `/bot health` works, in your test server:
 4. `/config staff-roles add role:<each staff role>`. Members with these can't be VIP.
 5. Optional: if you already have a #polls channel or a role for poll pings, use `/config channel purpose:polls` and `/config polls-role`. Otherwise setup creates them.
 6. `/setup run`. It creates:
-   - the VIP role, 10 VIP colour roles (above VIP) and the 👑 Crown role (above the colours)
+   - the VIP role, 10 VIP colour roles (above VIP), the 👑 Crown role (above the colours), and 3 history badge roles (at the bottom)
    - the private VIP Lounge (text and voice), with a panel where VIPs pick their colour
    - `#polls` with the right permissions, and a **Polls** role. Give it to members who want poll pings (self-roles or another bot). Only the bot can ping it.
 

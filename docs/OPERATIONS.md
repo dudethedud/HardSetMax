@@ -135,6 +135,7 @@ All are admin-only and reply privately.
 | `/vip unblock user` | Clear a block |
 | `/vip reshuffle-now` | Run a reshuffle now, after a confirm button. The nightly one still runs |
 | `/vip colours list/add/edit/remove` | VIP colour options (up to 24); changes update the roles and the lounge picker |
+| `/vip badges list/set/remove` | History badge milestones (defaults: 4 weeks VIP Regular, 12 VIP Veteran, 26 VIP Legend) |
 | `/crown view` | This week's Crown holder and their custom role |
 | `/crown reset-role user` | Delete someone's custom role and its saved settings |
 | `/crown lock user` / `/crown unlock user` | Block or allow creating and editing a custom role |
@@ -142,6 +143,16 @@ All are admin-only and reply privately.
 | `/polls status` | VIP polls used today, who posted, who's locked, when it resets |
 | `/polls unlock user` | Give a VIP one more poll today, even past the daily limit (logged) |
 | `/config channel purpose:polls` / `/config polls-role` / `/config set polls-daily-cap` | Use an existing polls channel or ping role; server-wide daily VIP poll limit (default 2) |
+
+### Badges and the weekly recap
+- **Badges:** total weeks held = all unpinned VIP time ÷ 7 days, rounded down. Each reshuffle checks it and gives any new badge role. Badge roles have no colour, aren't hoisted, and sit just above @everyone. They're permanent, even after VIP is lost.
+- New badges appear in that day's VIP update post, which goes out even if no VIP changed. Badge earners are shown but not pinged.
+- **Weekly recap:** posted in the announcements channel right after the week's first reshuffle and the Crown, once per week, with no pings. It covers last Monday to Sunday:
+  - the Crown holder
+  - the top 3 with scores
+  - the longest-standing current VIP (days in a row, including pinned time)
+  - VIP swaps (everyone who gained VIP in that week's reshuffles, including `/vip reshuffle-now`)
+  - badges earned
 
 ### How the Crown works
 - The week's first reshuffle (normally Monday's, at midnight) gives the **👑 Crown** role to the top member of the new VIP list, for that week (Monday to Sunday). No VIPs means no Crown that week.
