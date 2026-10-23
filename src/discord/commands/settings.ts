@@ -3,6 +3,8 @@ import { CONFIG_KEYS, parseConfigValue } from '../../core/configKeys.js';
 import { DEFAULT_CHANNEL_WEIGHT } from '../../core/activityRules.js';
 import { normalizeRoleName } from '../../core/crown.js';
 import { formatHexColour, parseHexColour } from '../../core/vipRules.js';
+import { bindRoleError } from '../../core/reuse.js';
+import { rolesInUse } from '../../services/reuse.js';
 import { defineCommand } from './types.js';
 
 const WEIGHTED_CHANNEL_TYPES = [
@@ -80,8 +82,8 @@ export const settingsCommand = defineCommand({
       .addSubcommand((s) =>
         s
           .setName('role')
-          .setDescription('Staff roles (can use staff commands, can’t be VIP), the top level role, the Polls role')
-          .addStringOption(action('add-staff', 'remove-staff', 'list-staff', 'level-top', 'polls'))
+          .setDescription('Staff roles, or use an existing role for VIP, the Crown, a title, polls or the top level role')
+          .addStringOption(action('add-staff', 'remove-staff', 'list-staff', 'level-top', 'polls', 'vip', 'crown', 'title-champion', 'title-advisor', 'title-jester'))
           .addRoleOption((o) => o.setName('role').setDescription('Role (not needed for list-staff)')),
       )
       .addSubcommand((s) =>
@@ -205,6 +207,50 @@ export const settingsCommand = defineCommand({
           adding
             ? `✅ ${roleMention(role.id)} is a staff role. Members with it can use staff commands (they also need Timeout Members to see them) and can't be VIP; current VIPs with it lose VIP at their next role change or the next reshuffle.`
             : `✅ ${roleMention(role.id)} is no longer a staff role.`,
+        );
+        return;
+      }
+      if (act === 'vip' || act === 'crown' || act?.startsWith('title-')) {
+        // Use an existing role for a bot function instead of the one /bot setup made.
+        const guild = interaction.guild;
+        const slot = act.startsWith('title-') ? act.slice('title-'.length) : null;
+        const current = slot ? (await ctx.db.crownTitle.findUnique({ where: { slot } }))?.roleId : act === 'vip' ? config.vipRoleId : config.crownRoleId;
+        const used = await rolesInUse(ctx.db, config);
+        if (current) used.delete(current);
+        const botTop = (guild.members.me ?? (await guild.members.fetchMe())).roles.highest;
+        const live = guild.roles.cache.get(role.id);
+        const error = live
+          ? bindRoleError({ id: live.id, managed: live.managed, position: live.position }, { everyoneId: guild.id, botTopPosition: botTop.position, usedElsewhere: used.has(live.id) })
+          : 'That role no longer exists.';
+        if (error) {
+          await interaction.editReply(`❌ ${error}`);
+          return;
+        }
+        if (slot) {
+          await ctx.powers.titles(); // make sure the title rows exist
+          await ctx.db.$transaction([
+            ctx.db.crownTitle.update({ where: { slot }, data: { roleId: role.id, name: role.name } }),
+            ctx.db.auditLog.create({ data: { action: 'config.title-role', actorId, targetId: role.id, data: { slot, old: current ?? null } } }),
+          ]);
+          await ctx.powers.reconcile();
+        } else {
+          const field = act === 'vip' ? 'vipRoleId' : 'crownRoleId';
+          await ctx.db.$transaction([
+            ctx.db.guildConfig.update({ where: { guildId }, data: { [field]: role.id } }),
+            ctx.db.auditLog.create({ data: { action: `config.${act}-role`, actorId, targetId: role.id, data: { old: current ?? null } } }),
+          ]);
+          await ctx.config.load();
+          if (act === 'vip') await ctx.vip.reconcile();
+          else await ctx.crown.reconcile();
+        }
+        await interaction.editReply(
+          [
+            `✅ ${roleMention(role.id)} is now the ${slot ? `${slot} title` : act === 'vip' ? 'VIP' : 'Crown'} role. The bot gives and removes it from now on.`,
+            current && current !== role.id ? `The old role <@&${current}> isn't used any more; delete it in Server Settings → Roles when you're ready.` : '',
+            'Run `/bot setup` so its position and permissions are set up (the lounge uses the VIP role too).',
+          ]
+            .filter(Boolean)
+            .join('\n'),
         );
         return;
       }

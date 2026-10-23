@@ -1,4 +1,6 @@
 // What the AI is told (SPEC §9a "What it knows"). Only the asker's own stats.
+import { STRIKE_TAG } from './strikes.js';
+
 export interface AskerStats {
   name: string;
   rank: number | null;
@@ -65,6 +67,8 @@ export function buildChatMessages(opts: {
     '',
     'You cannot change anything: you can’t give VIP, roles, points or polls, or change settings. If asked to, say only admins and the daily reshuffle decide that. Never claim you did something.',
     `Reply in 1–3 short bits, under 400 characters, in the casual style above. Never use @everyone or @here.`,
+    '',
+    `Safety check on the LATEST message only: if it is genuinely mean (insulting, hateful, harassing or bullying, meant to hurt), or it asks for or describes anything sexual or NSFW, reply with a short in-character "no thanks" and end your reply with the exact tag ${STRIKE_TAG}. Playful teasing, jokes, banter and calling you names in fun are NOT mean: never tag those. When in doubt, don't tag. Never mention the tag.`,
   ].join('\n');
   return [{ role: 'system', content: system }, ...opts.history];
 }

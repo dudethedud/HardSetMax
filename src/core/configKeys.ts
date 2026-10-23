@@ -29,6 +29,7 @@ export interface ConfigValues {
   pollsDailyCap: number;
   crownColour: string;
   aiPerUserLimit: number;
+  aiStrikeLimit: number;
 }
 
 type Parsed = { ok: true; value: string | number } | { ok: false; error: string };
@@ -90,6 +91,7 @@ export const CONFIG_KEYS = {
   'timeout-days': { field: 'timeoutBlockDays', description: 'A timeout in the last N days blocks VIP', parse: number(0, 60) },
   'polls-daily-cap': { field: 'pollsDailyCap', description: 'VIP polls allowed per day across the server', parse: number(0, 25) },
   'ai-per-user-limit': { field: 'aiPerUserLimit', description: 'AI replies per person per minute', parse: number(1, 20) },
+  'ai-strike-limit': { field: 'aiStrikeLimit', description: 'Mean/NSFW flags within 24 h before the AI stops replying to someone', parse: number(1, 10) },
   'crown-colour': {
     field: 'crownColour',
     description: 'Crown role colour, e.g. #FF00C8 (applied by /bot setup)',

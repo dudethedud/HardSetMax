@@ -2,10 +2,15 @@
 // replies to one of its messages, in main chat only. The reply chain (up to 6
 // messages) is read from Discord on the spot and never saved. The AI only writes
 // text: this file never changes roles, scores, polls or settings because of it.
+// One owner-approved exception: the AI can flag the message it's answering as mean
+// or NSFW (core/ai/strikes.ts). Flags only ever count against that message's author,
+// and enough of them stop the bot replying to that person (AiBlock). The server
+// owner is never flagged or blocked.
 import type { Client, Message } from 'discord.js';
 import type { ConfigStore } from '../../config/configStore.js';
 import { BLOCKED_OUTPUT_FALLBACK, fallbackReply, fallbackWelcome } from '../../core/ai/fallback.js';
 import { buildChatMessages, buildHypeMessages, buildWelcomeMessages, type AskerStats, type ChatTurn } from '../../core/ai/prompt.js';
+import { extractStrike, reachedStrikeLimit, STRIKE_WINDOW_MS } from '../../core/ai/strikes.js';
 import { allowReply, containsBlockedWord, hypeLineOrNull, sanitizeAiText } from '../../core/ai/text.js';
 import { isFiltered, type MessageOutcome } from '../../core/messageRules.js';
 import { serverDayAt, serverDaysBetween } from '../../core/serverDay.js';
@@ -14,6 +19,7 @@ import type { Db } from '../../db/prisma.js';
 import type { Logger } from '../../logger.js';
 import type { Clock } from '../clock.js';
 import type { CrownService } from '../crown.js';
+import type { ModLog } from '../modLog.js';
 import type { VipService } from '../vipService.js';
 import type { AiService, Prompts } from './aiService.js';
 
@@ -22,6 +28,8 @@ const CHAIN_LENGTH = 6;
 export class ChatService {
   /** userId → times of recent AI replies, for the per-person limit. */
   #recent = new Map<string, number[]>();
+  /** Set in index.ts: where automatic AI blocks are announced. */
+  modLog: ModLog | null = null;
 
   constructor(
     private readonly client: Client,
@@ -56,6 +64,8 @@ export class ChatService {
     if (outcome && isFiltered(outcome)) return skipped(`spam filter: ${outcome}`);
 
     const userId = message.author.id;
+    const isOwner = message.guild.ownerId === userId;
+    if (!isOwner && (await this.db.aiBlock.findUnique({ where: { userId } }))) return skipped('blacklisted (/bot ai-blacklist)');
     const now = Date.now();
     const recent = (this.#recent.get(userId) ?? []).filter((t) => t > now - 60_000);
     if (!allowReply(recent, now, this.config.current.guild.aiPerUserLimit)) {
@@ -67,33 +77,53 @@ export class ChatService {
     await message.channel.sendTyping().catch(() => undefined);
     const stats = await this.statsFor(userId, message.member?.displayName ?? message.author.displayName);
     const question = this.#clean(message.content, botId);
-    const text = (await this.reply(stats, await this.#chain(message, botId))) ?? fallbackReply(question, stats);
+    const res = await this.reply(stats, await this.#chain(message, botId));
+    const text = res.text ?? fallbackReply(question, stats);
 
     await message.reply({ content: text, allowedMentions: { parse: [], users: [userId], repliedUser: true } });
+    if (res.strike && !isOwner) await this.#strike(userId);
+  }
+
+  /** Counts a strike against this person; enough within a day blocks them. */
+  async #strike(userId: string): Promise<void> {
+    const now = this.clock.now();
+    await this.db.aiStrike.create({ data: { userId, at: now } });
+    const recent = await this.db.aiStrike.findMany({ where: { userId, at: { gt: new Date(now.getTime() - STRIKE_WINDOW_MS) } }, select: { at: true } });
+    const limit = this.config.current.guild.aiStrikeLimit;
+    this.log.info({ userId, strikes: recent.length, limit }, 'AI chat: message flagged as mean or NSFW');
+    if (!reachedStrikeLimit(recent.map((r) => r.at), now, limit)) return;
+    await this.db.$transaction([
+      this.db.aiBlock.upsert({ where: { userId }, create: { userId, auto: true }, update: {} }),
+      this.db.auditLog.create({ data: { action: 'ai.block', targetId: userId, reason: `${recent.length} mean/NSFW flags in 24 h` } }),
+    ]);
+    await this.modLog?.post(
+      `🙊 Puppyboy Carter stopped replying to <@${userId}>: ${recent.length} messages flagged as mean or NSFW in 24 h. Undo with \`/bot ai-blacklist action:remove\`.`,
+    );
   }
 
   /**
    * An AI reply, or null if AI is off or every provider is out (the caller then
    * uses a pre-written reply, which is counted here).
    */
-  async reply(stats: AskerStats, history: ChatTurn[], { count = true } = {}): Promise<string | null> {
+  async reply(stats: AskerStats, history: ChatTurn[], { count = true } = {}): Promise<{ text: string | null; strike: boolean }> {
     if (!this.config.current.guild.aiEnabled) {
       if (count) await this.ai.recordFallback();
-      return null;
+      return { text: null, strike: false };
     }
     const messages = buildChatMessages({ ...this.prompts, stats, info: await this.#publicInfo(), history });
     const res = await this.ai.complete(messages, { count });
     if (!res) {
       if (count) await this.ai.recordFallback();
-      return null;
+      return { text: null, strike: false };
     }
-    const text = sanitizeAiText(res.text);
-    if (!text) return null;
+    const { text: raw, strike } = extractStrike(res.text);
+    const text = sanitizeAiText(raw);
+    if (!text) return { text: null, strike };
     if (containsBlockedWord(text, await this.#blocked())) {
       this.log.warn({ provider: res.provider }, 'AI reply contained a blocked word; sent the fallback line');
-      return BLOCKED_OUTPUT_FALLBACK;
+      return { text: BLOCKED_OUTPUT_FALLBACK, strike };
     }
-    return text;
+    return { text, strike };
   }
 
   #clean(content: string, botId: string): string {

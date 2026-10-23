@@ -62,15 +62,20 @@ Five commands, all guild-only and replying privately unless they post on purpose
 | `/settings view` · `/settings set key value` | admin | Every setting · change one: timezone, day-boundary, window, cooldowns, voice, spam filter, slots, buffer, min-hold, inactivity-days, min-score, timeout-days, colours, polls-daily-cap, ai-per-user-limit |
 | `/settings channel purpose channel` | admin | Announcements, mod-log, polls, main-chat (AI and shoutouts) or vip-board channel |
 | `/settings channel-weight channel weight` | admin | How much a channel's messages count (0 ignores it) |
-| `/settings role action [role]` | admin | `add-staff` / `remove-staff` / `list-staff`, `level-top` (bleed's highest level role; VIP goes above it), `polls` (role pinged for new polls) |
+| `/settings role action [role]` | admin | `add-staff` / `remove-staff` / `list-staff`, `level-top` (bleed's highest level role; VIP goes above it), `polls` (role pinged for new polls), and `vip` / `crown` / `title-champion` / `title-advisor` / `title-jester` to use an existing role for that |
 | `/settings colour action ...` | admin | VIP colour options: `list`, `add name hex`, `edit name [new_name] [hex]`, `remove name` |
 | `/settings badge action ...` | admin | History badges: `list`, `set weeks name`, `remove weeks` |
 | `/settings blocked-word action [word]` | admin | Words custom roles, room names, shoutouts and decrees can't contain |
 | `/bot health` | staff | Version, uptime, database (or database-down mode), lock, intents, server-day, last reshuffle, unsaved writes, AI |
 | `/bot setup` | admin | Creates or repairs every role, channel and panel. Checks permissions and role order. Safe to run any time |
 | `/bot ai action [question]` | admin | AI chat: `status`, `on`, `off`, `providers`, `test` |
+| `/bot ai-blacklist action [user]` | admin | Who Puppyboy Carter won't reply to: `add`, `remove`, `list`. People are added automatically after mean or NSFW messages (see below) |
 | `/bot ai-provider provider setting [value]` | admin | Change a provider's daily `cap`, `model`, or `toggle` it |
 | `/announce [channel]` | owner | Write an announcement, preview it, then the bot posts it with an @everyone ping |
+
+**`/bot setup` reuses what's already there:** if a role or channel with the expected name exists (VIP, Polls, 👑 Crown, the titles, colours and badges; #vip-board, #polls, the VIP Lounge), it uses that instead of making a duplicate. Roles are only taken over if they have no permissions (except VIP). To use a role with a different name, bind it with `/settings role`.
+
+**AI blacklist:** if someone keeps being genuinely mean to Puppyboy Carter or asks for NSFW stuff, the AI flags the message. 2 flags in 24 hours (`/settings set ai-strike-limit`) and he stops replying to that person. Playful teasing doesn't count. The server owner is never flagged. Every block is posted in the mod-log, and `/bot ai-blacklist action:remove` undoes it.
 
 ## Member perks (buttons in the VIP lounge)
 | Who | Perk |

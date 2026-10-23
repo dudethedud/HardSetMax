@@ -102,6 +102,7 @@ vip.onRemoved.push((userId) => tempVoice.onVipRemoved(userId));
 const ai = new AiService(db, config, process.env, clock, log);
 const chat = new ChatService(client, env.GUILD_ID, db, config, ai, vip, crown, loadPrompts(), clock, log);
 vip.hype = (summary) => chat.hypeLine('vip-update', summary);
+chat.modLog = modLog;
 const badges = new BadgeService(client, env.GUILD_ID, db, config, roleQueue, modLog, log);
 const recap = new RecapService(client, db, config, modLog, clock, log);
 vip.badges = badges;

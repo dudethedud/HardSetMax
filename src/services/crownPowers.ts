@@ -15,6 +15,7 @@ import type { Clock } from './clock.js';
 import type { CrownService } from './crown.js';
 import type { ModLog } from './modLog.js';
 import { explainRoleError, placeNextTo, type RoleQueue } from './roleQueue.js';
+import { findExistingRole } from './reuse.js';
 
 export const DECREE_MAX = 500;
 
@@ -236,7 +237,12 @@ export class CrownPowers {
     for (const title of await this.titles()) {
       try {
         let role = title.roleId ? guild.roles.cache.get(title.roleId) : undefined;
-        if (role) await role.edit({ name: title.name, permissions: [], mentionable: false, reason: '/bot setup' });
+        if (!role) {
+          const plain = title.name.replace(/^\S+\s+/, ''); // "Champion" for "🛡️ Champion"
+          role = await findExistingRole(guild, this.db, this.config.current.guild, [title.name, plain]);
+          if (role) await this.db.crownTitle.update({ where: { slot: title.slot }, data: { roleId: role.id, name: role.name } });
+        }
+        if (role) await role.edit({ name: role.id === title.roleId ? title.name : role.name, permissions: [], mentionable: false, reason: '/bot setup' });
         else {
           role = await guild.roles.create({ name: title.name, permissions: [], mentionable: false, hoist: false, reason: 'Crown title' });
           await this.db.crownTitle.update({ where: { slot: title.slot }, data: { roleId: role.id } });

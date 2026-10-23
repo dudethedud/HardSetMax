@@ -129,6 +129,6 @@ describe('fallback replies', () => {
   it('answers stats questions with the asker’s stats, VIP questions with the summary', () => {
     expect(fallbackReply('what is my rank?', stats)).toContain('#12 of 40');
     expect(fallbackReply('how does vip work', stats)).toContain('10 most active');
-    expect(fallbackReply('hello', stats)).toContain('🐶');
+    expect(fallbackReply('hello', stats)).toContain('nap');
   });
 });

@@ -18,6 +18,7 @@ import type { Db } from '../db/prisma.js';
 import type { Logger } from '../logger.js';
 import type { Panels } from './panels.js';
 import { explainRoleError, placeNextTo } from './roleQueue.js';
+import { findExistingChannel, findExistingRole } from './reuse.js';
 import type { VipService } from './vipService.js';
 
 /** What VIP gives (SPEC §3). */
@@ -75,10 +76,16 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
   const colour = parseHexColour(cfg.vipColour) ?? 0xf1c40f;
   const icon = guild.premiumTier >= GuildPremiumTier.Tier2 ? { unicodeEmoji: '⭐' } : {};
   let vipRole: Role | null = cfg.vipRoleId ? (guild.roles.cache.get(cfg.vipRoleId) ?? null) : null;
+  // Not set up yet: take over an existing "VIP" role rather than making a second one.
+  let reused = false;
+  if (!vipRole) {
+    vipRole = (await findExistingRole(guild, db, cfg, ['VIP'], { allowPermissions: true })) ?? null;
+    reused = !!vipRole;
+  }
   try {
     if (vipRole) {
       await vipRole.edit({ colors: { primaryColor: colour }, hoist: true, mentionable: false, permissions: VIP_PERMISSIONS, ...icon, reason: '/bot setup' });
-      report.push(`✅ VIP role ${vipRole.toString()} updated`);
+      report.push(reused ? `♻️ Using the existing ${vipRole.toString()} role for VIP` : `✅ VIP role ${vipRole.toString()} updated`);
     } else {
       vipRole = await guild.roles.create({
         name: 'VIP',
@@ -138,12 +145,13 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
   try {
     const existing = (id: string | null) => (id ? (guild.channels.cache.get(id) ?? null) : null);
     let category = existing(cfg.loungeCategoryId) as CategoryChannel | null;
-    if (category?.type === ChannelType.GuildCategory) await category.permissionOverwrites.set(overwrites, '/bot setup');
+    if (category?.type !== ChannelType.GuildCategory) category = (findExistingChannel(guild, ['VIP Lounge'], ChannelType.GuildCategory) as CategoryChannel | undefined) ?? null;
+    if (category) await category.permissionOverwrites.set(overwrites, '/bot setup');
     else category = await guild.channels.create({ name: 'VIP Lounge', type: ChannelType.GuildCategory, permissionOverwrites: overwrites, reason: '/bot setup' });
     ids.loungeCategoryId = category.id;
 
     const ensureChild = async (id: string | null, name: string, type: ChannelType.GuildText | ChannelType.GuildVoice): Promise<GuildBasedChannel> => {
-      const ch = existing(id);
+      const ch = existing(id) ?? findExistingChannel(guild, [name], type, category.id) ?? null;
       if (ch && ch.type === type && 'setParent' in ch) {
         await ch.setParent(category.id, { lockPermissions: true, reason: '/bot setup' });
         return ch;
@@ -182,8 +190,11 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.EmbedLinks],
       },
     ];
-    const board = vipBoardChannelId ? guild.channels.cache.get(vipBoardChannelId) : undefined;
-    if (board && 'permissionOverwrites' in board && board.isTextBased()) await board.permissionOverwrites.set(boardOverwrites, '/bot setup');
+    const board = (vipBoardChannelId ? guild.channels.cache.get(vipBoardChannelId) : undefined) ?? findExistingChannel(guild, ['vip-board'], ChannelType.GuildText);
+    if (board && 'permissionOverwrites' in board && board.isTextBased()) {
+      await board.permissionOverwrites.set(boardOverwrites, '/bot setup');
+      vipBoardChannelId = board.id;
+    }
     else vipBoardChannelId = (await guild.channels.create({ name: 'vip-board', type: ChannelType.GuildText, permissionOverwrites: boardOverwrites, reason: '/bot setup' })).id;
     report.push(`✅ VIP board <#${vipBoardChannelId}> ready`);
   } catch (err) {

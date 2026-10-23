@@ -11,6 +11,7 @@ import type { Logger } from '../logger.js';
 import type { ModLog } from './modLog.js';
 import type { RoleQueue } from './roleQueue.js';
 import { explainRoleError, placeNextTo } from './roleQueue.js';
+import { findExistingRole } from './reuse.js';
 import type { VipService } from './vipService.js';
 
 export class ColourService {
@@ -76,6 +77,12 @@ export class ColourService {
         await existing.edit({ name: option.name, colors: { primaryColor: colour }, reason: 'VIP colour' });
       }
       return existing;
+    }
+    const reuse = await findExistingRole(guild, this.db, this.config.current.guild, [option.name]);
+    if (reuse) {
+      await reuse.edit({ colors: { primaryColor: colour }, reason: 'VIP colour' });
+      await this.db.colourOption.update({ where: { id: option.id }, data: { roleId: reuse.id } });
+      return reuse;
     }
     const role = await guild.roles.create({
       name: option.name,
