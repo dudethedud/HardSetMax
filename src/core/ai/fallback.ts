@@ -3,19 +3,19 @@
 import { describeStats, type AskerStats } from './prompt.js';
 
 const VIP_SUMMARY =
-  "⭐ VIP goes to the 10 most active people of the last 7 days, updated every night at midnight! Chat and hang out in voice to climb, stay active to keep your slot, and the #1 VIP each week gets the 👑 Crown and their own role!";
+  'omg hiii :3 ⭐ vip goes to the 10 most active people of the last 7 days and it updates every night at midnight ✨ chat and hang out in voice to climb and stay active to keep your slot and the #1 vip each week gets the 👑 crown and their own role >w<';
 
 export function fallbackReply(question: string, stats: AskerStats): string {
   const q = question.toLowerCase();
   if (/\b(rank|score|stats|points|me|my|standing|position)\b/.test(q)) {
-    return `Here's where you stand! 🐶\n${describeStats(stats).split('\n').slice(1).join('\n')}`;
+    return `heres where u stand :3 🐶\n${describeStats(stats).split('\n').slice(1).join('\n')}`;
   }
   if (/\b(vip|crown|poll|colou?r|badge|how)\b/.test(q)) return VIP_SUMMARY;
-  return "Heyyy! 🐶 My brain's taking a nap right now, but ask me about VIP or your stats and I'll help!";
+  return 'heyyy :3 my brain is taking a lil nap rn 🐶 but ask me about vip or your stats and ill help ^^';
 }
 
-export const BLOCKED_OUTPUT_FALLBACK = "Oops, let's keep it friendly! 🐶 Ask me about VIP or your stats!";
+export const BLOCKED_OUTPUT_FALLBACK = 'oopsie lets keep it friendly >w< ask me about vip or your stats 🐶';
 
 export function fallbackWelcome(): string {
-  return '🎉 Welcome to the VIP Lounge! Enjoy image perms, external emojis and stickers, your own VIP colour, VIP polls and your own temp voice channel. Stay active to keep your slot!';
+  return '🎉 welcome to the vip lounge :3 u get image perms and external emojis and stickers plus ur own vip colour and vip polls and ur own temp voice channel ✨ stay active to keep ur slot >w<';
 }

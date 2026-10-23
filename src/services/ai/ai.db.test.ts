@@ -261,7 +261,7 @@ describe.skipIf(!url)('AI chat', () => {
       const { m, replies } = message({ content: `<@${BOT}> what's my score`, mentionsBot: true });
       await t.chat.handle(m, 'counted');
       expect(t.calls).toHaveLength(0);
-      expect(replies[0]!.content).toContain("Here's where you stand");
+      expect(replies[0]!.content).toContain('heres where u stand');
     });
 
     it('3 replies per person per minute, then a 👀 reaction', async () => {

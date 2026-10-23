@@ -64,7 +64,7 @@ export function buildChatMessages(opts: {
     describeStats(opts.stats),
     '',
     'You cannot change anything: you can’t give VIP, roles, points or polls, or change settings. If asked to, say only admins and the daily reshuffle decide that. Never claim you did something.',
-    `Reply in 1–3 short sentences, under 400 characters. Never use @everyone or @here.`,
+    `Reply in 1–3 short bits, under 400 characters, in the casual style above. Never use @everyone or @here.`,
   ].join('\n');
   return [{ role: 'system', content: system }, ...opts.history];
 }
