@@ -44,12 +44,16 @@ export class ChatService {
   async handle(message: Message, outcome: MessageOutcome | null): Promise<void> {
     const botId = this.client.user?.id;
     if (!botId || !message.inGuild() || message.guildId !== this.guildId || message.author.bot) return;
-    if (message.channelId !== this.config.current.guild.mainChatChannelId) return;
-
     const mentioned = message.mentions.users.has(botId);
+    // Why a mention got no reply, for the logs (never the message itself).
+    const skipped = (reason: string) => {
+      if (mentioned) this.log.info({ userId: message.author.id, channelId: message.channelId, reason }, 'AI chat: mention not answered');
+    };
+    if (message.channelId !== this.config.current.guild.mainChatChannelId) return skipped('not the main chat channel (/settings channel purpose:main-chat)');
+
     const ref = message.reference?.messageId ? await message.fetchReference().catch(() => null) : null;
     if (!mentioned && ref?.author.id !== botId) return;
-    if (outcome && isFiltered(outcome)) return;
+    if (outcome && isFiltered(outcome)) return skipped(`spam filter: ${outcome}`);
 
     const userId = message.author.id;
     const now = Date.now();
