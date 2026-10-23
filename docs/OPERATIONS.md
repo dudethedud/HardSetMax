@@ -149,7 +149,7 @@ Five commands: `/stats`, `/vip`, `/settings`, `/bot` and `/announce`. They reply
 - Each person gets up to `ai-per-user-limit` replies a minute (default 3); after that it reacts with 👀.
 - **What the AI is given:** `prompts/personality.md` and `prompts/vip-guide.md` (edit, then restart), the asker's **own** stats only, and the current VIPs and Crown holder. It has no tools: it can't change anything, whatever it says.
 - **Safety:** replies can only ping the asker. `@everyone`, `@here` and role mentions are stripped, and anything with a blocked word is replaced with a fixed line. Replies are at most 400 characters.
-- **Provider chain:** `/bot ai action:providers` shows it. Default: Groq (`llama-3.1-8b-instant`, 1,000/day) → Cloudflare Workers AI (`@cf/meta/llama-3.1-8b-instruct`, 800/day) → pre-written replies.
+- **Provider chain:** `/bot ai action:providers` shows it. Default: Groq (`openai/gpt-oss-20b`, 1,000/day) → Cloudflare Workers AI (`@cf/zai-org/glm-4.7-flash`, 800/day) → pre-written replies.
   - Each provider's cap resets at its own time (default 00:00 UTC).
   - On an error, a 10 s timeout or a 429, the bot uses the next provider and cools the failing one down for 5 min, or until its reset if the daily limit is used up.
 - **Adding a provider:** insert an `AiProvider` row (OpenAI-compatible base URL, model, the env var name holding its key, cap, order) and add the key to `.env`. No code change.

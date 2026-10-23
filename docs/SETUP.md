@@ -133,7 +133,7 @@ Optional, and free. Without it, the bot answers mentions with pre-written replie
    - Sign up at https://console.groq.com (no card needed).
    - Go to **API Keys → Create API Key** and copy it.
    - In **Settings → Data Controls**, turn on **Zero Data Retention**, so Groq doesn't keep the messages.
-   - Check **Settings → Limits** for what the free plan allows. If `llama-3.1-8b-instant` isn't listed, run `/bot ai-provider provider:groq setting:model value:<a listed model>`, e.g. `openai/gpt-oss-20b`.
+   - Check **Settings → Limits** for what the free plan allows. If `openai/gpt-oss-20b` isn't listed, run `/bot ai-provider provider:groq setting:model value:<a listed model>`.
 2. **Cloudflare Workers AI** (backup):
    - Sign up at https://dash.cloudflare.com (free plan).
    - Your **Account ID** is on the right of the account home page.

@@ -8,7 +8,7 @@ import { createDb, type Db } from '../../db/prisma.js';
 import type { Clock } from '../clock.js';
 import type { CrownService } from '../crown.js';
 import type { VipService } from '../vipService.js';
-import { AiService, PREWRITTEN, type FetchLike } from './aiService.js';
+import { AiService, PREWRITTEN, REASONING_ALLOWANCE, type FetchLike } from './aiService.js';
 import { ChatService } from './chat.js';
 
 const url = process.env['TEST_DATABASE_URL'];
@@ -71,7 +71,18 @@ describe.skipIf(!url)('AI chat', () => {
     it('uses Groq first, with the right URL, model and key', async () => {
       const t = await makeAi();
       expect(await t.ai.complete(msgs)).toEqual({ text: 'hello from groq', provider: 'groq' });
-      expect(t.calls[0]).toMatchObject({ url: 'https://api.groq.com/openai/v1/chat/completions', body: { model: 'llama-3.1-8b-instant' } });
+      expect(t.calls[0]).toMatchObject({ url: 'https://api.groq.com/openai/v1/chat/completions', body: { model: 'openai/gpt-oss-20b', max_tokens: 160 + REASONING_ALLOWANCE, reasoning_effort: 'low' } });
+      // Other models don't get the gpt-oss-only setting.
+      await t.ai.complete(msgs);
+      await db.aiProvider.update({ where: { name: 'groq' }, data: { model: 'some-other-model' } });
+      await t.ai.complete(msgs);
+      expect(t.calls.at(-1)!.body).not.toHaveProperty('reasoning_effort');
+    });
+
+    it('a reply with no text (all thinking) counts as a failure, with the reason saved', async () => {
+      const t = await makeAi({ groq: [{ status: 200, body: JSON.stringify({ choices: [{ message: { content: '' }, finish_reason: 'length' }] }) }] });
+      expect(await t.ai.complete(msgs)).toEqual({ text: 'hello from cloudflare', provider: 'cloudflare' });
+      expect((await db.aiProvider.findUnique({ where: { name: 'groq' } }))!.lastError).toContain('finish_reason: length');
     });
 
     it('moves to the next provider on an error, a timeout and a 429, with cooldowns', async () => {

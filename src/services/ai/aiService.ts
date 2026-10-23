@@ -15,14 +15,20 @@ import type { Clock } from '../clock.js';
 
 export const PREWRITTEN = 'prewritten';
 const TIMEOUT_MS = 10_000;
+/**
+ * "Thinking" models (gpt-oss, GLM) use part of max_tokens for hidden reasoning
+ * before the answer, so the limit gets this much extra room. What's posted is
+ * still cut to MAX_REPLY_CHARS.
+ */
+export const REASONING_ALLOWANCE = 800;
 
 /** The default chain (owner-approved). More providers are just more rows. */
 export const DEFAULT_PROVIDERS = [
-  { name: 'groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.1-8b-instant', keyEnvVar: 'GROQ_API_KEY', dailyCap: 1000, order: 1 },
+  { name: 'groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-20b', keyEnvVar: 'GROQ_API_KEY', dailyCap: 1000, order: 1 },
   {
     name: 'cloudflare',
     baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1',
-    model: '@cf/meta/llama-3.1-8b-instruct',
+    model: '@cf/zai-org/glm-4.7-flash',
     keyEnvVar: 'CLOUDFLARE_AI_TOKEN',
     dailyCap: 800,
     order: 2,
@@ -141,7 +147,14 @@ export class AiService {
       res = await this.fetchImpl(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${this.#key(p)}` },
-        body: JSON.stringify({ model: p.model, messages, max_tokens: maxTokens, temperature: 0.8 }),
+        body: JSON.stringify({
+          model: p.model,
+          messages,
+          max_tokens: maxTokens + REASONING_ALLOWANCE,
+          temperature: 0.8,
+          // OpenAI's open models think less (and answer sooner) with this; other models don't take it.
+          ...(p.model.includes('gpt-oss') ? { reasoning_effort: 'low' } : {}),
+        }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch (err) {
@@ -150,12 +163,17 @@ export class AiService {
     const body = await res.text();
     if (!res.ok) throw new ProviderError({ status: res.status, body });
     let text: unknown;
+    let finish: unknown;
     try {
-      text = (JSON.parse(body) as { choices?: { message?: { content?: unknown } }[] }).choices?.[0]?.message?.content;
+      const choice = (JSON.parse(body) as { choices?: { message?: { content?: unknown }; finish_reason?: unknown }[] }).choices?.[0];
+      text = choice?.message?.content;
+      finish = choice?.finish_reason;
     } catch {
       throw new ProviderError({ status: res.status, body: 'response was not JSON' });
     }
-    if (typeof text !== 'string' || !text.trim()) throw new ProviderError({ status: res.status, body: 'empty reply' });
+    if (typeof text !== 'string' || !text.trim()) {
+      throw new ProviderError({ status: res.status, body: `empty reply${typeof finish === 'string' ? ` (finish_reason: ${finish})` : ''}` });
+    }
     return text;
   }
 
