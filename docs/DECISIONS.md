@@ -116,3 +116,4 @@
 | 2026-10-23 | After the Crown's week is saved, giving roles, the nickname and titles never fails or retries the Crown job; problems are logged and reconcile fixes roles on startup | Previously a role error after the save marked a saved Crown as failed |
 | 2026-10-23 | The bot needs three more permissions for the Crown perks: Manage Nicknames, Priority Speaker, Move Members (it can only give channel permissions it has) | The hourly permission check reports them if missing |
 | 2026-10-23 | Shoutout records are pruned after 60 days like other day-by-day data | Phase 10 pruning rule |
+| 2026-10-23 | `/vip crown-give` (admin) gives this week's Crown to a VIP now, mainly for testing. The current holder loses it (role, custom role, titles, nickname) as if the week ended; this week's row is reused (one per week) and this week's automatic award is marked done | Owner asked how to give the Crown for testing |

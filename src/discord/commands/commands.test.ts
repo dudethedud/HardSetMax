@@ -23,7 +23,7 @@ describe('registered commands', () => {
   it('checks each subcommand at the right level', () => {
     expect(command('stats').levelFor(null, null)).toBe('staff');
     for (const sub of ['list', 'preview', 'polls', 'crown']) expect(command('vip').levelFor(sub, null)).toBe('staff');
-    for (const sub of ['pin', 'unpin', 'remove', 'unblock', 'reshuffle', 'adjust', 'poll-unlock', 'crown-reset', 'crown-lock']) {
+    for (const sub of ['pin', 'unpin', 'remove', 'unblock', 'reshuffle', 'adjust', 'poll-unlock', 'crown-give', 'crown-reset', 'crown-lock']) {
       expect(command('vip').levelFor(sub, null)).toBe('admin');
     }
     expect(command('bot').levelFor('health', null)).toBe('staff');
@@ -34,7 +34,7 @@ describe('registered commands', () => {
 
   it('every subcommand is registered', () => {
     const subs = (name: string) => (command(name).data.options ?? []).map((o) => o.name).sort();
-    expect(subs('vip')).toEqual(['adjust', 'crown', 'crown-lock', 'crown-reset', 'list', 'pin', 'poll-unlock', 'polls', 'preview', 'remove', 'reshuffle', 'unblock', 'unpin']);
+    expect(subs('vip')).toEqual(['adjust', 'crown', 'crown-give', 'crown-lock', 'crown-reset', 'list', 'pin', 'poll-unlock', 'polls', 'preview', 'remove', 'reshuffle', 'unblock', 'unpin']);
     expect(subs('settings')).toEqual(['badge', 'blocked-word', 'channel', 'channel-weight', 'colour', 'role', 'set', 'view']);
     expect(subs('bot')).toEqual(['ai', 'ai-provider', 'health', 'setup']);
   });

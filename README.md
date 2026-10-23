@@ -57,6 +57,7 @@ Five commands, all guild-only and replying privately unless they post on purpose
 | `/vip reshuffle` | admin | Run a reshuffle now (with a confirm button) |
 | `/vip adjust user amount reason` | admin | Manual score correction (logged) |
 | `/vip poll-unlock user` | admin | One more poll for a VIP today |
+| `/vip crown-give user` | admin | Give this week's Crown to a VIP now (for testing or fixing a mistake); the current holder loses it |
 | `/vip crown-reset user` · `/vip crown-lock user locked` | admin | Delete a custom role · block or allow custom roles for someone |
 | `/settings view` · `/settings set key value` | admin | Every setting · change one: timezone, day-boundary, window, cooldowns, voice, spam filter, slots, buffer, min-hold, inactivity-days, min-score, timeout-days, colours, polls-daily-cap, ai-per-user-limit |
 | `/settings channel purpose channel` | admin | Announcements, mod-log, polls, main-chat (AI and shoutouts) or vip-board channel |

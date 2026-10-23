@@ -199,6 +199,29 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
     expect(t.nicks.get(id(1))).toBe('Brand New');
   });
 
+  it('an admin can hand the Crown over mid-week: the old holder loses it, the new one gets everything', async () => {
+    const t = await setup({ members: [1, 2, 3] });
+    // Nobody yet: giving it also marks this week's award as done.
+    expect(await t.crown.giveManually(id(1), id(9))).toMatch(/now holds the Crown/);
+    expect((await t.crown.current())?.userId).toBe(id(1));
+    expect(await t.crown.afterReshuffle('2026-10-27', result([cand(2, 99)], [2]))).toBeNull();
+    expect(t.nicks.get(id(1))).toBe('👑 Ace');
+    await t.powers.appoint(id(1), 'champion', id(3));
+
+    expect(await t.crown.giveManually(id(1), id(9))).toMatch(/already holds/);
+    await t.crown.giveManually(id(2), id(9));
+    expect((await t.crown.current())?.userId).toBe(id(2));
+    expect(t.memberRoles.get(id(1))!.has(CROWN_ROLE)).toBe(false);
+    expect(t.memberRoles.get(id(2))!.has(CROWN_ROLE)).toBe(true);
+    expect(t.nicks.get(id(1))).toBe('Ace');
+    expect(t.nicks.get(id(2))).toBe('👑 user2');
+    expect((await t.powers.titles()).every((x) => !x.holderId)).toBe(true);
+    expect((await t.crown.current())?.decreeAt).toBeNull();
+    // Next week's award works as usual.
+    clockNow = new Date('2026-11-02T07:00:30Z');
+    expect(await t.crown.afterReshuffle('2026-11-02', result([cand(3, 99)], [3]))).toBe(id(3));
+  });
+
   it('one decree per Crown week, with no pings; a failed post can be retried', async () => {
     const t = await setup({ members: [1, 2] });
     expect(await t.powers.decree(id(1), 'hi')).toMatch(/Only this week/);
