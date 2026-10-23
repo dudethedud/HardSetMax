@@ -70,16 +70,16 @@ Do this on the test server.
 
 1. Start the bot and wait for `connected to Discord`.
 2. In Discord, run `/bot health`. Database, Gateway leader and Intents should show ✅.
-3. Run `/config set key:day-boundary value:04:30`, then `/config view`. It should show `day-boundary = 04:30`.
-4. Click **Restart** in Wispbyte. When it's back, `/config view` must still show `04:30`.
+3. Run `/settings set key:day-boundary value:04:30`, then `/settings view`. It should show `day-boundary = 04:30`.
+4. Click **Restart** in Wispbyte. When it's back, `/settings view` must still show `04:30`.
 5. **Second-copy check:** on your own computer, clone the repo, create the same `.env`, and run `npm install` then `npm start`. With the hosted bot still running, the local copy must log
    ```
    another copy of the bot holds gateway-leader; waiting for it to exit
    ```
    and must not log `connected to Discord`. Stop the local copy with Ctrl+C. It should exit at once.
-6. Put the setting back: `/config set key:day-boundary value:00:00`.
+6. Put the setting back: `/settings set key:day-boundary value:00:00`.
 
-Every `/config set` is also saved in the `AuditLog` table (`action = 'config.set'`, with old and new values). You can see it in Supabase's **Table Editor**.
+Every `/settings set` is also saved in the `AuditLog` table (`action = 'config.set'`, with old and new values). You can see it in Supabase's **Table Editor**.
 
 ## 4. Supabase limits to watch
 - **500 MB** of database storage on the free plan. The bot stores counts and timestamps only, and prunes activity older than 60 days (Phase 10).
@@ -112,49 +112,49 @@ GitHub never sees your data unencrypted. Only the private key (`vipbot-backup-ke
 
 Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → restore into an empty database gave identical rows, and the bot's migrations ran on the copy. Restoring over a database with tables, decrypting with the wrong key, and connecting with a wrong certificate all fail. The full drill on Supabase is still Phase 10.
 
-## Admin commands
-All are admin-only and reply privately. The full list is also in the README.
+## Commands
+Five commands: `/stats`, `/vip`, `/settings`, `/bot` and `/announce`. They reply privately. Each subcommand is for **staff** (a staff role, Administrator or the owner), **admin** (Administrator or the owner) or the **owner** only; the README has the full list with who can use what. Staff need **Timeout Members** for Discord to show them the commands; the bot checks the level itself every time, whatever Discord shows.
 
 | Command | What it does |
 |---|---|
 | `/bot health` | Version, uptime, database, lock, intents, current server-day, writes waiting to be saved |
-| `/config view` | All settings and channel weights |
-| `/config set key value` | Change a setting: timezone, day boundary, window, cooldown, voice weight and cap, spam filter limits |
-| `/config channel-weight channel weight` | 0 ignores a channel, 0.5 counts half, 1 is normal (max 5). Threads use their parent's weight |
+| `/settings view` | All settings and channel weights |
+| `/settings set key value` | Change a setting: timezone, day boundary, window, cooldown, voice weight and cap, spam filter limits |
+| `/settings channel-weight channel weight` | 0 ignores a channel, 0.5 counts half, 1 is normal (max 5). Threads use their parent's weight |
 | `/stats user` | Score, rank, active days, points to reach #10, today so far, 7-day breakdown |
-| `/leaderboard [count]` | Top members this window |
-| `/activity adjust user amount reason` | Add or remove points (saved with the reason, counts from tomorrow's window) |
-| `/setup run` | Create or repair the VIP role, VIP Lounge and panels; checks role order and bot permissions. Safe to rerun |
-| `/config channel purpose channel` | Announcements and mod-log channels |
-| `/config staff-roles add/remove/list` | Members with a staff role can't be VIP |
-| `/config level-roles-top role` | bleed's highest level role; VIP goes directly above it on `/setup run` |
+| `/stats [count]` | Top members this window |
+| `/vip adjust user amount reason` | Add or remove points (saved with the reason, counts from tomorrow's window) |
+| `/bot setup` | Create or repair the VIP role, VIP Lounge and panels; checks role order and bot permissions. Safe to rerun |
+| `/settings channel purpose channel` | Announcements and mod-log channels |
+| `/settings role action:add-staff/remove-staff/list-staff` | Members with a staff role can't be VIP |
+| `/settings role action:level-top role` | bleed's highest level role; VIP goes directly above it on `/bot setup` |
 | `/vip list` | VIPs with rank, score, days held, 📌 if pinned |
 | `/vip preview` | What a reshuffle would do now, plus ranks 11–15 |
 | `/vip pin user` / `/vip unpin user` | Lock someone into VIP (gives VIP now if needed) / let the reshuffle decide again |
 | `/vip remove user [block_days]` | Remove VIP now; optionally block from VIP for N days |
 | `/vip unblock user` | Clear a block |
-| `/vip reshuffle-now` | Run a reshuffle now, after a confirm button. The nightly one still runs |
-| `/vip colours list/add/edit/remove` | VIP colour options (up to 24); changes update the roles and the lounge picker |
-| `/vip badges list/set/remove` | History badge milestones (defaults: 4 weeks VIP Regular, 12 VIP Veteran, 26 VIP Legend) |
-| `/crown view` | This week's Crown holder and their custom role |
-| `/crown reset-role user` | Delete someone's custom role and its saved settings |
-| `/crown lock user` / `/crown unlock user` | Block or allow creating and editing a custom role |
-| `/crown blocked-words add/remove/list` | Words custom role names can't contain (lookalikes like 0 for o are caught) |
-| `/polls status` | VIP polls used today, who posted, who's locked, when it resets |
-| `/polls unlock user` | Give a VIP one more poll today, even past the daily limit (logged) |
-| `/config channel purpose:polls` / `/config polls-role` / `/config set polls-daily-cap` | Use an existing polls channel or ping role; server-wide daily VIP poll limit (default 2) |
+| `/vip reshuffle` | Run a reshuffle now, after a confirm button. The nightly one still runs |
+| `/settings colour action:list/add/edit/remove` | VIP colour options (up to 24); changes update the roles and the lounge picker |
+| `/settings badge action:list/set/remove` | History badge milestones (defaults: 4 weeks VIP Regular, 12 VIP Veteran, 26 VIP Legend) |
+| `/vip crown` | This week's Crown holder and their custom role |
+| `/vip crown-reset user` | Delete someone's custom role and its saved settings |
+| `/vip crown-lock user locked:true` / `/vip crown-lock user locked:false` | Block or allow creating and editing a custom role |
+| `/settings blocked-word action:add/remove/list` | Words custom role names can't contain (lookalikes like 0 for o are caught) |
+| `/vip polls` | VIP polls used today, who posted, who's locked, when it resets |
+| `/vip poll-unlock user` | Give a VIP one more poll today, even past the daily limit (logged) |
+| `/settings channel purpose:polls` / `/settings role action:polls` / `/settings set polls-daily-cap` | Use an existing polls channel or ping role; server-wide daily VIP poll limit (default 2) |
 
 ### AI chat (Puppyboy Carter)
-- The bot replies only in the **main chat** channel (`/config channel purpose:main-chat`), when @mentioned or when someone replies to one of its messages. It reads up to 6 messages of the reply chain from Discord at that moment and saves nothing. It ignores bots and spam-flagged messages.
+- The bot replies only in the **main chat** channel (`/settings channel purpose:main-chat`), when @mentioned or when someone replies to one of its messages. It reads up to 6 messages of the reply chain from Discord at that moment and saves nothing. It ignores bots and spam-flagged messages.
 - Each person gets up to `ai-per-user-limit` replies a minute (default 3); after that it reacts with 👀.
 - **What the AI is given:** `prompts/personality.md` and `prompts/vip-guide.md` (edit, then restart), the asker's **own** stats only, and the current VIPs and Crown holder. It has no tools: it can't change anything, whatever it says.
 - **Safety:** replies can only ping the asker. `@everyone`, `@here` and role mentions are stripped, and anything with a blocked word is replaced with a fixed line. Replies are at most 400 characters.
-- **Provider chain:** `/ai providers` shows it. Default: Groq (`llama-3.1-8b-instant`, 1,000/day) → Cloudflare Workers AI (`@cf/meta/llama-3.1-8b-instruct`, 800/day) → pre-written replies.
+- **Provider chain:** `/bot ai action:providers` shows it. Default: Groq (`llama-3.1-8b-instant`, 1,000/day) → Cloudflare Workers AI (`@cf/meta/llama-3.1-8b-instruct`, 800/day) → pre-written replies.
   - Each provider's cap resets at its own time (default 00:00 UTC).
   - On an error, a 10 s timeout or a 429, the bot uses the next provider and cools the failing one down for 5 min, or until its reset if the daily limit is used up.
 - **Adding a provider:** insert an `AiProvider` row (OpenAI-compatible base URL, model, the env var name holding its key, cap, order) and add the key to `.env`. No code change.
 - **Posts:** the daily VIP update and the weekly recap get one AI hype line on top. It's dropped if it contains numbers, since numbers always come from code, and the post goes without it if the AI is unavailable. New VIPs get a welcome in the lounge, with a fixed message if the AI is unavailable.
-- Commands: `/ai status`, `/ai toggle` (pre-written replies still work when off), `/ai test`, `/ai providers`, `/ai provider-cap`, `/ai provider-toggle`, `/ai provider-model`.
+- Commands: `/bot ai action:status`, `/bot ai action:off` (pre-written replies still work when off), `/bot ai action:test`, `/bot ai action:providers`, `/bot ai-provider setting:cap`, `/bot ai-provider setting:toggle`, `/bot ai-provider setting:model`.
 
 ### Temporary VIP voice channels
 - In the VIP Lounge panel, **🔊 Create VIP voice** makes a voice channel in the VIP Lounge category named "*Name*'s room". Only VIPs can see it. Each VIP can have one at a time.
@@ -169,7 +169,7 @@ All are admin-only and reply privately. The full list is also in the README.
   - the Crown holder
   - the top 3 with scores
   - the longest-standing current VIP (days in a row, including pinned time)
-  - VIP swaps (everyone who gained VIP in that week's reshuffles, including `/vip reshuffle-now`)
+  - VIP swaps (everyone who gained VIP in that week's reshuffles, including `/vip reshuffle`)
   - badges earned
 
 ### How the Crown works
@@ -181,6 +181,17 @@ All are admin-only and reply privately. The full list is also in the README.
   - Creating is free, then 3 edits per Crown week.
   - The role sits right above the Crown role. It's deleted when the Crown is lost, but its settings are kept, so it comes back automatically if they win again.
 
+### VIP and Crown perks
+- **#vip-board** is edited in place a few seconds after any VIP or Crown change, and every hour. If someone deletes it, the bot posts it again on startup or `/bot setup`.
+- **🪪 My profile** and **📣 Shoutout** are buttons in the VIP Lounge. Shoutouts: one per VIP per server-day, 200 characters, posted in main chat (or announcements) with mentions removed and no pings. The text isn't saved; the mod-log links to the message.
+- **The Crown's titles** (🎖️ button): pick a member per title. Not for staff, bots or themselves; one title each. All titles are cleared at the weekly handover and when the Crown is lost. They're roles with no permissions; rename them in Server Settings if you like (the bot only keeps them permission-free).
+- **Decree** (📜 button): one per Crown week, 500 characters, posted in announcements with no pings. `/vip crown` shows whether it's been used.
+- **👑 nickname:** set when the Crown is awarded and restored when it ends, unless they changed it themselves in between. The bot can't rename the server owner or anyone with a role above the bot's.
+- **👑 Hall:** the Crown's temporary voice channel gets Priority Speaker and Move Members for them, in that channel only.
+
+### /announce (owner only)
+`/announce [channel]` opens a form. After you submit it you get a private preview with **Send** and **Cancel**. Send posts it from the bot with an `@everyone` ping (other mentions in the text don't ping). The draft is deleted once it's sent, or after 15 minutes. Only the server owner can use it; admins and staff get "Only the server owner can use this."
+
 ### How VIP polls work
 - In #polls only VIPs, staff and admins can post. Everyone can vote and chat in each poll's thread.
 - Polls are handled one at a time, in the order Discord received them. A VIP's first poll of the day:
@@ -191,13 +202,13 @@ All are admin-only and reply privately. The full list is also in the README.
 - Anything over a limit (a second poll from the same VIP, or past the cap) is deleted and logged, with no ping. Normal messages from VIPs in #polls are deleted too; discussion goes in the threads.
 - Staff and admin polls have no limits and still get the ping and thread.
 - Deleting your own poll doesn't give your poll back.
-- At the day boundary, the `poll-unlock` job removes only locks that have expired. Startup and `/setup run` make the #polls permissions match the saved locks.
+- At the day boundary, the `poll-unlock` job removes only locks that have expired. Startup and `/bot setup` make the #polls permissions match the saved locks.
 - Polls posted while the bot is offline aren't checked.
 
 ### How the daily reshuffle runs
 - Every 15 s the bot checks whether the server-day that just ended has a reshuffle in `JobRun` (job `reshuffle`, period = that day). If not, it runs it. This also covers catch-up: if the bot was offline at midnight, it runs as soon as it's back, once, for the most recent day only.
 - The reshuffle saves all VIP changes and marks itself done in **one transaction**, so it can't half-apply or run twice. Roles are applied after that, one at a time. Then the mod-log entries and the VIP update post go out. If the bot dies in between, startup fixes roles to match the database and posts any VIP update that didn't go out.
-- It's skipped (and retried) until `/setup run` has created the VIP role.
+- It's skipped (and retried) until `/bot setup` has created the VIP role.
 
 ### Testing midnight without waiting (test server only)
 Set `CLOCK_OFFSET_MINUTES` in `.env` to shift the bot's clock for the schedule. For example, if it's 14:00 now, `CLOCK_OFFSET_MINUTES=605` makes the bot think it's 00:05 tomorrow, so the reshuffle runs right after start. Restart mid-day with the same offset and check in `/bot health` and the mod-log that it neither repeats nor gets skipped. **Remove the setting afterwards.** Message and voice counts always use the real time.
@@ -230,11 +241,11 @@ Prove a backup can really be restored, without touching live data:
 1. Do SETUP parts 1–5 for the real server: invite the bot with all the permissions, and in `.env` set `GUILD_ID` to the real server and remove `CLOCK_OFFSET_MINUTES`.
    - **Tip:** use a fresh Supabase project for the real server, so test-server data doesn't mix in.
 2. Drag the bot's role above bleed's level roles. Then:
-   - `/config level-roles-top`
-   - `/config channel` for announcements, mod-log and main-chat
-   - `/config staff-roles add` for each staff role
-   - `/config channel-weight` (e.g. memes 0.5, bot-spam 0)
-3. `/setup run`, then read the report. Then `/bot health`: everything should be ✅.
+   - `/settings role action:level-top`
+   - `/settings channel` for announcements, mod-log and main-chat
+   - `/settings role action:add-staff` for each staff role
+   - `/settings channel-weight` (e.g. memes 0.5, bot-spam 0)
+3. `/bot setup`, then read the report. Then `/bot health`: everything should be ✅.
 4. Check the role order in **Server Settings → Roles**, top to bottom: bot role, custom crown role, 👑 Crown, the colour roles, VIP, bleed's level roles, badge roles, @everyone.
 5. Let it collect activity. The first reshuffle runs at the next midnight. `/vip preview` shows what it will do.
 6. After that first midnight, check the VIP update post, the mod-log entries and `/vip list`.

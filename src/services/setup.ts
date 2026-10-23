@@ -1,7 +1,8 @@
-// /setup run (SPEC §10, §12): creates or repairs the VIP role and lounge, checks
+// /bot setup (SPEC §10, §12): creates or repairs the VIP role, lounge and board, checks
 // role order and the bot's permissions. Safe to run any number of times.
 import {
   ChannelType,
+  GuildPremiumTier,
   OverwriteType,
   PermissionFlagsBits,
   PermissionsBitField,
@@ -31,7 +32,7 @@ export const VIP_PERMISSIONS = [
   PermissionFlagsBits.SendMessagesInThreads,
 ];
 
-/** What the bot needs for everything up to Phase 4. */
+/** What the bot needs for everything it does. */
 export const BOT_PERMISSIONS = [
   PermissionFlagsBits.ManageRoles,
   PermissionFlagsBits.ManageChannels,
@@ -42,6 +43,10 @@ export const BOT_PERMISSIONS = [
   PermissionFlagsBits.ReadMessageHistory,
   PermissionFlagsBits.MentionEveryone,
   PermissionFlagsBits.Connect,
+  // Crown perks: the 👑 nickname, and the voice perks it hands out in the Crown's hall.
+  PermissionFlagsBits.ManageNicknames,
+  PermissionFlagsBits.PrioritySpeaker,
+  PermissionFlagsBits.MoveMembers,
   // Discord only lets the bot give the VIP role permissions it has itself.
   ...VIP_PERMISSIONS,
 ];
@@ -66,12 +71,13 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
   const missing = BOT_PERMISSIONS.filter((p) => !me.permissions.has(p));
   if (missing.length) report.push(`⚠️ The bot is missing permissions: ${missing.map(permName).join(', ')}. Add them to the bot's role.`);
 
-  // 1. VIP role.
+  // 1. VIP role, with a ⭐ icon when the server's boost level allows role icons.
   const colour = parseHexColour(cfg.vipColour) ?? 0xf1c40f;
+  const icon = guild.premiumTier >= GuildPremiumTier.Tier2 ? { unicodeEmoji: '⭐' } : {};
   let vipRole: Role | null = cfg.vipRoleId ? (guild.roles.cache.get(cfg.vipRoleId) ?? null) : null;
   try {
     if (vipRole) {
-      await vipRole.edit({ colors: { primaryColor: colour }, hoist: true, mentionable: false, permissions: VIP_PERMISSIONS, reason: '/setup run' });
+      await vipRole.edit({ colors: { primaryColor: colour }, hoist: true, mentionable: false, permissions: VIP_PERMISSIONS, ...icon, reason: '/bot setup' });
       report.push(`✅ VIP role ${vipRole.toString()} updated`);
     } else {
       vipRole = await guild.roles.create({
@@ -80,7 +86,8 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
         hoist: true,
         mentionable: false,
         permissions: VIP_PERMISSIONS,
-        reason: '/setup run',
+        ...icon,
+        reason: '/bot setup',
       });
       report.push(`✅ VIP role ${vipRole.toString()} created`);
     }
@@ -96,11 +103,11 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
   try {
     const target = levelTop ? levelTop.position + 1 : botTop.position - 1;
     if (target >= botTop.position) {
-      report.push(`⚠️ The bot's role (${botTop.toString()}) must be above the level roles. Drag it higher in Server Settings → Roles, then run /setup run again.`);
+      report.push(`⚠️ The bot's role (${botTop.toString()}) must be above the level roles. Drag it higher in Server Settings → Roles, then run /bot setup again.`);
     } else if (vipRole.position !== target) {
-      await vipRole.setPosition(target, { reason: '/setup run' });
+      await vipRole.setPosition(target, { reason: '/bot setup' });
     }
-    if (!levelTop) report.push('ℹ️ No level-roles-top set, so VIP was placed just below the bot. Set it with /config level-roles-top.');
+    if (!levelTop) report.push('ℹ️ No level-roles-top set, so VIP was placed just below the bot. Set it with /settings role action:level-top.');
   } catch (err) {
     report.push(`⚠️ Couldn't move the VIP role: ${explainRoleError(err)}`);
   }
@@ -133,17 +140,17 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
   try {
     const existing = (id: string | null) => (id ? (guild.channels.cache.get(id) ?? null) : null);
     let category = existing(cfg.loungeCategoryId) as CategoryChannel | null;
-    if (category?.type === ChannelType.GuildCategory) await category.permissionOverwrites.set(overwrites, '/setup run');
-    else category = await guild.channels.create({ name: 'VIP Lounge', type: ChannelType.GuildCategory, permissionOverwrites: overwrites, reason: '/setup run' });
+    if (category?.type === ChannelType.GuildCategory) await category.permissionOverwrites.set(overwrites, '/bot setup');
+    else category = await guild.channels.create({ name: 'VIP Lounge', type: ChannelType.GuildCategory, permissionOverwrites: overwrites, reason: '/bot setup' });
     ids.loungeCategoryId = category.id;
 
     const ensureChild = async (id: string | null, name: string, type: ChannelType.GuildText | ChannelType.GuildVoice): Promise<GuildBasedChannel> => {
       const ch = existing(id);
       if (ch && ch.type === type && 'setParent' in ch) {
-        await ch.setParent(category.id, { lockPermissions: true, reason: '/setup run' });
+        await ch.setParent(category.id, { lockPermissions: true, reason: '/bot setup' });
         return ch;
       }
-      return guild.channels.create({ name, type, parent: category.id, reason: '/setup run' });
+      return guild.channels.create({ name, type, parent: category.id, reason: '/bot setup' });
     };
     ids.loungeTextId = (await ensureChild(cfg.loungeTextId, 'vip-lounge', ChannelType.GuildText)).id;
     ids.loungeVoiceId = (await ensureChild(cfg.loungeVoiceId, 'VIP Voice', ChannelType.GuildVoice)).id;
@@ -153,8 +160,41 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
     report.push(`❌ VIP lounge: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  await db.guildConfig.update({ where: { guildId: guild.id }, data: { vipRoleId: vipRole.id, ...ids } });
-  await db.auditLog.create({ data: { action: 'setup.run', data: { vipRoleId: vipRole.id, ...ids } } });
+  if (!('unicodeEmoji' in icon)) report.push('ℹ️ The VIP role gets a ⭐ icon once the server reaches Boost Level 2.');
+
+  // 4. The public VIP board: everyone can read it, only the bot posts.
+  let vipBoardChannelId = cfg.vipBoardChannelId;
+  try {
+    const boardOverwrites: OverwriteResolvable[] = [
+      {
+        id: guild.roles.everyone.id,
+        type: OverwriteType.Role,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory],
+        deny: [
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.SendMessagesInThreads,
+          PermissionFlagsBits.CreatePublicThreads,
+          PermissionFlagsBits.CreatePrivateThreads,
+          PermissionFlagsBits.AddReactions,
+        ],
+      },
+      {
+        id: me.id,
+        type: OverwriteType.Member,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.EmbedLinks],
+      },
+    ];
+    const board = vipBoardChannelId ? guild.channels.cache.get(vipBoardChannelId) : undefined;
+    if (board && 'permissionOverwrites' in board && board.isTextBased()) await board.permissionOverwrites.set(boardOverwrites, '/bot setup');
+    else vipBoardChannelId = (await guild.channels.create({ name: 'vip-board', type: ChannelType.GuildText, permissionOverwrites: boardOverwrites, reason: '/bot setup' })).id;
+    report.push(`✅ VIP board <#${vipBoardChannelId}> ready`);
+  } catch (err) {
+    log.warn({ err }, 'setup: VIP board');
+    report.push(`❌ VIP board: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  await db.guildConfig.update({ where: { guildId: guild.id }, data: { vipRoleId: vipRole.id, vipBoardChannelId, ...ids } });
+  await db.auditLog.create({ data: { action: 'setup.run', data: { vipRoleId: vipRole.id, vipBoardChannelId, ...ids } } });
   await config.load();
 
   for (const step of steps) {
@@ -170,7 +210,7 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
   if (drift.added || drift.removed) report.push(`🔧 VIP roles fixed: ${drift.added} restored, ${drift.removed} removed`);
 
   const c = config.current.guild;
-  if (!c.announceChannelId) report.push('ℹ️ No announcement channel: set one with `/config channel purpose:announcements`.');
-  if (!c.modLogChannelId) report.push('ℹ️ No mod-log channel: set one with `/config channel purpose:mod-log`.');
+  if (!c.announceChannelId) report.push('ℹ️ No announcement channel: set one with `/settings channel purpose:announcements`.');
+  if (!c.modLogChannelId) report.push('ℹ️ No mod-log channel: set one with `/settings channel purpose:mod-log`.');
   return report;
 }

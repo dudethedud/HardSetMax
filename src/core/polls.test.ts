@@ -37,7 +37,7 @@ describe('decidePoll', () => {
     expect([first.accept, second.accept]).toEqual([true, false]);
   });
 
-  it('/polls unlock gives one more poll even past the cap, without counting toward it', () => {
+  it('/vip poll-unlock gives one more poll even past the cap, without counting toward it', () => {
     expect(decidePoll({ ...base, userPollsToday: 1, vipPollsToday: 2, hasExtraAllowance: true })).toEqual({
       accept: true,
       kind: 'extra',

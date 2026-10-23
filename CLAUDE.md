@@ -10,7 +10,7 @@ Discord bot that tracks activity and runs a rotating VIP system. Full requiremen
 5. If the spec is unclear or two parts conflict, **ask** rather than guessing. Note the answer in `docs/DECISIONS.md`.
 
 ## Non-negotiable rules
-- **No public slash commands.** Every command: guild-only, `default_member_permissions = Administrator`, `dm_permission = false`, plus a runtime admin check in the handler. Members only use buttons, dropdowns and modals.
+- **No public slash commands.** Every command: guild-only (`dm_permission = false`), defined with `defineCommand`, which sets `default_member_permissions` to Timeout Members (commands with staff subcommands) or Administrator, plus a runtime access check per subcommand (staff / admin / owner, `src/core/access.ts`). Members only use buttons, dropdowns and modals.
 - **Never store message content.** Counts and timestamps only. The spam filter looks at text in memory only and keeps short-lived fingerprints in memory, never in the DB or logs.
 - **Only one copy of the bot connects to Discord at a time** (`gateway-leader` advisory lock, SPEC §11).
 - **All day/date logic goes through the server-day helper** (SPEC §2). No UTC dates, no separate "midnight".

@@ -1,141 +1,66 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, userMention } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, userMention, type SlashCommandUserOption } from 'discord.js';
 import { describeAdd, describeRemove, formatScore } from '../../core/reshuffle.js';
 import { serverDayAt, serverDaysBetween } from '../../core/serverDay.js';
-import { formatHexColour, parseHexColour } from '../../core/vipRules.js';
+import { todayKey } from '../../db/activityRepo.js';
 import { RESHUFFLE_CANCEL_ID, RESHUFFLE_CONFIRM_ID } from '../buttons.js';
-import { defineAdminCommand } from './types.js';
+import { defineCommand } from './types.js';
 
-export const vipCommand = defineAdminCommand(
-  'vip',
-  'Manage VIPs',
-  (b) =>
+const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+const member = (o: SlashCommandUserOption) => o.setName('user').setDescription('Member').setRequired(true);
+
+export const vipCommand = defineCommand({
+  name: 'vip',
+  description: 'VIPs, polls, the Crown and activity scores',
+  levels: {
+    default: 'admin',
+    list: 'staff',
+    preview: 'staff',
+    polls: 'staff',
+    crown: 'staff',
+  },
+  build: (b) =>
     b
       .addSubcommand((s) => s.setName('list').setDescription('Current VIPs with rank, score and days held'))
       .addSubcommand((s) => s.setName('preview').setDescription('What a reshuffle would do now, plus ranks 11–15'))
-      .addSubcommand((s) =>
-        s
-          .setName('pin')
-          .setDescription('Lock someone into VIP (gives VIP now if they don’t have it)')
-          .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)),
-      )
-      .addSubcommand((s) =>
-        s
-          .setName('unpin')
-          .setDescription('Unlock a pinned VIP (the next reshuffle decides)')
-          .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)),
-      )
+      .addSubcommand((s) => s.setName('polls').setDescription('Polls used today, who posted, who is locked, when it resets'))
+      .addSubcommand((s) => s.setName('crown').setDescription('Current Crown holder, their custom role and titles'))
+      .addSubcommand((s) => s.setName('pin').setDescription('Admin: lock someone into VIP (gives VIP now if they don’t have it)').addUserOption(member))
+      .addSubcommand((s) => s.setName('unpin').setDescription('Admin: unlock a pinned VIP (the next reshuffle decides)').addUserOption(member))
       .addSubcommand((s) =>
         s
           .setName('remove')
-          .setDescription('Remove VIP now, optionally blocking them from VIP')
-          .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true))
+          .setDescription('Admin: remove VIP now, optionally blocking them from VIP')
+          .addUserOption(member)
           .addIntegerOption((o) => o.setName('block_days').setDescription('Block from VIP for this many days').setMinValue(1).setMaxValue(365)),
+      )
+      .addSubcommand((s) => s.setName('unblock').setDescription('Admin: clear a VIP block').addUserOption(member))
+      .addSubcommand((s) => s.setName('reshuffle').setDescription('Admin: run the reshuffle now (asks to confirm)'))
+      .addSubcommand((s) =>
+        s
+          .setName('adjust')
+          .setDescription("Admin: add or remove points from a member's score (counts on today's server-day)")
+          .addUserOption(member)
+          .addNumberOption((o) => o.setName('amount').setDescription('Points, e.g. 25 or -10').setRequired(true).setMinValue(-1000).setMaxValue(1000))
+          .addStringOption((o) => o.setName('reason').setDescription('Why (saved in the log)').setRequired(true).setMaxLength(200)),
       )
       .addSubcommand((s) =>
         s
-          .setName('unblock')
-          .setDescription('Clear a VIP block')
-          .addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true)),
+          .setName('poll-unlock')
+          .setDescription('Admin: give a VIP one more poll today (works even past the daily limit)')
+          .addUserOption((o) => o.setName('user').setDescription('VIP').setRequired(true)),
       )
-      .addSubcommand((s) => s.setName('reshuffle-now').setDescription('Run the reshuffle now (asks to confirm)'))
-      .addSubcommandGroup((g) =>
-        g
-          .setName('badges')
-          .setDescription('VIP history badge milestones')
-          .addSubcommand((s) => s.setName('list').setDescription('List badges and how many members have each'))
-          .addSubcommand((s) =>
-            s
-              .setName('set')
-              .setDescription('Add a milestone or rename one')
-              .addIntegerOption((o) => o.setName('weeks').setDescription('Weeks of VIP (pinned time doesn’t count)').setRequired(true).setMinValue(1).setMaxValue(520))
-              .addStringOption((o) => o.setName('name').setDescription('Badge name, e.g. VIP Regular').setRequired(true).setMaxLength(32)),
-          )
-          .addSubcommand((s) =>
-            s
-              .setName('remove')
-              .setDescription('Remove a milestone (deletes its role from everyone)')
-              .addIntegerOption((o) => o.setName('weeks').setDescription('Weeks').setRequired(true).setMinValue(1).setMaxValue(520)),
-          ),
-      )
-      .addSubcommandGroup((g) =>
-        g
-          .setName('colours')
-          .setDescription('VIP colour options')
-          .addSubcommand((s) => s.setName('list').setDescription('List colour options'))
-          .addSubcommand((s) =>
-            s
-              .setName('add')
-              .setDescription('Add a colour option')
-              .addStringOption((o) => o.setName('name').setDescription('Name shown in the picker').setRequired(true).setMaxLength(32))
-              .addStringOption((o) => o.setName('hex').setDescription('Colour, e.g. #FF8800').setRequired(true).setMaxLength(7)),
-          )
-          .addSubcommand((s) =>
-            s
-              .setName('edit')
-              .setDescription('Rename or recolour an option')
-              .addStringOption((o) => o.setName('name').setDescription('Current name').setRequired(true).setMaxLength(32))
-              .addStringOption((o) => o.setName('new_name').setDescription('New name').setMaxLength(32))
-              .addStringOption((o) => o.setName('hex').setDescription('New colour, e.g. #FF8800').setMaxLength(7)),
-          )
-          .addSubcommand((s) =>
-            s
-              .setName('remove')
-              .setDescription('Remove a colour option (deletes its role)')
-              .addStringOption((o) => o.setName('name').setDescription('Name').setRequired(true).setMaxLength(32)),
-          ),
+      .addSubcommand((s) => s.setName('crown-reset').setDescription('Admin: delete a custom role and its saved settings').addUserOption(member))
+      .addSubcommand((s) =>
+        s
+          .setName('crown-lock')
+          .setDescription('Admin: block or allow someone creating or editing a custom role')
+          .addUserOption(member)
+          .addBooleanOption((o) => o.setName('locked').setDescription('True blocks, false allows').setRequired(true)),
       ),
-  async (interaction, ctx) => {
+  async execute(interaction, ctx) {
     const sub = interaction.options.getSubcommand();
     const actor = interaction.user.id;
     const now = ctx.clock.now();
-
-    if (interaction.options.getSubcommandGroup(false) === 'badges') {
-      if (sub === 'list') {
-        const badges = await ctx.db.badge.findMany({ orderBy: { weeks: 'asc' }, include: { _count: { select: { earned: true } } } });
-        await interaction.editReply(
-          badges.length
-            ? badges.map((b) => `• **${b.name}** at ${b.weeks} weeks: ${b._count.earned} member(s)${b.roleId ? ` <@&${b.roleId}>` : ' (no role yet: run /setup run)'}`).join('\n')
-            : 'No badges. Add one with `/vip badges set`.',
-        );
-        return;
-      }
-      const weeks = interaction.options.getInteger('weeks', true);
-      const reply = sub === 'set' ? await ctx.badges.set(weeks, interaction.options.getString('name', true).trim(), actor) : await ctx.badges.remove(weeks, actor);
-      const guild = interaction.guild;
-      const vipRoleId = ctx.config.current.guild.vipRoleId;
-      const vipRole = vipRoleId ? guild.roles.cache.get(vipRoleId) : undefined;
-      const report: string[] = [];
-      if (sub === 'set' && reply.startsWith('✅') && vipRole) await ctx.badges.setup(guild, vipRole, report);
-      await interaction.editReply([reply, ...report.filter((l) => !l.startsWith('✅'))].join('\n'));
-      return;
-    }
-
-    if (interaction.options.getSubcommandGroup(false) === 'colours') {
-      if (sub === 'list') {
-        const options = await ctx.colours.options();
-        await interaction.editReply(
-          options.length ? options.map((o) => `• **${o.name}** ${o.hex}${o.roleId ? ` <@&${o.roleId}>` : ' (no role yet: run /setup run)'}`).join('\n') : 'No colours. Add some with `/vip colours add`.',
-        );
-        return;
-      }
-      const name = interaction.options.getString('name', true).trim();
-      const hexRaw = interaction.options.getString('hex');
-      const hex = hexRaw === null ? undefined : parseHexColour(hexRaw);
-      if (hex === null) {
-        await interaction.editReply(`❌ "${hexRaw}" is not a hex colour like #FF8800.`);
-        return;
-      }
-      const hexText = hex === undefined ? undefined : formatHexColour(hex);
-      let reply: string;
-      if (sub === 'add') reply = await ctx.colours.addOption(name, hexText!, actor);
-      else if (sub === 'edit') {
-        const newName = interaction.options.getString('new_name')?.trim();
-        reply = await ctx.colours.editOption(name, { ...(newName ? { name: newName } : {}), ...(hexText ? { hex: hexText } : {}) }, actor);
-      } else reply = await ctx.colours.removeOption(name, actor);
-      const report = reply.startsWith('✅') ? [...(await ctx.colours.syncRoles()), ...(await ctx.panels.ensureAll())] : [];
-      await interaction.editReply([reply, ...report.filter((l) => !l.startsWith('✅'))].join('\n'));
-      return;
-    }
 
     if (sub === 'list' || sub === 'preview') {
       await ctx.activity.flush(ctx.db).catch(() => undefined);
@@ -170,7 +95,7 @@ export const vipCommand = defineAdminCommand(
       return;
     }
 
-    if (sub === 'reshuffle-now') {
+    if (sub === 'reshuffle') {
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(RESHUFFLE_CONFIRM_ID).setLabel('Run reshuffle now').setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId(RESHUFFLE_CANCEL_ID).setLabel('Cancel').setStyle(ButtonStyle.Secondary),
@@ -182,7 +107,82 @@ export const vipCommand = defineAdminCommand(
       return;
     }
 
+    if (sub === 'polls') {
+      await interaction.editReply(await ctx.polls.status());
+      return;
+    }
+
+    if (sub === 'crown') {
+      const cur = await ctx.crown.current();
+      if (!cur) {
+        await interaction.editReply('Nobody holds the Crown right now.');
+        return;
+      }
+      const custom = await ctx.db.customRole.findUnique({ where: { userId: cur.userId } });
+      await interaction.editReply(
+        [
+          `👑 ${userMention(cur.userId)} holds the Crown for the week starting ${cur.weekStart}.`,
+          custom?.roleId ? `Custom role: <@&${custom.roleId}> (${custom.hex}${custom.emoji ? ` ${custom.emoji}` : ''}), edits used this week: ${custom.editsWeek === cur.weekStart ? custom.editsCount : 0}/3` : 'No custom role yet.',
+          custom?.locked ? '🔒 Custom roles are locked for them.' : '',
+          cur.decreeAt ? `📜 Decree used <t:${Math.floor(cur.decreeAt.getTime() / 1000)}:R>` : '📜 Decree not used yet',
+          ...(await ctx.powers.titles()).map((t) => `🎖️ ${t.name}: ${t.holderId ? userMention(t.holderId) : 'nobody'}`),
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
+      return;
+    }
+
+    if (sub === 'adjust') {
+      const user = interaction.options.getUser('user', true);
+      const amount = interaction.options.getNumber('amount', true);
+      const reason = interaction.options.getString('reason', true);
+      if (amount === 0) {
+        await interaction.editReply('❌ Amount must not be 0.');
+        return;
+      }
+      if (user.bot) {
+        await interaction.editReply("❌ Bots don't have activity scores.");
+        return;
+      }
+      const serverDay = todayKey(ctx.config.current);
+      await ctx.db.$transaction([
+        ctx.db.activityAdjustment.create({ data: { userId: user.id, serverDay, amount, reason, actorId: interaction.user.id } }),
+        ctx.db.auditLog.create({
+          data: { actorId: interaction.user.id, action: 'activity.adjust', targetId: user.id, reason, data: { amount, serverDay } },
+        }),
+      ]);
+      ctx.log.info({ actorId: interaction.user.id, userId: user.id, amount }, 'activity adjusted');
+      await interaction.editReply(
+        `✅ ${amount > 0 ? '+' : ''}${fmt(amount)} points for ${userMention(user.id)} on ${serverDay}. It counts toward the score once that day is in the window.`,
+      );
+      return;
+    }
+
     const user = interaction.options.getUser('user', true);
+
+    if (sub === 'crown-reset') {
+      const done = await ctx.crown.resetRole(user.id, actor);
+      await interaction.editReply(done ? `✅ ${userMention(user.id)}'s custom role and saved settings were deleted.` : `${userMention(user.id)} had no custom role.`);
+      return;
+    }
+
+    if (sub === 'crown-lock') {
+      const locked = interaction.options.getBoolean('locked', true);
+      await ctx.crown.setLocked(user.id, locked, actor);
+      await interaction.editReply(locked ? `🔒 ${userMention(user.id)} can't create or edit a custom role.` : `🔓 ${userMention(user.id)} can create a custom role again.`);
+      return;
+    }
+
+    if (sub === 'poll-unlock') {
+      if (!ctx.vip.vips.has(user.id)) {
+        await interaction.editReply(`❌ ${userMention(user.id)} isn't VIP.`);
+        return;
+      }
+      await interaction.editReply(await ctx.polls.grantExtra(user.id, actor));
+      return;
+    }
+
     if (user.bot) {
       await interaction.editReply("❌ Bots can't be VIP.");
       return;
@@ -237,40 +237,4 @@ export const vipCommand = defineAdminCommand(
       await interaction.editReply(count ? `✅ ${userMention(user.id)} can be VIP again.` : `${userMention(user.id)} wasn't blocked.`);
     }
   },
-);
-
-export const setupCommand = defineAdminCommand(
-  'setup',
-  'Create or repair the bot’s roles, channels and panels',
-  (b) => b.addSubcommand((s) => s.setName('run').setDescription('Safe to run again: creates what’s missing, repairs the rest')),
-  async (interaction, ctx) => {
-    const report = await ctx.runSetup(interaction.guild);
-    await interaction.editReply(report.join('\n').slice(0, 2000));
-  },
-);
-
-export const pollsCommand = defineAdminCommand(
-  'polls',
-  'VIP polls',
-  (b) =>
-    b
-      .addSubcommand((s) => s.setName('status').setDescription('Polls used today, who posted, who is locked, when it resets'))
-      .addSubcommand((s) =>
-        s
-          .setName('unlock')
-          .setDescription('Give a VIP one more poll today (works even past the daily limit)')
-          .addUserOption((o) => o.setName('user').setDescription('VIP').setRequired(true)),
-      ),
-  async (interaction, ctx) => {
-    if (interaction.options.getSubcommand() === 'status') {
-      await interaction.editReply(await ctx.polls.status());
-      return;
-    }
-    const user = interaction.options.getUser('user', true);
-    if (!ctx.vip.vips.has(user.id)) {
-      await interaction.editReply(`❌ ${userMention(user.id)} isn't VIP.`);
-      return;
-    }
-    await interaction.editReply(await ctx.polls.grantExtra(user.id, interaction.user.id));
-  },
-);
+});

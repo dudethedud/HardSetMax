@@ -13,6 +13,7 @@ import {
   type VoiceState,
 } from 'discord.js';
 import type { ConfigStore } from '../config/configStore.js';
+import { crownRoomName } from '../core/perks.js';
 import { canRename, checkRoomName, defaultRoomName, roomAction } from '../core/tempVoice.js';
 import type { Db } from '../db/prisma.js';
 import type { Logger } from '../logger.js';
@@ -28,6 +29,8 @@ export class TempVoiceService {
   /** channelId → recent rename times (Discord allows 2 per 10 minutes). */
   #renames = new Map<string, number[]>();
   #sweeping: Promise<void> | null = null;
+  /** Set when the Crown exists: the Crown gets a hall with Priority Speaker. */
+  isCrown: (userId: string) => Promise<boolean> = () => Promise.resolve(false);
 
   constructor(
     private readonly client: Client,
@@ -54,7 +57,7 @@ export class TempVoiceService {
     if (!this.vip.vips.has(userId)) return '🔊 VIP voice channels are for VIPs only.';
     const guild = this.#guild();
     const categoryId = this.config.current.guild.loungeCategoryId;
-    if (!guild || !categoryId) return '❌ The VIP Lounge isn’t set up. Ask an admin to run /setup run.';
+    if (!guild || !categoryId) return '❌ The VIP Lounge isn’t set up. Ask an admin to run /bot setup.';
 
     const existing = await this.db.tempVoiceChannel.findUnique({ where: { ownerId: userId } });
     if (existing) {
@@ -63,14 +66,21 @@ export class TempVoiceService {
     }
 
     const member = guild.members.cache.get(userId);
+    const crowned = await this.isCrown(userId);
     const channel = await guild.channels.create({
-      name: defaultRoomName(member?.displayName ?? 'VIP'),
+      name: crowned ? crownRoomName(member?.displayName ?? 'Crown') : defaultRoomName(member?.displayName ?? 'VIP'),
       type: ChannelType.GuildVoice,
       parent: categoryId,
       reason: `VIP voice channel for ${userId}`,
     });
     // Starts empty: the owner has 60 s to join before it's cleaned up.
     await this.db.tempVoiceChannel.create({ data: { channelId: channel.id, ownerId: userId, emptySince: this.clock.now() } });
+    if (crowned) {
+      // Keeps the category's VIP-only permissions and adds the Crown's voice perk.
+      await channel.permissionOverwrites
+        .edit(userId, { PrioritySpeaker: true, MoveMembers: true }, { reason: 'Crown hall' })
+        .catch((err: unknown) => this.log.warn({ err }, "couldn't give the Crown Priority Speaker"));
+    }
     await channel
       .send({
         content: `🔊 <@${userId}>'s VIP voice channel. Only the owner can use these buttons.`,
@@ -84,7 +94,7 @@ export class TempVoiceService {
       })
       .catch((err: unknown) => this.log.warn({ err }, "couldn't post temp voice controls"));
     await this.db.auditLog.create({ data: { action: 'tempvoice.create', actorId: userId, targetId: channel.id } });
-    return `✅ Created <#${channel.id}>. Join within a minute or it's removed. Rename it or set a user limit from its chat.`;
+    return `✅ Created <#${channel.id}>${crowned ? ' (👑 with Priority Speaker and Move Members in it)' : ''}. Join within a minute or it's removed. Rename it or set a user limit from its chat.`;
   }
 
   /** Is this user the owner of this temp channel? */

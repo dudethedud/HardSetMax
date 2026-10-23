@@ -1,5 +1,5 @@
 // Buttons and other components, by fixed custom ID (SPEC §11), so they keep working
-// after restarts. Later phases add member-facing panel buttons here.
+// after restarts.
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -8,12 +8,20 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  UserSelectMenuBuilder,
   type ButtonInteraction,
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
+  type UserSelectMenuInteraction,
 } from 'discord.js';
+import type { AccessLevel } from '../core/access.js';
+import { TITLE_SLOTS } from '../core/perks.js';
+import { DECREE_MAX } from '../services/crownPowers.js';
+import { SHOUTOUT_MAX } from '../services/shoutouts.js';
+import { ANNOUNCE_CANCEL_ID, ANNOUNCE_MODAL_ID, ANNOUNCE_SEND_ID, cancelAnnouncement, previewAnnouncement, sendAnnouncement } from './announce.js';
+import { profileEmbed } from './profile.js';
 import type { FormPrefill } from '../services/crown.js';
-import { COLOUR_NONE, COLOUR_PICKER_ID, CROWN_CREATE_ID, CROWN_EDIT_ID } from '../services/panels.js';
+import { COLOUR_NONE, COLOUR_PICKER_ID, CROWN_CREATE_ID, CROWN_DECREE_ID, CROWN_EDIT_ID, CROWN_TITLES_ID, VIP_PROFILE_ID, VIP_SHOUTOUT_ID } from '../services/panels.js';
 import { TEMP_VOICE_CREATE_ID, TEMP_VOICE_LIMIT_ID, TEMP_VOICE_RENAME_ID } from '../services/tempVoice.js';
 import { MAX_USER_LIMIT, parseUserLimit } from '../core/tempVoice.js';
 import { MANUAL_RESHUFFLE_JOB } from '../services/vipService.js';
@@ -24,14 +32,14 @@ export const RESHUFFLE_CANCEL_ID = 'vip:reshuffle-now:cancel';
 
 export interface ButtonHandler {
   id: string;
-  /** Admin-only buttons get the same runtime admin check as commands. */
-  adminOnly: boolean;
+  /** Staff, admin or owner buttons get the same runtime check as commands. Unset: anyone (the handler checks). */
+  level?: AccessLevel;
   run(interaction: ButtonInteraction<'cached'>, ctx: AppContext): Promise<void>;
 }
 
 const reshuffleConfirm: ButtonHandler = {
   id: RESHUFFLE_CONFIRM_ID,
-  adminOnly: true,
+  level: 'admin',
   async run(interaction, ctx) {
     // Answer within Discord's 3 s, then do the slow part.
     await interaction.update({ content: '⏳ Running the reshuffle…', components: [] });
@@ -42,7 +50,7 @@ const reshuffleConfirm: ButtonHandler = {
 
 const reshuffleCancel: ButtonHandler = {
   id: RESHUFFLE_CANCEL_ID,
-  adminOnly: true,
+  level: 'admin',
   async run(interaction) {
     await interaction.update({ content: 'Cancelled.', components: [] });
   },
@@ -72,7 +80,6 @@ export function crownRoleModal(prefill: FormPrefill | null): ModalBuilder {
 /** Opens the form, or explains privately why not. Must be the first reply (no defer). */
 const openCrownForm = (id: string): ButtonHandler => ({
   id,
-  adminOnly: false,
   async run(interaction, ctx) {
     const access = await ctx.crown.formAccess(interaction.user.id);
     if (!access.ok) {
@@ -88,7 +95,6 @@ const TEMP_VOICE_LIMIT_MODAL = 'tempvoice:limit-modal';
 
 const tempVoiceCreate: ButtonHandler = {
   id: TEMP_VOICE_CREATE_ID,
-  adminOnly: false,
   async run(interaction, ctx) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await interaction.editReply(await ctx.tempVoice.create(interaction.user.id));
@@ -98,7 +104,6 @@ const tempVoiceCreate: ButtonHandler = {
 /** Owner-only control buttons in a temp channel's chat; they open a one-field form. */
 const tempVoiceControl = (id: string, modalId: string, label: string, placeholder: string, max: number): ButtonHandler => ({
   id,
-  adminOnly: false,
   async run(interaction, ctx) {
     if (!(await ctx.tempVoice.isOwner(interaction.user.id, interaction.channelId))) {
       await interaction.reply({ content: 'Only the channel owner can do that.', flags: MessageFlags.Ephemeral });
@@ -117,8 +122,91 @@ const tempVoiceControl = (id: string, modalId: string, label: string, placeholde
   },
 });
 
+/** A one-field paragraph form. */
+function textModal(id: string, title: string, label: string, max: number, placeholder: string): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(id)
+    .setTitle(title)
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder().setCustomId('text').setLabel(label).setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(max).setPlaceholder(placeholder),
+      ),
+    );
+}
+
+const SHOUTOUT_MODAL_ID = 'vip:shoutout-modal';
+const DECREE_MODAL_ID = 'crown:decree-modal';
+const TITLE_SELECT_PREFIX = 'crown:title:';
+
+const profile: ButtonHandler = {
+  id: VIP_PROFILE_ID,
+  async run(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ embeds: [await profileEmbed(ctx, interaction.user.id, interaction.member.displayName)] });
+  },
+};
+
+const shoutout: ButtonHandler = {
+  id: VIP_SHOUTOUT_ID,
+  async run(interaction, ctx) {
+    const access = await ctx.shoutouts.access(interaction.user.id);
+    if (!access.ok) {
+      await interaction.reply({ content: access.message, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.showModal(textModal(SHOUTOUT_MODAL_ID, '📣 VIP shoutout', 'Your shoutout (posted in main chat, no pings)', SHOUTOUT_MAX, 'GG everyone, movie night at 8!'));
+  },
+};
+
+const decree: ButtonHandler = {
+  id: CROWN_DECREE_ID,
+  async run(interaction, ctx) {
+    const access = await ctx.powers.decreeAccess(interaction.user.id);
+    if (!access.ok) {
+      await interaction.reply({ content: access.message, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.showModal(textModal(DECREE_MODAL_ID, '📜 The Crown’s decree', 'Your decree (one per week, no pings)', DECREE_MAX, 'By order of the Crown…'));
+  },
+};
+
+/** The Crown's title picker: one member menu per title, shown privately. */
+const titles: ButtonHandler = {
+  id: CROWN_TITLES_ID,
+  async run(interaction, ctx) {
+    const cur = await ctx.crown.current();
+    if (cur?.userId !== interaction.user.id) {
+      await interaction.reply({ content: '👑 Only this week’s Crown holder can hand out titles.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const rows = (await ctx.powers.titles()).map((t) => {
+      const menu = new UserSelectMenuBuilder()
+        .setCustomId(TITLE_SELECT_PREFIX + t.slot)
+        .setPlaceholder(`${t.name}: pick someone`)
+        .setMinValues(0)
+        .setMaxValues(1);
+      if (t.holderId) menu.setDefaultUsers(t.holderId);
+      return new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(menu);
+    });
+    await interaction.editReply({
+      content: '🎖️ **Your titles** last until the end of your Crown week. Pick someone for each, or clear a menu to take a title back. Staff and bots can’t hold titles.',
+      components: rows,
+    });
+  },
+};
+
+const announceSend: ButtonHandler = { id: ANNOUNCE_SEND_ID, level: 'owner', run: sendAnnouncement };
+const announceCancel: ButtonHandler = { id: ANNOUNCE_CANCEL_ID, level: 'owner', run: cancelAnnouncement };
+
 export const BUTTONS = new Map(
   [
+    profile,
+    shoutout,
+    decree,
+    titles,
+    announceSend,
+    announceCancel,
     reshuffleConfirm,
     reshuffleCancel,
     openCrownForm(CROWN_CREATE_ID),
@@ -132,6 +220,8 @@ export const BUTTONS = new Map(
 
 export interface ModalHandler {
   id: string;
+  /** Checked like commands. Unset: anyone (the handler checks). */
+  level?: AccessLevel;
   run(interaction: ModalSubmitInteraction<'cached'>, ctx: AppContext): Promise<void>;
 }
 
@@ -174,7 +264,25 @@ const tempVoiceLimit: ModalHandler = {
   },
 };
 
-export const MODALS = new Map([crownModal, tempVoiceRename, tempVoiceLimit].map((m) => [m.id, m]));
+const shoutoutModal: ModalHandler = {
+  id: SHOUTOUT_MODAL_ID,
+  async run(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.editReply(await ctx.shoutouts.post(interaction.user.id, interaction.fields.getTextInputValue('text')));
+  },
+};
+
+const decreeModal: ModalHandler = {
+  id: DECREE_MODAL_ID,
+  async run(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.editReply(await ctx.powers.decree(interaction.user.id, interaction.fields.getTextInputValue('text')));
+  },
+};
+
+const announceModal: ModalHandler = { id: ANNOUNCE_MODAL_ID, level: 'owner', run: previewAnnouncement };
+
+export const MODALS = new Map([crownModal, tempVoiceRename, tempVoiceLimit, shoutoutModal, decreeModal, announceModal].map((m) => [m.id, m]));
 
 export interface SelectHandler {
   id: string;
@@ -194,3 +302,18 @@ const colourPicker: SelectHandler = {
 };
 
 export const SELECTS = new Map([colourPicker].map((s) => [s.id, s]));
+
+export interface UserSelectHandler {
+  id: string;
+  run(interaction: UserSelectMenuInteraction<'cached'>, ctx: AppContext): Promise<void>;
+}
+
+const titleSelect = (slot: string): UserSelectHandler => ({
+  id: TITLE_SELECT_PREFIX + slot,
+  async run(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.editReply(await ctx.powers.appoint(interaction.user.id, slot, interaction.values[0] ?? null));
+  },
+});
+
+export const USER_SELECTS = new Map(TITLE_SLOTS.map((t) => [TITLE_SELECT_PREFIX + t.slot, titleSelect(t.slot)]));

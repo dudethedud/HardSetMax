@@ -151,14 +151,14 @@ export class PollService {
       else await channel.permissionOverwrites.delete(id, reason);
     } catch (err) {
       this.log.warn({ err, id }, 'poll lock change failed');
-      await this.modLog.post(`⚠️ Couldn't change #polls permissions (the bot needs Manage Permissions there). Run /setup run.`);
+      await this.modLog.post(`⚠️ Couldn't change #polls permissions (the bot needs Manage Permissions there). Run /bot setup.`);
     }
   }
 
-  /** /polls unlock: one more poll today for this VIP, even past the cap. */
+  /** /vip poll-unlock: one more poll today for this VIP, even past the cap. */
   async grantExtra(userId: string, actorId: string): Promise<string> {
     const channel = await this.#channel();
-    if (!channel) return '❌ No polls channel. Run /setup run.';
+    if (!channel) return '❌ No polls channel. Run /bot setup.';
     const now = this.clock.now();
     const day = serverDayAt(now, this.config.current.boundary).key;
     const until = serverDayByKey(day, this.config.current.boundary).end;
@@ -204,7 +204,7 @@ export class PollService {
     }
   }
 
-  /** Startup and /setup run: #polls overwrites match PollLock rows. */
+  /** Startup and /bot setup: #polls overwrites match PollLock rows. */
   async reconcileLocks(): Promise<void> {
     await this.unlockExpired();
     const channel = await this.#channel();
@@ -231,7 +231,7 @@ export class PollService {
     }
   }
 
-  /** /polls status text. */
+  /** /vip polls text. */
   async status(): Promise<string> {
     const now = this.clock.now();
     const day = serverDayAt(now, this.config.current.boundary);
@@ -248,7 +248,7 @@ export class PollService {
     return lines.join('\n');
   }
 
-  /** /setup run: the polls channel, its permissions and the Polls role. */
+  /** /bot setup: the polls channel, its permissions and the Polls role. */
   async setup(guild: Guild, vipRole: Role, report: string[]): Promise<void> {
     const cfg = this.config.current.guild;
     const me = await guild.members.fetchMe();
@@ -296,9 +296,9 @@ export class PollService {
     try {
       const existing = channelId ? guild.channels.cache.get(channelId) : undefined;
       if (existing && 'permissionOverwrites' in existing && existing.isTextBased()) {
-        await existing.permissionOverwrites.set(overwrites, '/setup run');
+        await existing.permissionOverwrites.set(overwrites, '/bot setup');
       } else {
-        channelId = (await guild.channels.create({ name: 'polls', permissionOverwrites: overwrites, reason: '/setup run' })).id;
+        channelId = (await guild.channels.create({ name: 'polls', permissionOverwrites: overwrites, reason: '/bot setup' })).id;
       }
       report.push(`✅ Polls channel <#${channelId}> ready`);
     } catch (err) {

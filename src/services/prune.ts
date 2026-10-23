@@ -25,9 +25,19 @@ export async function pruneOldData(db: Db, config: ConfigStore, now: Date): Prom
     db.timeoutEvent.deleteMany({ where: { endedAt: { lt: oldest } } }),
     db.aiUsage.deleteMany({ where: { providerDay: { lt: oldest.toISOString().slice(0, 10) } } }),
     db.modalDraft.deleteMany({ where: { expiresAt: { lt: now } } }),
+    db.shoutout.deleteMany({ where: { serverDay: { lt: oldestDay } } }),
   ]);
-  const [activityDays, adjustments, pollPosts, voiceSessions, timeouts, aiUsage, drafts] = counts.map((c) => c.count);
-  return { activityDays: activityDays!, adjustments: adjustments!, pollPosts: pollPosts!, voiceSessions: voiceSessions!, timeouts: timeouts!, aiUsage: aiUsage!, drafts: drafts! };
+  const [activityDays, adjustments, pollPosts, voiceSessions, timeouts, aiUsage, drafts, shoutouts] = counts.map((c) => c.count);
+  return {
+    activityDays: activityDays!,
+    adjustments: adjustments!,
+    pollPosts: pollPosts!,
+    voiceSessions: voiceSessions!,
+    timeouts: timeouts!,
+    aiUsage: aiUsage!,
+    drafts: drafts!,
+    shoutouts: shoutouts!,
+  };
 }
 
 export async function runPruneJob(db: Db, config: ConfigStore, clock: Clock, log: Logger, period: string): Promise<void> {

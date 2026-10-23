@@ -1,27 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { checkAdmin } from './adminCheck.js';
+import { checkAccess } from './access.js';
 import { parseConfigValue } from './configKeys.js';
 
 const GUILD = '123456789012345678';
 
-describe('checkAdmin', () => {
-  it('allows an administrator in the configured guild', () => {
-    expect(checkAdmin({ guildId: GUILD, expectedGuildId: GUILD, isAdministrator: true })).toEqual({ ok: true });
+describe('checkAccess', () => {
+  const base = { guildId: GUILD, expectedGuildId: GUILD, isOwner: false, isAdministrator: false, isStaff: false };
+
+  it('lets each level through, and everything below it', () => {
+    expect(checkAccess('owner', { ...base, isOwner: true })).toEqual({ ok: true });
+    expect(checkAccess('admin', { ...base, isOwner: true })).toEqual({ ok: true });
+    expect(checkAccess('admin', { ...base, isAdministrator: true })).toEqual({ ok: true });
+    expect(checkAccess('staff', { ...base, isAdministrator: true })).toEqual({ ok: true });
+    expect(checkAccess('staff', { ...base, isStaff: true })).toEqual({ ok: true });
   });
 
-  it('rejects non-admins, DMs and other guilds', () => {
-    expect(checkAdmin({ guildId: GUILD, expectedGuildId: GUILD, isAdministrator: false })).toEqual({
-      ok: false,
-      reason: 'not-admin',
-    });
-    expect(checkAdmin({ guildId: null, expectedGuildId: GUILD, isAdministrator: true })).toEqual({
-      ok: false,
-      reason: 'not-in-guild',
-    });
-    expect(checkAdmin({ guildId: '999999999999999999', expectedGuildId: GUILD, isAdministrator: true })).toEqual({
-      ok: false,
-      reason: 'wrong-guild',
-    });
+  it('rejects lower levels, DMs and other guilds', () => {
+    expect(checkAccess('owner', { ...base, isAdministrator: true, isStaff: true })).toEqual({ ok: false, reason: 'not-owner' });
+    expect(checkAccess('admin', { ...base, isStaff: true })).toEqual({ ok: false, reason: 'not-admin' });
+    expect(checkAccess('staff', base)).toEqual({ ok: false, reason: 'not-staff' });
+    expect(checkAccess('staff', { ...base, guildId: null, isOwner: true })).toEqual({ ok: false, reason: 'not-in-guild' });
+    expect(checkAccess('staff', { ...base, guildId: '999999999999999999', isOwner: true })).toEqual({ ok: false, reason: 'wrong-guild' });
   });
 });
 

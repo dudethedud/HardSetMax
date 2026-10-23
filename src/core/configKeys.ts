@@ -1,4 +1,4 @@
-// Keys accepted by `/config set`. Later phases add their keys here.
+// Keys accepted by `/settings set`. Later phases add their keys here.
 import type { MessageRulesConfig } from './messageRules.js';
 import type { ReshuffleConfig } from './reshuffle.js';
 import { isValidBoundaryTime, isValidTimezone } from './serverDay.js';
@@ -92,7 +92,7 @@ export const CONFIG_KEYS = {
   'ai-per-user-limit': { field: 'aiPerUserLimit', description: 'AI replies per person per minute', parse: number(1, 20) },
   'crown-colour': {
     field: 'crownColour',
-    description: 'Crown role colour, e.g. #FF00C8 (applied by /setup run)',
+    description: 'Crown role colour, e.g. #FF00C8 (applied by /bot setup)',
     parse: (v) => {
       const n = parseHexColour(v);
       return n === null ? { ok: false, error: `"${v}" is not a hex colour like #FF00C8.` } : { ok: true, value: formatHexColour(n) };
@@ -100,7 +100,7 @@ export const CONFIG_KEYS = {
   },
   'vip-colour': {
     field: 'vipColour',
-    description: 'VIP role colour, e.g. #F1C40F (applied by /setup run)',
+    description: 'VIP role colour, e.g. #F1C40F (applied by /bot setup)',
     parse: (v) => {
       const n = parseHexColour(v);
       return n === null ? { ok: false, error: `"${v}" is not a hex colour like #F1C40F.` } : { ok: true, value: formatHexColour(n) };

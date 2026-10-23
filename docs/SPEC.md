@@ -8,8 +8,8 @@ Level roles are handled by **bleed** (another bot). This bot does not do levels 
 
 ## 1. Hard rules
 
-1. **No public slash commands.** Every slash command is admin-only. Members interact only through **buttons, dropdowns and pop-up forms (modals)** posted by the bot in the VIP lounge.
-2. **Admin-only enforced twice:** commands are registered with `default_member_permissions = Administrator` and `dm_permission = false`, **and** every handler re-checks Administrator at runtime before doing anything.
+1. **No public slash commands.** Slash commands are for staff, admins and the owner only (owner-approved change, see §10). Members interact only through **buttons, dropdowns and pop-up forms (modals)** posted by the bot.
+2. **Access enforced twice:** commands are registered with `dm_permission = false` (guild only) and `default_member_permissions` = **Timeout Members** for commands with staff subcommands, **Administrator** for the rest, **and** every handler re-checks the subcommand's level at runtime before doing anything. Levels: **staff** (a staff role, Administrator or the owner), **admin** (Administrator or the owner), **owner** (the server owner only).
 3. **No message content is stored.** The bot stores counts and timestamps only.
 4. **All state lives in Postgres.** The bot process is stateless; nothing important is written to local disk. Redeploying, restarting or crashing must never lose data (see §11).
 5. **The database is the source of truth** for who is VIP, Crown, pinned, blocked, etc. Discord roles are made to match the database, never the other way round.
@@ -140,7 +140,7 @@ Every addition/removal with its reason: `ranked #3 (score 212)`, `dropped to #15
 - Non-VIPs who use the dropdown get a private "VIP only" reply.
 - **Losing VIP removes the colour role** immediately (see §3, "Losing VIP").
 - The user's **last pick is saved**; regaining VIP restores it automatically.
-- Admins manage options with `/vip colours add|edit|remove`.
+- Admins manage options with `/settings colour action:add|edit|remove`.
 
 ---
 
@@ -148,7 +148,7 @@ Every addition/removal with its reason: `ranked #3 (score 212)`, `dropped to #15
 
 A **#polls** channel where only VIPs and staff can post Discord's built-in polls. There's a **server-wide cap of 2 VIP polls per day** (first come, first served), **each VIP can post at most 1 of those**, and the bot pings the **Polls** role for them. Everyone can discuss each poll in its own thread.
 
-### Channel permissions (set by `/setup run`)
+### Channel permissions (set by `/bot setup`)
 | Who | Can |
 |---|---|
 | @everyone | View channel, read history, vote in polls, **Send Messages in Threads**. Can't post in the channel itself or create threads. |
@@ -173,7 +173,7 @@ Steps 2–3 (locks) apply to VIPs only. **Staff polls** skip the limits and lock
 - **Non-poll messages** from VIPs in #polls are deleted and logged. Discussion goes in the poll's thread. (Staff and admins can post normal messages there, e.g. for announcements.)
 - **Deleting your own poll doesn't give your daily poll back.**
 - **Daily reset:** at the day boundary, a `poll-unlock` job (same `job_runs` + advisory lock + catch-up rules as §11) removes **only locks that have expired**, including the role-level cap lock. A lock created a moment after the boundary (before the job ran) belongs to the new day and is left alone.
-- **`/polls unlock @user`** gives that VIP one more poll today **even if the daily cap is already hit**. The bot removes their personal lock and adds a personal *allow* overwrite (which Discord applies over the role-level lock) until the end of the day. That poll is logged as an admin-granted extra and doesn't change the cap for anyone else.
+- **`/vip poll-unlock @user`** gives that VIP one more poll today **even if the daily cap is already hit**. The bot removes their personal lock and adds a personal *allow* overwrite (which Discord applies over the role-level lock) until the end of the day. That poll is logged as an admin-granted extra and doesn't change the cap for anyone else.
 - **Losing VIP:** access is lost through the VIP role; any lock overwrite for that person is removed at the next reset so overwrites don't pile up.
 - **Staff and admins are not limited** by the per-person limit, the daily cap or the locks.
 - **Startup reconciliation:** lock overwrites in Discord are made to match `PollLock` rows (missing locks re-applied, expired or orphaned ones removed).
@@ -204,7 +204,7 @@ Slash commands would be visible to everyone, so this uses a button instead, whic
    - Edit limit: 3 edits per Crown week.
 4. The bot creates the role directly above the Crown role and assigns it. Logged with the full name/colour.
 5. **When the Crown is lost, the custom role is deleted** from the server. Its settings are **saved**; if that person wins the Crown again, it's recreated automatically.
-6. Admins: `/crown reset-role @user` (delete it and clear saved settings), `/crown lock @user` (block custom role creation).
+6. Admins: `/vip crown-reset @user` (delete it and clear saved settings), `/vip crown-lock locked:true @user` (block custom role creation).
 
 ---
 
@@ -292,40 +292,61 @@ The bot can chat in **main chat only**, using a free AI API. It explains how VIP
 - Add a line to the server rules: "Messages you send to Puppyboy Carter are processed by an AI service."
 
 ### Admin commands
-- `/ai status`: on/off, each provider in the chain with replies used today vs its cap, whether it's cooling down, last error, and how many replies fell back to pre-written today.
-- `/ai toggle`: turn AI chat on/off (fallback replies still work when off).
-- `/ai test <question>`: private test reply, doesn't count toward the cap.
-- `/ai providers`: show the chain. `/ai provider-cap <provider> <n>` and `/ai provider-toggle <provider>` to adjust or skip one.
-- `/config set ai-per-user-limit <n per minute>` · `/config set main-chat <channel>`
+- `/bot ai action:status`: on/off, each provider in the chain with replies used today vs its cap, whether it's cooling down, last error, and how many replies fell back to pre-written today.
+- `/bot ai action:on` · `action:off`: turn AI chat on/off (fallback replies still work when off).
+- `/bot ai action:test question:…`: private test reply, doesn't count toward the cap.
+- `/bot ai action:providers`: show the chain. `/bot ai-provider <provider> setting:cap|model|toggle [value]` to adjust or skip one.
+- `/settings set ai-per-user-limit <n per minute>` · `/settings channel purpose:main-chat <channel>`
 
 ---
 
-## 10. Admin commands
+## 10. Commands
 
-All registered to the guild only, Administrator-only, and replying privately (ephemeral) unless they post on purpose.
+Five commands, all registered to the guild only and replying privately (ephemeral) unless they post on purpose. "Who" is checked at runtime for every use (§1.2). Staff also need the **Timeout Members** permission for Discord to show them the commands.
 
-| Command | Purpose |
-|---|---|
-| `/setup run` | Creates or repairs all roles, the VIP category/channels and the lounge panels. Safe to run again. Checks role positions and warns if the bot's role is too low. |
-| `/config view` · `/config set <key> <value>` | Slots, window, buffer, min hold, inactivity days, min score, day boundary, timezone, voice weight, daily voice cap, spam filter thresholds, channels (announce, mod-log), staff roles |
-| `/config channel-weight <channel> <weight>` | Set weight; `0` ignores the channel |
-| `/vip list` | Current VIPs with rank, score, days held, pinned flag |
-| `/vip preview` | What the next reshuffle would do (adds/removes + reasons), plus **bubble watch: ranks 11–15** |
-| `/vip pin @user` · `/vip unpin @user` | Lock someone into VIP |
-| `/vip remove @user [block_days]` | Remove now; optionally block from VIP for N days |
-| `/vip unblock @user` | Clear a block |
-| `/vip reshuffle-now` | Run the reshuffle immediately (asks for confirmation with a button) |
-| `/vip colours add\|edit\|remove` | Manage colour options |
-| `/crown view` · `/crown reset-role @user` · `/crown lock @user` · `/crown unlock @user` | Crown management |
-| `/crown blocked-words add\|remove\|list` | Custom role name filter |
-| `/polls status` | Polls used today (e.g. 1/2), who posted, who's locked, when the reset is |
-| `/polls unlock @user` | Give someone their poll back for today (logged) |
-| `/config set polls-role <role>` · `/config set polls-channel <channel>` · `/config set polls-daily-cap <n>` | Which role gets pinged, which channel is the polls channel, and the server-wide daily poll cap |
-| `/stats @user` | Score, rank, 7-day breakdown, active days, VIP history, badges |
-| `/leaderboard [count]` | Top N this window (private reply) |
-| `/activity adjust @user <amount> <reason>` | Manual score correction, logged |
-| `/ai status` · `/ai toggle` · `/ai test <question>` | AI chat controls (§9a) |
-| `/bot health` | Version, uptime, DB connection, last reshuffle time/result, pending writes, intents check, AI status |
+| Command | Who | Purpose |
+|---|---|---|
+| `/stats [user] [count]` | staff | No user: top N this window. With a user: score, rank, 7-day breakdown, active days, VIP history, badges |
+| `/vip list` | staff | Current VIPs with rank, score, days held, pinned flag |
+| `/vip preview` | staff | What the next reshuffle would do (adds/removes + reasons), plus **bubble watch: ranks 11–15** |
+| `/vip polls` | staff | Polls used today (e.g. 1/2), who posted, who's locked, when the reset is |
+| `/vip crown` | staff | The Crown holder, their custom role, decree and titles |
+| `/vip pin @user` · `/vip unpin @user` | admin | Lock someone into VIP |
+| `/vip remove @user [block_days]` | admin | Remove now; optionally block from VIP for N days |
+| `/vip unblock @user` | admin | Clear a block |
+| `/vip reshuffle` | admin | Run the reshuffle immediately (asks for confirmation with a button) |
+| `/vip adjust @user <amount> <reason>` | admin | Manual score correction, logged |
+| `/vip poll-unlock @user` | admin | Give someone their poll back for today (logged) |
+| `/vip crown-reset @user` · `/vip crown-lock @user <locked>` | admin | Delete a custom role · block or allow custom roles |
+| `/settings view` · `/settings set <key> <value>` | admin | Slots, window, buffer, min hold, inactivity days, min score, day boundary, timezone, voice weight, daily voice cap, spam filter thresholds, polls daily cap, colours, AI per-user limit |
+| `/settings channel <purpose> <channel>` | admin | Announcements, mod-log, polls, main chat (AI and shoutouts), VIP board |
+| `/settings channel-weight <channel> <weight>` | admin | Set weight; `0` ignores the channel |
+| `/settings role <action> [role]` | admin | Staff roles (add/remove/list), the highest level role, the Polls role |
+| `/settings colour <action> …` | admin | Manage colour options (list/add/edit/remove) |
+| `/settings badge <action> …` | admin | Manage badge milestones (list/set/remove) |
+| `/settings blocked-word <action> [word]` | admin | Name filter for custom roles, room names, shoutouts and decrees |
+| `/bot health` | staff | Version, uptime, DB connection, last reshuffle time/result, pending writes, intents check, AI status |
+| `/bot setup` | admin | Creates or repairs all roles, the VIP category/channels, the VIP board and the panels. Safe to run again. Checks role positions and warns if the bot's role is too low. |
+| `/bot ai <action>` · `/bot ai-provider <provider> <setting> [value]` | admin | AI chat controls (§9a) |
+| `/announce [channel]` | owner | Owner only (not admins or staff): opens a form, shows a private preview with Send / Cancel, then the bot posts it with an `@everyone` ping. No other mentions ping. The draft is deleted after sending or after 15 minutes. |
+
+---
+
+## 10a. VIP and Crown perks
+
+All through buttons on the lounge panel. Member-written text the bot posts (shoutouts, decrees) has mentions removed, `@everyone`/`@here` broken up, is sent with no allowed mentions, and is checked against the blocked words. The text itself is never saved; only that it happened (and the message ID) is.
+
+**Every VIP**
+- **Public VIP board** (`#vip-board`, read-only, created by `/bot setup`): the Crown and its titles, every VIP with days held and their top badge, the 3 most active members and when the next reshuffle is. Edited in place after VIP and Crown changes, and hourly.
+- **🪪 My profile:** a private card with rank, score, active days, where they stand (points ahead of the first rank past the buffer, or points to reach the last VIP slot), VIP days, weeks held, badges, polls today, shoutout used or not, and their title.
+- **📣 Shoutout:** once per server-day, a short message (200 characters) posted by the bot in main chat (or announcements if main chat isn't set). No pings.
+- **⭐ VIP role icon** when the server is Boost Level 2 or higher.
+
+**The Crown** (in addition to the custom role, §6)
+- **👑 nickname:** "👑 Name" while they hold the Crown; their old nickname comes back when it ends (unless they renamed themselves since). Skipped for the server owner and anyone above the bot.
+- **🎖️ Titles:** the Crown appoints **Champion, Advisor and Jester** with member pickers. Each is a role with no permissions (cosmetic). Not for bots, staff or themselves; one title per person. All titles end with the Crown week, or when the Crown is lost.
+- **📜 Decree:** one announcement per Crown week (500 characters) in the announcements channel, with no pings.
+- **👑 Hall:** their temporary voice channel is called "👑 Name's Hall" and gives them Priority Speaker and Move Members in it.
 
 ---
 
@@ -348,9 +369,9 @@ Two copies can end up running at once: a host restarting the bot while the old p
 - **Scheduled jobs survive restarts:** every job run is recorded in a `job_runs` table with a unique `(job, period)` key, e.g. `("reshuffle", "2026-10-23")`.
   - On startup, any job whose time has passed and has no row runs immediately (**catch-up**).
   - Jobs take a **Postgres advisory lock**, so if two copies briefly run together, the reshuffle still runs **exactly once**.
-- **Role/channel IDs** (not names) are stored in the DB. If a role was deleted, `/setup run` recreates it and updates the ID.
+- **Role/channel IDs** (not names) are stored in the DB. If a role was deleted, `/bot setup` recreates it and updates the ID.
 - **Reconciliation on startup and after each reshuffle:** compare DB state with actual Discord roles. Fix drift (e.g. someone manually gave VIP → removed, logged with a hint to use `/vip pin`).
-- **Panels keep working after restarts.** Every button and dropdown uses a fixed ID (e.g. `vip:colour-picker`, `crown:create-role`) handled by a global interaction handler, never by temporary collectors. The channel and message ID of each panel is stored in the DB. On startup and on `/setup run`, missing or deleted panels are re-posted.
+- **Panels keep working after restarts.** Every button and dropdown uses a fixed ID (e.g. `vip:colour-picker`, `crown:create-role`) handled by a global interaction handler, never by temporary collectors. The channel and message ID of each panel is stored in the DB. On startup and on `/bot setup`, missing or deleted panels are re-posted.
 
 ### Data model (starting point)
 `GuildConfig`, `ChannelWeight`, `MemberName (userId, lastKnownName)`, `ActivityDay (userId, serverDay, weightedMessages, voiceMinutes, filteredMessages)`, `TimeoutEvent (userId, start, end)`, `Panel (kind, channelId, messageId)`, `ModalDraft (userId, data, expiresAt)`, `VoiceSession`, `VipMember (userId, since, pinned)`, `VipStint (userId, start, end, endReason, pinned)`, `VipBlock (userId, until, reason)`, `ColourOption`, `UserColourChoice`, `CrownHolder (userId, weekStart, weekEnd)`, `CustomRole (userId, name, hex, emoji, roleId, editsThisWeek, locked)`, `BlockedWord`, `PollPost (userId, messageId, day)`, `PollLock (userId or role-level, until)`, `Badge`, `UserBadge`, `TempVoiceChannel`, `ActivityAdjustment`, `AiProvider (name, baseUrl, model, keyEnvVar, dailyCap, order, enabled)`, `AiUsage (provider, providerDay, count, fallbacks)`, `JobRun`, `AuditLog`.
@@ -369,7 +390,7 @@ bleed level roles
 History badge roles      (colourless)
 @everyone
 ```
-`/setup run` checks this order and warns if the bot's role is too low.
+`/bot setup` checks this order and warns if the bot's role is too low.
 
 ---
 
@@ -385,4 +406,4 @@ History badge roles      (colourless)
 
 ## 14. Stack
 
-TypeScript (strict), Node LTS, discord.js v14, Prisma + PostgreSQL, Vitest for tests, pino for logging, zod for env/config validation. Bot hosted on Wispbyte (updated by restarting the server, which pulls `main` from GitHub); database on Supabase.
+TypeScript (strict), Node LTS, discord.js v14, Prisma + PostgreSQL, Vitest for tests, pino for logging, zod for env/settings validation. Bot hosted on Wispbyte (updated by restarting the server, which pulls `main` from GitHub); database on Supabase.

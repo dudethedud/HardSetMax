@@ -52,9 +52,9 @@ export class RoleQueue {
 export function explainRoleError(err: unknown): string {
   if (err instanceof DiscordAPIError) {
     if (err.code === RESTJSONErrorCodes.MissingPermissions) {
-      return "missing permission: give the bot Manage Roles and move the bot's role above the roles it manages, then run /setup run";
+      return "missing permission: give the bot Manage Roles and move the bot's role above the roles it manages, then run /bot setup";
     }
-    if (err.code === RESTJSONErrorCodes.UnknownRole) return 'the role no longer exists: run /setup run';
+    if (err.code === RESTJSONErrorCodes.UnknownRole) return 'the role no longer exists: run /bot setup';
   }
   return err instanceof Error ? err.message : String(err);
 }

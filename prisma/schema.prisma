@@ -75,6 +75,9 @@ model GuildConfig {
   mainChatChannelId String?
   aiPerUserLimit    Int     @default(3) // replies per person per minute
 
+  // VIP and Crown perks.
+  vipBoardChannelId String? // public VIP board panel
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -277,6 +280,31 @@ model CrownHolder {
   awardedAt DateTime  @default(now())
   endedAt   DateTime?
   endReason String?
+  // The Crown's one decree per week.
+  decreeAt  DateTime?
+  // The 👑 nickname prefix: their nickname before it, restored when the Crown ends.
+  nickApplied Boolean @default(false)
+  nickBefore  String?
+}
+
+// The three titles the Crown holder can hand out for their week. Cosmetic only:
+// each is a role with no permissions.
+model CrownTitle {
+  slot        String    @id // "champion" | "advisor" | "jester"
+  name        String
+  roleId      String?
+  holderId    String?
+  appointedAt DateTime?
+}
+
+// One VIP shoutout per VIP per server-day. The text itself is never saved.
+model Shoutout {
+  userId    String
+  serverDay String
+  messageId String?
+  createdAt DateTime @default(now())
+
+  @@id([userId, serverDay])
 }
 
 // A Crown holder's custom role. Settings stay when the role is deleted, so it

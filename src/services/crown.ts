@@ -28,7 +28,16 @@ export interface FormPrefill {
 
 export type FormAccess = { ok: true; prefill: FormPrefill | null } | { ok: false; message: string };
 
+/** Runs after a new Crown is saved; `previous` is last week's holder, if any. */
+export type CrownAwardedHook = (holder: CrownHolder, previous: CrownHolder | null) => Promise<void>;
+/** Runs after a Crown ends. `continuing`: the same member holds the new week's Crown. */
+export type CrownEndedHook = (holder: CrownHolder, why: string, continuing: boolean) => Promise<void>;
+
 export class CrownService {
+  /** Crown powers: titles, nickname (crownPowers.ts). */
+  readonly onAwarded: CrownAwardedHook[] = [];
+  readonly onEnded: CrownEndedHook[] = [];
+
   constructor(
     private readonly client: Client,
     private readonly guildId: string,
@@ -58,30 +67,43 @@ export class CrownService {
     const week = weekStartOf(today);
     const now = this.clock.now();
     if (!(await claimJob(this.db, CROWN_JOB, week, now))) return null;
+    const winner = pickCrown(result);
+    let prev: CrownHolder | null = null;
     try {
-      const prev = await this.current();
-      const winner = pickCrown(result);
+      const previous = (prev = await this.current());
       await this.db.$transaction(async (tx) => {
-        if (prev) await tx.crownHolder.update({ where: { id: prev.id }, data: { endedAt: now, endReason: 'week ended' } });
+        if (previous) await tx.crownHolder.update({ where: { id: previous.id }, data: { endedAt: now, endReason: 'week ended' } });
         if (winner) {
           await tx.crownHolder.create({ data: { userId: winner, weekStart: week, awardedAt: now } });
           await tx.auditLog.create({ data: { action: 'crown.award', targetId: winner, data: { week } } });
         }
-        await completeJob(tx, CROWN_JOB, week, { winner, previous: prev?.userId ?? null }, now);
+        await completeJob(tx, CROWN_JOB, week, { winner, previous: previous?.userId ?? null }, now);
       });
-
-      if (prev && prev.userId !== winner) await this.#takeAway(prev.userId, 'the week ended');
-      if (winner) {
-        await this.#give(winner);
-        await this.modLog.post(`👑 Crown of the week (from ${week}): <@${winner}>`);
-      } else {
-        await this.modLog.post(`👑 No Crown this week (from ${week}): no VIPs.`);
-      }
-      return winner;
     } catch (err) {
       await failJob(this.db, CROWN_JOB, week, err instanceof Error ? err.message : String(err), this.clock.now()).catch(() => undefined);
       throw err;
     }
+    // Saved: from here on, failures are logged and fixed by reconcile, never retried.
+    try {
+      if (prev && prev.userId !== winner) await this.#takeAway(prev.userId, 'the week ended');
+      const ended = prev;
+      if (ended) await this.#runHooks(this.onEnded.map((h) => () => h(ended, 'the week ended', ended.userId === winner)));
+      if (winner) {
+        await this.#give(winner);
+        const holder = await this.current();
+        if (holder) await this.#runHooks(this.onAwarded.map((h) => () => h(holder, prev)));
+        await this.modLog.post(`👑 Crown of the week (from ${week}): <@${winner}>`);
+      } else {
+        await this.modLog.post(`👑 No Crown this week (from ${week}): no VIPs.`);
+      }
+    } catch (err) {
+      this.log.error({ err }, 'applying the new Crown failed; reconcile fixes roles on the next startup');
+    }
+    return winner;
+  }
+
+  async #runHooks(hooks: (() => Promise<void>)[]): Promise<void> {
+    for (const hook of hooks) await hook().catch((err: unknown) => this.log.error({ err }, 'Crown hook failed'));
   }
 
   /** VIP removal hook: the Crown goes with VIP, and isn't reassigned until next week. */
@@ -93,6 +115,7 @@ export class CrownService {
       this.db.auditLog.create({ data: { action: 'crown.lost', targetId: userId, reason } }),
     ]);
     await this.#takeAway(userId, `lost VIP (${reason})`);
+    await this.#runHooks(this.onEnded.map((h) => () => h(cur, `lost VIP (${reason})`, false)));
   }
 
   async #give(userId: string): Promise<void> {
@@ -217,7 +240,7 @@ export class CrownService {
     };
   }
 
-  /** /crown reset-role: delete the role and its saved settings. */
+  /** /vip crown-reset: delete the role and its saved settings. */
   async resetRole(userId: string, actorId: string): Promise<boolean> {
     const deleted = await this.#deleteCustomRole(userId, `Reset by ${actorId}`);
     const { count } = await this.db.customRole.deleteMany({ where: { userId } });
@@ -226,7 +249,7 @@ export class CrownService {
     return deleted || count > 0;
   }
 
-  /** /crown lock|unlock: block custom role creation and edits. */
+  /** /vip crown-lock: block or allow custom role creation and edits. */
   async setLocked(userId: string, locked: boolean, actorId: string): Promise<void> {
     await this.db.$transaction([
       this.db.customRole.upsert({
@@ -262,15 +285,15 @@ export class CrownService {
     await this.db.modalDraft.deleteMany({ where: { expiresAt: { lte: this.clock.now() } } });
   }
 
-  /** /setup run: the Crown role, above the colour roles (SPEC §12). */
+  /** /bot setup: the Crown role, above the colour roles (SPEC §12). */
   async setup(guild: Guild, vipRole: Role, report: string[]): Promise<void> {
     const cfg = this.config.current.guild;
     const colour = parseHexColour(cfg.crownColour) ?? 0xff00c8;
     let role = cfg.crownRoleId ? guild.roles.cache.get(cfg.crownRoleId) : undefined;
     try {
-      if (role) await role.edit({ colors: { primaryColor: colour }, hoist: true, mentionable: false, reason: '/setup run' });
+      if (role) await role.edit({ colors: { primaryColor: colour }, hoist: true, mentionable: false, reason: '/bot setup' });
       else {
-        role = await guild.roles.create({ name: '👑 Crown', colors: { primaryColor: colour }, hoist: true, mentionable: false, permissions: [], reason: '/setup run' });
+        role = await guild.roles.create({ name: '👑 Crown', colors: { primaryColor: colour }, hoist: true, mentionable: false, permissions: [], reason: '/bot setup' });
         await this.db.guildConfig.update({ where: { guildId: guild.id }, data: { crownRoleId: role.id } });
         await this.config.load();
       }
