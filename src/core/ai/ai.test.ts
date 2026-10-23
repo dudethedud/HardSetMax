@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cooldownAfter, isDailyLimit, providerDay, usableProviders, type ProviderState } from './chain.js';
 import { fallbackReply } from './fallback.js';
 import { buildChatMessages, type AskerStats } from './prompt.js';
-import { allowReply, containsBlockedWord, hypeLineOrNull, sanitizeAiText } from './text.js';
+import { allowReply, containsBlockedWord, hypeLineOrNull, limitEmoji, sanitizeAiText } from './text.js';
 
 const now = new Date('2026-10-26T23:30:00Z'); // 17:30 MDT
 const p = (name: string, order: number, over: Partial<ProviderState> = {}): ProviderState => ({
@@ -46,6 +46,21 @@ describe('provider chain', () => {
     expect(isDailyLimit(daily)).toBe(true);
     expect(cooldownAfter(daily, { resetTimezone: 'UTC' }, now).toISOString()).toBe('2026-10-27T00:00:00.000Z');
     expect(isDailyLimit({ status: 429, body: 'you have used up your daily free allocation of 10,000 neurons' })).toBe(true);
+  });
+});
+
+describe('limitEmoji', () => {
+  it('keeps only the first emoji, and text faces are never touched', () => {
+    expect(limitEmoji('hiii :3 ✨💖🐾 hows ur day 🐶')).toBe('hiii :3 ✨ hows ur day');
+    expect(limitEmoji('yay >w< ^^ uwu')).toBe('yay >w< ^^ uwu');
+  });
+
+  it('counts skin tones and joined emoji as one', () => {
+    expect(limitEmoji('wave 👋🏽 fam 👨‍👩‍👧 heart ❤️')).toBe('wave 👋🏽 fam heart');
+  });
+
+  it('runs on every AI reply', () => {
+    expect(sanitizeAiText('omg 🎉🎉🎉 congrats')).toBe('omg 🎉 congrats');
   });
 });
 

@@ -3,7 +3,7 @@
 import { describeStats, type AskerStats } from './prompt.js';
 
 const VIP_SUMMARY =
-  'omg hiii :3 ⭐ vip goes to the 10 most active people of the last 7 days and it updates every night at midnight ✨ chat and hang out in voice to climb and stay active to keep your slot and the #1 vip each week gets the 👑 crown and their own role >w<';
+  'omg hiii :3 vip goes to the 10 most active people of the last 7 days and it updates every night at midnight so chat and hang out in voice to climb and stay active to keep your slot and the #1 vip each week gets the 👑 crown and their own role >w<';
 
 export function fallbackReply(question: string, stats: AskerStats): string {
   const q = question.toLowerCase();
@@ -17,5 +17,5 @@ export function fallbackReply(question: string, stats: AskerStats): string {
 export const BLOCKED_OUTPUT_FALLBACK = 'oopsie lets keep it friendly >w< ask me about vip or your stats 🐶';
 
 export function fallbackWelcome(): string {
-  return '🎉 welcome to the vip lounge :3 u get image perms and external emojis and stickers plus ur own vip colour and vip polls and ur own temp voice channel ✨ stay active to keep ur slot >w<';
+  return '🎉 welcome to the vip lounge :3 u get image perms and external emojis and stickers plus ur own vip colour and vip polls and ur own temp voice channel so stay active to keep ur slot >w<';
 }

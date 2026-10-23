@@ -4,9 +4,23 @@ import { normalizeRoleName } from '../crown.js';
 
 export const MAX_REPLY_CHARS = 400;
 
-/** Removes @everyone/@here and role mentions, and trims to `max` characters. */
+/** One emoji, including skin tones and joined emoji like 👨‍👩‍👧. Text faces like :3 aren't emoji. */
+const EMOJI = /\p{Extended_Pictographic}(?:\p{Emoji_Modifier}|\uFE0F|\u200D\p{Extended_Pictographic})*/gu;
+export const MAX_EMOJI = 1;
+
+/** Keeps the first `max` emoji and drops the rest (owner request: don't overuse emoji). */
+export function limitEmoji(text: string, max = MAX_EMOJI): string {
+  let seen = 0;
+  return text
+    .replace(EMOJI, (e) => (++seen <= max ? e : ''))
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +\n/g, '\n')
+    .trim();
+}
+
+/** Removes @everyone/@here and role mentions, caps emoji, and trims to `max` characters. */
 export function sanitizeAiText(raw: string, max = MAX_REPLY_CHARS): string {
-  let t = raw
+  let t = limitEmoji(raw)
     .replace(/<@&\d+>/g, '')
     .replace(/@(everyone|here)/gi, '$1')
     .replace(/\s+\n/g, '\n')
