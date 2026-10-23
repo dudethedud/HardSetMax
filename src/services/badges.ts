@@ -61,7 +61,7 @@ export class BadgeService {
     return unpinnedWeeks(await this.db.vipStint.findMany({ where: { userId } }), now);
   }
 
-  /** /setup run: add the default milestones once, then create or repair the badge roles. */
+  /** /bot setup: add the default milestones once, then create or repair the badge roles. */
   async setup(guild: Guild, _vipRole: Role, report: string[]): Promise<void> {
     if (!this.config.current.guild.badgesSeeded) {
       if ((await this.db.badge.count()) === 0) await this.db.badge.createMany({ data: [...DEFAULT_BADGES] });

@@ -98,14 +98,14 @@ export class AiService {
     });
   }
 
-  /** Counts a pre-written reply (shown in /ai status). Pre-written replies reset at 00:00 UTC. */
+  /** Counts a pre-written reply (shown in /bot ai action:status). Pre-written replies reset at 00:00 UTC. */
   async recordFallback(): Promise<void> {
     await this.#count(PREWRITTEN, providerDay({ resetTimezone: 'UTC' }, this.clock.now()));
   }
 
   /**
    * Text from the first provider that answers, or null if all are out.
-   * `count: false` (for /ai test) doesn't use up the daily cap.
+   * `count: false` (for /bot ai action:test) doesn't use up the daily cap.
    */
   async complete(messages: ChatMessage[], { maxTokens = 160, count = true } = {}): Promise<{ text: string; provider: string } | null> {
     const now = this.clock.now();
@@ -159,7 +159,7 @@ export class AiService {
     return text;
   }
 
-  /** /ai status lines. */
+  /** /bot ai action:status lines. */
   async status(): Promise<string> {
     const now = this.clock.now();
     const lines = [`**AI chat:** ${this.config.current.guild.aiEnabled ? 'on' : 'off (pre-written replies only)'}`];

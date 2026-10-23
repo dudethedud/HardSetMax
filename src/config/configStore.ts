@@ -1,5 +1,5 @@
 // In-memory copy of the guild's settings and channel weights, used on every
-// message. Reloaded after any /config change.
+// message. Reloaded after any /settings change.
 import { messageRulesConfig, reshuffleConfig } from '../core/configKeys.js';
 import type { MessageRulesConfig } from '../core/messageRules.js';
 import type { ReshuffleConfig } from '../core/reshuffle.js';

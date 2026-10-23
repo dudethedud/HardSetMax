@@ -130,7 +130,7 @@ describe.skipIf(!url)('AI chat', () => {
       expect(keyless.calls).toHaveLength(0);
     });
 
-    it('/ai test replies don’t count toward the cap', async () => {
+    it('/bot ai action:test replies don’t count toward the cap', async () => {
       const t = await makeAi();
       await t.ai.complete(msgs, { count: false });
       expect(await db.aiUsage.count()).toBe(0);

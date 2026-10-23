@@ -35,6 +35,7 @@ export class PermissionCheck {
       ...(await this.db.colourOption.findMany()).map((o) => o.roleId),
       ...(await this.db.badge.findMany()).map((b) => b.roleId),
       ...(await this.db.customRole.findMany({ where: { roleId: { not: null } } })).map((c) => c.roleId),
+      ...(await this.db.crownTitle.findMany()).map((t) => t.roleId),
     ].filter((id): id is string => !!id);
     const top = me.roles.highest.position;
     const above = managed.map((id) => guild.roles.cache.get(id)).filter((r) => r && r.position >= top);
@@ -42,7 +43,7 @@ export class PermissionCheck {
       out.push(`The bot's role is below roles it manages (${above.map((r) => r!.name).join(', ')}). Drag the bot's role above them in Server Settings → Roles.`);
     }
     const lost = managed.filter((id) => !guild.roles.cache.has(id));
-    if (lost.length) out.push(`${lost.length} role(s) the bot manages were deleted. Run /setup run to recreate them.`);
+    if (lost.length) out.push(`${lost.length} role(s) the bot manages were deleted. Run /bot setup to recreate them.`);
     return out;
   }
 

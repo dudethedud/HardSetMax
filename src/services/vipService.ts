@@ -168,11 +168,11 @@ export class VipService {
 
   /**
    * Runs a reshuffle for `period`. The scheduled one runs at the day boundary with
-   * period = the server-day it closes; `/vip reshuffle-now` uses its own job name.
+   * period = the server-day it closes; `/vip reshuffle` uses its own job name.
    */
   async runReshuffle(job: string, period: string, actorId: string | null = null): Promise<ReshuffleRun> {
     const vipRoleId = this.config.current.guild.vipRoleId;
-    if (!vipRoleId) return { status: 'skipped', message: 'VIP role not set up yet: run /setup run first.' };
+    if (!vipRoleId) return { status: 'skipped', message: 'VIP role not set up yet: run /bot setup first.' };
     const now = this.clock.now();
     if (!(await claimJob(this.db, job, period, now))) return { status: 'skipped', message: 'already ran (or is running) for this period.' };
 
@@ -301,7 +301,7 @@ export class VipService {
     const guild = this.#guild();
     const role = guild.roles.cache.get(roleId);
     if (!role) {
-      await this.modLog.post('⚠️ The VIP role is missing. Run /setup run to recreate it.');
+      await this.modLog.post('⚠️ The VIP role is missing. Run /bot setup to recreate it.');
       return { added: 0, removed: 0 };
     }
     // VIPs who left while the bot was offline lose VIP now.
@@ -358,7 +358,7 @@ export class VipService {
     if (detail.posted || !detail.announcement) return;
     const channelId = this.config.current.guild.announceChannelId;
     if (!channelId) {
-      await this.modLog.post('⚠️ VIP update not announced: no announcement channel. Set one with /config channel.');
+      await this.modLog.post('⚠️ VIP update not announced: no announcement channel. Set one with /settings channel.');
       return;
     }
     try {

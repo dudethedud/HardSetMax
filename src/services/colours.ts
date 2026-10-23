@@ -33,7 +33,7 @@ export class ColourService {
     return (await this.options()).map((o) => o.roleId).filter((id): id is string => !!id);
   }
 
-  /** /setup run: adds the default colours once, then creates or repairs every colour role. */
+  /** /bot setup: adds the default colours once, then creates or repairs every colour role. */
   async setup(guild: Guild, vipRole: Role, report: string[]): Promise<void> {
     const cfg = this.config.current.guild;
     if (!cfg.coloursSeeded) {
@@ -175,13 +175,13 @@ export class ColourService {
     return `✅ Removed **${name}**.`;
   }
 
-  /** After add/edit: create or repair roles without a full /setup run. */
+  /** After add/edit: create or repair roles without a full /bot setup. */
   async syncRoles(): Promise<string[]> {
     const report: string[] = [];
     const guild = this.client.guilds.cache.get(this.guildId);
     const vipRoleId = this.config.current.guild.vipRoleId;
     const vipRole = vipRoleId ? guild?.roles.cache.get(vipRoleId) : undefined;
-    if (!guild || !vipRole) return ['ℹ️ Run /setup run to create the colour roles.'];
+    if (!guild || !vipRole) return ['ℹ️ Run /bot setup to create the colour roles.'];
     await this.setup(guild, vipRole, report);
     return report;
   }

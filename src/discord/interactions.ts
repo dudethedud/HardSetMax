@@ -1,5 +1,5 @@
-// The one global interaction handler. Later phases route buttons, dropdowns and
-// modals here by their fixed custom IDs.
+// The one global interaction handler. Buttons, dropdowns and forms are routed
+// by their fixed custom IDs, commands by name.
 import {
   MessageFlags,
   PermissionFlagsBits,
@@ -7,46 +7,62 @@ import {
   type Interaction,
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
+  type UserSelectMenuInteraction,
 } from 'discord.js';
-import { checkAdmin } from '../core/adminCheck.js';
-import { BUTTONS, MODALS, SELECTS } from './buttons.js';
+import { ACCESS_DENIED, checkAccess, type AccessLevel, type AccessResult } from '../core/access.js';
+import { BUTTONS, MODALS, SELECTS, USER_SELECTS } from './buttons.js';
 import { COMMANDS_BY_NAME } from './commands/index.js';
 import type { AppContext } from './commands/types.js';
 
-const DENIED = {
-  'not-in-guild': 'This bot only works inside the server.',
-  'wrong-guild': 'This bot is not set up for this server.',
-  'not-admin': 'Admins only.',
-} as const;
+/** Owner, Administrator, or a staff role, checked against the live member. */
+export async function accessOf(interaction: Interaction<'cached'>, level: AccessLevel, ctx: AppContext): Promise<AccessResult> {
+  const member = interaction.member;
+  const isOwner = interaction.guild.ownerId === interaction.user.id;
+  const isAdministrator = interaction.memberPermissions.has(PermissionFlagsBits.Administrator);
+  let isStaff = false;
+  // Only look up staff roles when they could matter.
+  if (level === 'staff' && !isOwner && !isAdministrator) {
+    const staff = new Set((await ctx.db.staffRole.findMany()).map((s) => s.roleId));
+    isStaff = member.roles.cache.some((r) => staff.has(r.id));
+  }
+  return checkAccess(level, { guildId: interaction.guildId, expectedGuildId: ctx.env.GUILD_ID, isOwner, isAdministrator, isStaff });
+}
 
 export async function handleInteraction(interaction: Interaction, ctx: AppContext): Promise<void> {
   if (interaction.isButton()) return handleButton(interaction, ctx);
   if (interaction.isStringSelectMenu()) return handleSelect(interaction, ctx);
+  if (interaction.isUserSelectMenu()) return handleUserSelect(interaction, ctx);
   if (interaction.isModalSubmit()) return handleModal(interaction, ctx);
   if (!interaction.isChatInputCommand()) return;
 
-  const check = checkAdmin({
-    guildId: interaction.guildId,
-    expectedGuildId: ctx.env.GUILD_ID,
-    isAdministrator: interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false,
-  });
   const command = COMMANDS_BY_NAME.get(interaction.commandName);
-  if (!check.ok || !command || !interaction.inCachedGuild()) {
-    if (!check.ok) ctx.log.warn({ userId: interaction.user.id, command: interaction.commandName, reason: check.reason }, 'command denied');
-    await interaction.reply({
-      content: check.ok ? 'Unknown command.' : DENIED[check.reason],
-      flags: MessageFlags.Ephemeral,
-    });
+  if (!interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
+    await interaction.reply({ content: ACCESS_DENIED[interaction.guildId ? 'wrong-guild' : 'not-in-guild'], flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!command) {
+    await interaction.reply({ content: 'Unknown command.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const sub = interaction.options.getSubcommand(false);
+  const group = interaction.options.getSubcommandGroup(false);
+  const check = await accessOf(interaction, command.levelFor(sub, group), ctx);
+  if (!check.ok) {
+    ctx.log.warn({ userId: interaction.user.id, command: interaction.commandName, sub, reason: check.reason }, 'command denied');
+    await interaction.reply({ content: ACCESS_DENIED[check.reason], flags: MessageFlags.Ephemeral });
     return;
   }
 
   // Defer first so slow work never hits Discord's 3-second limit (SPEC §13).
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (command.defer) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
     await command.execute(interaction, ctx);
   } catch (err) {
     ctx.log.error({ err, command: interaction.commandName }, 'command failed');
-    await interaction.editReply('❌ Something went wrong. Details are in the bot logs.').catch(() => undefined);
+    const msg = '❌ Something went wrong. Details are in the bot logs.';
+    await (interaction.replied || interaction.deferred ? interaction.editReply(msg) : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral })).catch(
+      () => undefined,
+    );
   }
 }
 
@@ -56,15 +72,11 @@ async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Pr
     await interaction.reply({ content: 'This button no longer works.', flags: MessageFlags.Ephemeral });
     return;
   }
-  if (handler.adminOnly) {
-    const check = checkAdmin({
-      guildId: interaction.guildId,
-      expectedGuildId: ctx.env.GUILD_ID,
-      isAdministrator: interaction.memberPermissions.has(PermissionFlagsBits.Administrator),
-    });
+  if (handler.level) {
+    const check = await accessOf(interaction, handler.level, ctx);
     if (!check.ok) {
       ctx.log.warn({ userId: interaction.user.id, button: interaction.customId, reason: check.reason }, 'button denied');
-      await interaction.reply({ content: DENIED[check.reason], flags: MessageFlags.Ephemeral });
+      await interaction.reply({ content: ACCESS_DENIED[check.reason], flags: MessageFlags.Ephemeral });
       return;
     }
   }
@@ -93,11 +105,34 @@ async function handleSelect(interaction: StringSelectMenuInteraction, ctx: AppCo
   }
 }
 
+/** Member pickers (the Crown's titles). Each handler checks who may use it. */
+async function handleUserSelect(interaction: UserSelectMenuInteraction, ctx: AppContext): Promise<void> {
+  const handler = USER_SELECTS.get(interaction.customId);
+  if (!handler || !interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
+    await interaction.reply({ content: 'This menu no longer works.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  try {
+    await handler.run(interaction, ctx);
+  } catch (err) {
+    ctx.log.error({ err, select: interaction.customId }, 'menu failed');
+    const reply = { content: '❌ Something went wrong. Please try again.', flags: MessageFlags.Ephemeral } as const;
+    await (interaction.replied || interaction.deferred ? interaction.followUp(reply) : interaction.reply(reply)).catch(() => undefined);
+  }
+}
+
 async function handleModal(interaction: ModalSubmitInteraction, ctx: AppContext): Promise<void> {
   const handler = MODALS.get(interaction.customId);
   if (!handler || !interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
     await interaction.reply({ content: 'This form no longer works.', flags: MessageFlags.Ephemeral });
     return;
+  }
+  if (handler.level) {
+    const check = await accessOf(interaction, handler.level, ctx);
+    if (!check.ok) {
+      await interaction.reply({ content: ACCESS_DENIED[check.reason], flags: MessageFlags.Ephemeral });
+      return;
+    }
   }
   try {
     await handler.run(interaction, ctx);

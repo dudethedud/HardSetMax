@@ -7,6 +7,7 @@ import {
   type Guild,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
+import type { AccessLevel } from '../../core/access.js';
 import type { ConfigStore } from '../../config/configStore.js';
 import type { Env } from '../../config/env.js';
 import type { Db } from '../../db/prisma.js';
@@ -18,6 +19,8 @@ import type { BadgeService } from '../../services/badges.js';
 import type { Clock } from '../../services/clock.js';
 import type { ColourService } from '../../services/colours.js';
 import type { CrownService } from '../../services/crown.js';
+import type { CrownPowers } from '../../services/crownPowers.js';
+import type { ShoutoutService } from '../../services/shoutouts.js';
 import type { Panels } from '../../services/panels.js';
 import type { PollService } from '../../services/polls.js';
 import type { TempVoiceService } from '../../services/tempVoice.js';
@@ -39,6 +42,8 @@ export interface AppContext {
   vip: VipService;
   colours: ColourService;
   crown: CrownService;
+  powers: CrownPowers;
+  shoutouts: ShoutoutService;
   badges: BadgeService;
   polls: PollService;
   tempVoice: TempVoiceService;
@@ -48,31 +53,51 @@ export interface AppContext {
   runSetup: (guild: Guild) => Promise<string[]>;
 }
 
-export interface AdminCommand {
+export interface Command {
   name: string;
   data: RESTPostAPIChatInputApplicationCommandsJSONBody;
+  /** Who may run this subcommand ("group sub", or "sub"). Checked at runtime. */
+  levelFor(subcommand: string | null, group: string | null): AccessLevel;
   /**
-   * Runs after the admin check, with the reply already deferred as ephemeral.
-   * Respond with `interaction.editReply`.
+   * Runs after the access check. Unless `defer` is false, the reply is already
+   * deferred as ephemeral: respond with `interaction.editReply`.
    */
+  defer: boolean;
   execute(interaction: ChatInputCommandInteraction<'cached'>, ctx: AppContext): Promise<void>;
 }
 
+export interface CommandSpec {
+  name: string;
+  description: string;
+  /** Access per subcommand ("group sub" or "sub"); `default` covers the rest. */
+  levels: { default: AccessLevel } & Record<string, AccessLevel>;
+  /** false: execute replies itself, e.g. to open a form (which must be the first reply). */
+  defer?: boolean;
+  build: (b: SlashCommandBuilder) => { toJSON(): RESTPostAPIChatInputApplicationCommandsJSONBody };
+  execute: Command['execute'];
+}
+
+const RANK: Record<AccessLevel, number> = { staff: 0, admin: 1, owner: 2 };
+
 /**
- * The only way to define a slash command, so every command is admin-only and
- * guild-only (SPEC §1). `contexts: [Guild]` is Discord's replacement for the
- * deprecated `dm_permission = false`.
+ * The only way to define a slash command, so every command is guild-only and
+ * hidden from regular members (SPEC §1). Commands with staff subcommands are shown
+ * to members with Timeout Members (the staff marker); the rest to Administrators
+ * only. `contexts: [Guild]` is Discord's replacement for the deprecated
+ * `dm_permission = false`. Visibility is only a hint: every run is checked by level.
  */
-export function defineAdminCommand(
-  name: string,
-  description: string,
-  build: (b: SlashCommandBuilder) => { toJSON(): RESTPostAPIChatInputApplicationCommandsJSONBody },
-  execute: AdminCommand['execute'],
-): AdminCommand {
+export function defineCommand(spec: CommandSpec): Command {
+  const lowest = Object.values(spec.levels).reduce((a, b) => (RANK[b] < RANK[a] ? b : a));
   const base = new SlashCommandBuilder()
-    .setName(name)
-    .setDescription(description)
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .setName(spec.name)
+    .setDescription(spec.description)
+    .setDefaultMemberPermissions(lowest === 'staff' ? PermissionFlagsBits.ModerateMembers : PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild);
-  return { name, data: build(base).toJSON(), execute };
+  return {
+    name: spec.name,
+    data: spec.build(base).toJSON(),
+    defer: spec.defer ?? true,
+    levelFor: (sub, group) => (group && sub ? spec.levels[`${group} ${sub}`] : undefined) ?? (sub ? spec.levels[sub] : undefined) ?? spec.levels.default,
+    execute: spec.execute,
+  };
 }

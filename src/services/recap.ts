@@ -68,7 +68,7 @@ export class RecapService {
       const content = await this.build(today, result);
       const channelId = this.config.current.guild.announceChannelId;
       if (!channelId) {
-        await this.modLog.post('⚠️ Weekly recap not posted: no announcement channel. Set one with /config channel.');
+        await this.modLog.post('⚠️ Weekly recap not posted: no announcement channel. Set one with /settings channel.');
       } else {
         const channel = await this.client.channels.fetch(channelId);
         if (!channel?.isSendable()) throw new Error('announcement channel missing or not sendable');

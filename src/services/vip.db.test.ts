@@ -172,7 +172,7 @@ describe.skipIf(!url)('VIP service', () => {
     expect(await db.vipStint.findFirst({ where: { userId: id(2) } })).toMatchObject({ endReason: 'dropped to #3' });
   });
 
-  it('skips until /setup run has created the VIP role', async () => {
+  it('skips until /bot setup has created the VIP role', async () => {
     await db.guildConfig.update({ where: { guildId: GUILD }, data: { vipRoleId: null } });
     const t = await setup([]);
     expect((await t.vip.runReshuffle(RESHUFFLE_JOB, '2026-10-22')).status).toBe('skipped');

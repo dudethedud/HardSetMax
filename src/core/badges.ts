@@ -31,7 +31,7 @@ export function newBadges(weeks: number, milestones: readonly Milestone[], owned
   return milestones.filter((m) => m.weeks <= weeks && !owned.has(m.id)).sort((a, b) => a.weeks - b.weeks);
 }
 
-/** Defaults from SPEC §7, added once by /setup run. */
+/** Defaults from SPEC §7, added once by /bot setup. */
 export const DEFAULT_BADGES = [
   { weeks: 4, name: 'VIP Regular' },
   { weeks: 12, name: 'VIP Veteran' },

@@ -10,7 +10,7 @@ export interface PollContext {
   /** Accepted VIP polls today across everyone (admin-granted extras don't count). */
   vipPollsToday: number;
   cap: number;
-  /** An admin gave this user one more poll today with /polls unlock. */
+  /** An admin gave this user one more poll today with /vip poll-unlock. */
   hasExtraAllowance: boolean;
 }
 
@@ -53,7 +53,7 @@ export interface ColourDefault {
   hex: string;
 }
 
-/** Default VIP colours (owner-approved), added once by /setup run. */
+/** Default VIP colours (owner-approved), added once by /bot setup. */
 export const DEFAULT_COLOURS: readonly ColourDefault[] = [
   { name: 'Rose', hex: '#FF6B9D' },
   { name: 'Crimson', hex: '#E63946' },

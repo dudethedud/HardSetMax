@@ -2,13 +2,13 @@
 
 A Discord bot that tracks member activity and runs a rotating VIP system for one server:
 - **VIP:** 10 slots for the most active members of the last 7 days, updated every night.
-- **Crown:** a weekly Crown with a custom role for the top VIP.
-- **VIP perks:** colours, polls, and temporary voice channels.
+- **Crown:** a weekly Crown for the top VIP: a custom role, a 👑 nickname, three titles to hand out, a weekly decree and a voice hall.
+- **VIP perks:** colours, polls, temporary voice channels, a public VIP board, profile cards and daily shoutouts.
 - **Badges:** permanent history badges for long-time VIPs.
 - **Weekly recap** in the announcements channel.
 - **AI chat** in main chat.
 
-Every slash command is admin-only. Members use buttons, dropdowns and forms posted by the bot.
+Slash commands are for staff, admins and the owner only. Members use buttons, dropdowns and forms posted by the bot.
 
 - **Setup, step by step:** [`docs/SETUP.md`](docs/SETUP.md)
 - **Running it** (how things work, troubleshooting, backups): [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
@@ -42,30 +42,40 @@ Nothing important is stored on the bot's server: everything lives in Postgres, s
 
 GitHub (for backups): secrets `BACKUP_DATABASE_URL` and `SUPABASE_CA_CERT`, and variable `BACKUP_AGE_RECIPIENT` (see SETUP part 7).
 
-## Admin commands
-All are guild-only, need Administrator, and reply privately unless they post on purpose.
+## Commands
+Five commands, all guild-only and replying privately unless they post on purpose. Who can use what is checked every time:
+- **Staff:** a staff role (`/settings role action:add-staff`), Administrator, or the owner. Staff also need **Timeout Members** for Discord to show them the commands.
+- **Admin:** Administrator, or the owner.
+- **Owner:** the server owner only.
 
-| Command | What it does |
+| Command | Who | What it does |
+|---|---|---|
+| `/stats [user] [count]` | staff | No user: the leaderboard. With a user: score, rank, 7-day breakdown, VIP history and badges |
+| `/vip list` · `/vip preview` | staff | Current VIPs · what a reshuffle would do now (plus ranks 11–15) |
+| `/vip polls` · `/vip crown` | staff | Today's polls and locks · the Crown, its custom role, decree and titles |
+| `/vip pin` · `unpin` · `remove [block_days]` · `unblock` | admin | Lock in, unlock, remove (and block), unblock |
+| `/vip reshuffle` | admin | Run a reshuffle now (with a confirm button) |
+| `/vip adjust user amount reason` | admin | Manual score correction (logged) |
+| `/vip poll-unlock user` | admin | One more poll for a VIP today |
+| `/vip crown-reset user` · `/vip crown-lock user locked` | admin | Delete a custom role · block or allow custom roles for someone |
+| `/settings view` · `/settings set key value` | admin | Every setting · change one: timezone, day-boundary, window, cooldowns, voice, spam filter, slots, buffer, min-hold, inactivity-days, min-score, timeout-days, colours, polls-daily-cap, ai-per-user-limit |
+| `/settings channel purpose channel` | admin | Announcements, mod-log, polls, main-chat (AI and shoutouts) or vip-board channel |
+| `/settings channel-weight channel weight` | admin | How much a channel's messages count (0 ignores it) |
+| `/settings role action [role]` | admin | `add-staff` / `remove-staff` / `list-staff`, `level-top` (bleed's highest level role; VIP goes above it), `polls` (role pinged for new polls) |
+| `/settings colour action ...` | admin | VIP colour options: `list`, `add name hex`, `edit name [new_name] [hex]`, `remove name` |
+| `/settings badge action ...` | admin | History badges: `list`, `set weeks name`, `remove weeks` |
+| `/settings blocked-word action [word]` | admin | Words custom roles, room names, shoutouts and decrees can't contain |
+| `/bot health` | staff | Version, uptime, database (or database-down mode), lock, intents, server-day, last reshuffle, unsaved writes, AI |
+| `/bot setup` | admin | Creates or repairs every role, channel and panel. Checks permissions and role order. Safe to run any time |
+| `/bot ai action [question]` | admin | AI chat: `status`, `on`, `off`, `providers`, `test` |
+| `/bot ai-provider provider setting [value]` | admin | Change a provider's daily `cap`, `model`, or `toggle` it |
+| `/announce [channel]` | owner | Write an announcement, preview it, then the bot posts it with an @everyone ping |
+
+## Member perks (buttons in the VIP lounge)
+| Who | Perk |
 |---|---|
-| `/setup run` | Creates or repairs every role, channel and panel. Checks permissions and role order. Safe to run any time |
-| `/bot health` | Version, uptime, database (or database-down mode), lock, intents, server-day, last reshuffle, unsaved writes, AI |
-| `/config view` | Every setting, channel and role |
-| `/config set key value` | Change a setting: timezone, day-boundary, window, cooldowns, voice, spam filter, slots, buffer, min-hold, inactivity-days, min-score, timeout-days, colours, polls-daily-cap, ai-per-user-limit |
-| `/config channel purpose channel` | Announcements, mod-log, polls, or main-chat (AI) channel |
-| `/config channel-weight channel weight` | How much a channel's messages count (0 ignores it) |
-| `/config staff-roles add/remove/list` | Members with these roles can't be VIP |
-| `/config level-roles-top role` | bleed's highest level role; VIP goes above it |
-| `/config polls-role role` | Role pinged for new VIP polls |
-| `/vip list` · `/vip preview` | Current VIPs · what a reshuffle would do now (plus ranks 11–15) |
-| `/vip pin` · `/vip unpin` · `/vip remove [block_days]` · `/vip unblock` | Lock in, unlock, remove (and block), unblock |
-| `/vip reshuffle-now` | Run a reshuffle now (with a confirm button) |
-| `/vip colours list/add/edit/remove` | VIP colour options |
-| `/vip badges list/set/remove` | History badge milestones |
-| `/polls status` · `/polls unlock user` | Today's polls and locks · one more poll for a VIP today |
-| `/crown view` · `/crown reset-role` · `/crown lock/unlock` · `/crown blocked-words add/remove/list` | Crown and custom role management |
-| `/stats user` · `/leaderboard [count]` | A member's score, rank, breakdown, VIP history and badges · the top members |
-| `/activity adjust user amount reason` | Manual score correction (logged) |
-| `/ai status/toggle/test/providers/provider-cap/provider-toggle/provider-model` | AI chat controls |
+| VIPs | Colour picker, VIP polls, own temporary voice channel, **🪪 My profile** (rank, score, where you stand, badges, weeks held), **📣 Shoutout** (once a day, posted in main chat by the bot, no pings), a spot on the public **#vip-board**, and a ⭐ role icon at Boost Level 2 |
+| The Crown | Everything above, plus: a custom role, a **👑 nickname** for the week, **🎖️ Titles** (Champion, Advisor and Jester; cosmetic roles for anyone but staff and bots, reset weekly), one **📜 Decree** a week in announcements (no pings), and a **👑 Hall** voice channel with Priority Speaker and Move Members |
 
 ## Development
 - **Stack:** TypeScript (strict), Node 22, discord.js 14, Prisma 7 + PostgreSQL, Vitest, pino, zod.

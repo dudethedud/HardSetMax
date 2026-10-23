@@ -100,3 +100,10 @@ Step-by-step instructions: `docs/SETUP.md`.
 - **Backup restore drill** done once and documented.
 - `README.md`: setup, Wispbyte + Supabase deploy, environment variables, every admin command.
 - Move from test server to the real server: `/setup run`, check role order, watch the first reshuffle.
+
+## After launch: staff access, fewer commands, more perks
+- Access levels (staff / admin / owner) checked per subcommand; staff see commands through Timeout Members.
+- Commands merged into `/stats`, `/vip`, `/settings`, `/bot` and the owner-only `/announce`.
+- VIP perks: public VIP board, profile card, daily shoutout, ⭐ role icon.
+- Crown powers: titles, weekly decree, 👑 nickname, voice hall.
+- Tests for every new rule; a review pass over the whole bot.

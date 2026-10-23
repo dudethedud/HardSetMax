@@ -17,6 +17,9 @@ import { PRUNE_JOB, runPruneJob } from './services/prune.js';
 import { ColourService } from './services/colours.js';
 import { BadgeService } from './services/badges.js';
 import { CrownService } from './services/crown.js';
+import { CrownPowers } from './services/crownPowers.js';
+import { ShoutoutService } from './services/shoutouts.js';
+import { VIP_BOARD, vipBoardPanel } from './services/vipBoard.js';
 import { TempVoiceService } from './services/tempVoice.js';
 import { AiService, loadPrompts } from './services/ai/aiService.js';
 import { ChatService } from './services/ai/chat.js';
@@ -89,7 +92,12 @@ const polls = new PollService(client, env.GUILD_ID, db, config, vip, modLog, clo
 const crown = new CrownService(client, env.GUILD_ID, db, config, roleQueue, modLog, clock, log);
 vip.onRemoved.push((userId) => colours.onVipRemoved(userId));
 vip.onRemoved.push((userId, reason) => crown.onVipRemoved(userId, reason));
+const powers = new CrownPowers(client, env.GUILD_ID, db, config, crown, roleQueue, modLog, clock, log);
+crown.onAwarded.push((holder, previous) => powers.onAwarded(holder, previous));
+crown.onEnded.push((holder, why, continuing) => powers.onEnded(holder, why, continuing));
+const shoutouts = new ShoutoutService(client, db, config, vip, modLog, clock, log);
 const tempVoice = new TempVoiceService(client, env.GUILD_ID, db, config, vip, modLog, clock, log);
+tempVoice.isCrown = async (userId) => (await crown.current())?.userId === userId;
 vip.onRemoved.push((userId) => tempVoice.onVipRemoved(userId));
 const ai = new AiService(db, config, process.env, clock, log);
 const chat = new ChatService(client, env.GUILD_ID, db, config, ai, vip, crown, loadPrompts(), clock, log);
@@ -105,7 +113,14 @@ vip.onReshuffled.push(async (today, result) => {
   await chat.welcome(result.added.map((a) => a.userId));
 });
 vip.onAdded.push((userId) => colours.onVipAdded(userId));
-const panels = new Panels(client, db, config, log, [loungePanel(() => colours.options())]);
+const panels = new Panels(client, db, config, log, [loungePanel(() => colours.options()), vipBoardPanel({ db, config, vip, crown, clock })]);
+// The VIP board follows VIP and Crown changes (and refreshes hourly).
+const refreshBoard = () => panels.refreshSoon(VIP_BOARD);
+const refreshBoardHook = () => Promise.resolve(refreshBoard());
+vip.onAdded.push(refreshBoardHook);
+vip.onRemoved.push(refreshBoardHook);
+vip.onReshuffled.push(refreshBoardHook);
+powers.onChange = refreshBoard;
 const scheduler = new DailyScheduler(config, clock, log, () => leader!.isHeld());
 scheduler.register(RESHUFFLE_JOB, (period) => vip.runReshuffle(RESHUFFLE_JOB, period));
 scheduler.register(POLL_UNLOCK_JOB, (period) => polls.runUnlockJob(period));
@@ -134,6 +149,7 @@ shutdown.add({
   name: 'activity',
   run: async () => {
     for (const t of timers) clearInterval(t);
+    panels.stop();
     scheduler.stop();
     messages.stop();
     await voice.stop();
@@ -168,6 +184,8 @@ const ctx: AppContext = {
   vip,
   colours,
   crown,
+  powers,
+  shoutouts,
   badges,
   polls,
   tempVoice,
@@ -179,6 +197,7 @@ const ctx: AppContext = {
       steps: [
         (g, vipRole, report) => colours.setup(g, vipRole, report),
         (g, vipRole, report) => crown.setup(g, vipRole, report),
+        (g, vipRole, report) => powers.setup(g, vipRole, report),
         (g, vipRole, report) => badges.setup(g, vipRole, report),
         (g, vipRole, report) => polls.setup(g, vipRole, report),
       ],
@@ -213,6 +232,7 @@ client.once(Events.ClientReady, (c) => {
     await vip.reconcile();
     await colours.reconcile();
     await crown.reconcile();
+    await powers.reconcile();
     await badges.reconcile();
     await tempVoice.start();
     await polls.reconcileLocks();
@@ -230,6 +250,7 @@ client.once(Events.ClientReady, (c) => {
     setInterval(() => messages.sweep(), SWEEP_MS),
     setInterval(() => void tempVoice.sweep().catch(logErrors('temp voice check')), 15_000),
     setInterval(() => void permissionCheck.run().catch(logErrors('permission check')), 60 * 60_000),
+    setInterval(refreshBoard, 60 * 60_000),
   );
 });
 client.on(Events.InteractionCreate, (interaction) => {

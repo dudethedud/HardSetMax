@@ -177,7 +177,7 @@ describe.skipIf(!url)('VIP polls and colours', () => {
     expect(await db.pollLock.count()).toBe(0);
   });
 
-  it('/polls unlock gives one more poll past the cap, then locks again', async () => {
+  it('/vip poll-unlock gives one more poll past the cap, then locks again', async () => {
     const t = await setup([1, 2]);
     await post(t, [t.message(id(1), true), t.message(id(2), true)]);
     await t.polls.grantExtra(id(1), id(9));

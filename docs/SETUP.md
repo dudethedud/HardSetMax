@@ -40,6 +40,7 @@ Use a test server first, not the real one.
 4. Under **Bot Permissions**, tick:
    - **Manage Roles**, **Manage Channels**, **Manage Messages**, **View Audit Log**
    - **View Channels**, **Send Messages**, **Read Message History**, **Mention Everyone**, **Connect**
+   - for the Crown's perks: **Manage Nicknames** (the 👑 nickname), **Priority Speaker** and **Move Members** (handed out in the Crown's voice hall)
    - and everything VIP gives, because Discord only lets the bot give permissions it has itself: **Attach Files**, **Embed Links**, **Use External Emojis**, **Use External Stickers**, **Use Soundboard**, **Use External Sounds**, **Create Public Threads**, **Send Messages in Threads**
 
    If you already added the bot, add any missing ones to the bot's role in **Server Settings → Roles** instead.
@@ -110,14 +111,16 @@ Use a test server first, not the real one.
 
 Once `/bot health` works, in your test server:
 1. **Server Settings → Roles:** drag the bot's role **above** bleed's level roles, so the bot can manage the roles it creates.
-2. `/config level-roles-top role:<bleed's highest level role>`. The VIP role will go directly above it.
-3. `/config channel purpose:announcements channel:#your-announcements` and `/config channel purpose:mod-log channel:#a-private-staff-channel`.
-4. `/config staff-roles add role:<each staff role>`. Members with these can't be VIP.
-5. Optional: if you already have a #polls channel or a role for poll pings, use `/config channel purpose:polls` and `/config polls-role`. Otherwise setup creates them.
-6. `/setup run`. It creates:
+2. `/settings role action:level-top role:<bleed's highest level role>`. The VIP role will go directly above it.
+3. `/settings channel purpose:announcements channel:#your-announcements` and `/settings channel purpose:mod-log channel:#a-private-staff-channel`.
+4. `/settings role action:add-staff role:<each staff role>`. Members with these can use the staff commands (`/stats`, `/vip list`, `/vip preview`, `/vip polls`, `/vip crown`, `/bot health`) and can't be VIP. Discord only **shows** them the commands if the role also has **Timeout Members**.
+5. Optional: if you already have a #polls channel or a role for poll pings, use `/settings channel purpose:polls` and `/settings role action:polls`. Otherwise setup creates them.
+6. `/bot setup`. It creates:
    - the VIP role, 10 VIP colour roles (above VIP), the 👑 Crown role (above the colours), and 3 history badge roles (at the bottom)
    - the private VIP Lounge (text and voice), with a panel where VIPs pick their colour
    - `#polls` with the right permissions, and a **Polls** role. Give it to members who want poll pings (self-roles or another bot). Only the bot can ping it.
+   - `#vip-board`, a read-only channel with the public VIP board, and the three Crown title roles (🛡️ Champion, 📜 Advisor, 🃏 Jester), just below the Crown
+   - a ⭐ icon on the VIP role, if the server is Boost Level 2 or higher
 
    It tells you if anything's wrong. Run it again whenever something looks off; it's safe.
 7. `/vip preview` shows what the first reshuffle will do. The reshuffle runs every night at midnight (server time). It also runs once right after setup, for the day that just ended.
@@ -130,7 +133,7 @@ Optional, and free. Without it, the bot answers mentions with pre-written replie
    - Sign up at https://console.groq.com (no card needed).
    - Go to **API Keys → Create API Key** and copy it.
    - In **Settings → Data Controls**, turn on **Zero Data Retention**, so Groq doesn't keep the messages.
-   - Check **Settings → Limits** for what the free plan allows. If `llama-3.1-8b-instant` isn't listed, run `/ai provider-model provider:groq model:<a listed model>`, e.g. `openai/gpt-oss-20b`.
+   - Check **Settings → Limits** for what the free plan allows. If `llama-3.1-8b-instant` isn't listed, run `/bot ai-provider provider:groq setting:model value:<a listed model>`, e.g. `openai/gpt-oss-20b`.
 2. **Cloudflare Workers AI** (backup):
    - Sign up at https://dash.cloudflare.com (free plan).
    - Your **Account ID** is on the right of the account home page.
@@ -141,7 +144,7 @@ Optional, and free. Without it, the bot answers mentions with pre-written replie
    CLOUDFLARE_ACCOUNT_ID=...
    CLOUDFLARE_AI_TOKEN=...
    ```
-4. In Discord: `/config channel purpose:main-chat channel:#general` (the bot only chats there), then `/ai status` and `/ai test question:how does VIP work?`.
+4. In Discord: `/settings channel purpose:main-chat channel:#general` (the bot only chats there), then `/bot ai action:status` and `/bot ai action:test question:how does VIP work?`.
 5. Add this line to your server rules: **"Messages you send to Puppyboy Carter are processed by an AI service."**
 
 Use one account per provider. Making extra accounts to get more free usage breaks their terms.
