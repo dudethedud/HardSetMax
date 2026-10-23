@@ -317,6 +317,7 @@ Five commands, all registered to the guild only and replying privately (ephemera
 | `/vip reshuffle` | admin | Run the reshuffle immediately (asks for confirmation with a button) |
 | `/vip adjust @user <amount> <reason>` | admin | Manual score correction, logged |
 | `/vip poll-unlock @user` | admin | Give someone their poll back for today (logged) |
+| `/vip crown-give @user` | admin | Give this week's Crown to a VIP now; the current holder loses it the usual way. Lasts until next week's award |
 | `/vip crown-reset @user` · `/vip crown-lock @user <locked>` | admin | Delete a custom role · block or allow custom roles |
 | `/settings view` · `/settings set <key> <value>` | admin | Slots, window, buffer, min hold, inactivity days, min score, day boundary, timezone, voice weight, daily voice cap, spam filter thresholds, polls daily cap, colours, AI per-user limit |
 | `/settings channel <purpose> <channel>` | admin | Announcements, mod-log, polls, main chat (AI and shoutouts), VIP board |

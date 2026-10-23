@@ -49,6 +49,7 @@ export const vipCommand = defineCommand({
           .setDescription('Admin: give a VIP one more poll today (works even past the daily limit)')
           .addUserOption((o) => o.setName('user').setDescription('VIP').setRequired(true)),
       )
+      .addSubcommand((s) => s.setName('crown-give').setDescription('Admin: give this week’s Crown to a VIP now (e.g. for testing)').addUserOption(member))
       .addSubcommand((s) => s.setName('crown-reset').setDescription('Admin: delete a custom role and its saved settings').addUserOption(member))
       .addSubcommand((s) =>
         s
@@ -160,6 +161,15 @@ export const vipCommand = defineCommand({
     }
 
     const user = interaction.options.getUser('user', true);
+
+    if (sub === 'crown-give') {
+      if (!ctx.vip.vips.has(user.id)) {
+        await interaction.editReply(`❌ ${userMention(user.id)} isn't VIP. The Crown only goes to VIPs; use \`/vip pin\` first.`);
+        return;
+      }
+      await interaction.editReply(await ctx.crown.giveManually(user.id, actor));
+      return;
+    }
 
     if (sub === 'crown-reset') {
       const done = await ctx.crown.resetRole(user.id, actor);

@@ -118,6 +118,44 @@ export class CrownService {
     await this.#runHooks(this.onEnded.map((h) => () => h(cur, `lost VIP (${reason})`, false)));
   }
 
+  /**
+   * /vip crown-give: an admin gives this week's Crown to a VIP (for testing, or to
+   * fix a mistake). The current holder loses it the usual way; the new holder gets
+   * everything a weekly winner gets. It lasts until the next week's award.
+   */
+  async giveManually(userId: string, actorId: string): Promise<string> {
+    const cur = await this.current();
+    if (cur?.userId === userId) return `<@${userId}> already holds the Crown.`;
+    const now = this.clock.now();
+    const week = this.#week(now);
+    if (cur) {
+      await this.db.$transaction([
+        this.db.crownHolder.update({ where: { id: cur.id }, data: { endedAt: now, endReason: `replaced by <@${actorId}>` } }),
+        this.db.auditLog.create({ data: { action: 'crown.lost', actorId, targetId: cur.userId, reason: 'replaced by an admin' } }),
+      ]);
+      await this.#takeAway(cur.userId, 'an admin gave the Crown to someone else');
+      await this.#runHooks(this.onEnded.map((h) => () => h(cur, 'was given to someone else', false)));
+    }
+    // One row per week: reuse this week's row if the Crown was already awarded.
+    const holder = await this.db.$transaction(async (tx) => {
+      const row = await tx.crownHolder.upsert({
+        where: { weekStart: week },
+        create: { userId, weekStart: week, awardedAt: now },
+        update: { userId, awardedAt: now, endedAt: null, endReason: null, decreeAt: null, nickApplied: false, nickBefore: null },
+      });
+      await tx.auditLog.create({ data: { action: 'crown.give', actorId, targetId: userId, data: { week } } });
+      return row;
+    });
+    // If this week's award hasn't run yet, mark it done so a reshuffle doesn't replace this.
+    if (await claimJob(this.db, CROWN_JOB, week, now)) {
+      await this.db.$transaction((tx) => completeJob(tx, CROWN_JOB, week, { winner: userId, previous: cur?.userId ?? null, manual: true }, now));
+    }
+    await this.#give(userId);
+    await this.#runHooks(this.onAwarded.map((h) => () => h(holder, null)));
+    await this.modLog.post(`👑 <@${actorId}> gave the Crown (week of ${week}) to <@${userId}>`);
+    return `👑 <@${userId}> now holds the Crown until next week's award.`;
+  }
+
   async #give(userId: string): Promise<void> {
     const crownRoleId = this.config.current.guild.crownRoleId;
     if (crownRoleId) {
