@@ -286,6 +286,12 @@ The bot can chat in **main chat only**, using a free AI API. It explains how VIP
 - If the AI isn't available, the post goes out without the line.
 - **Welcome for new VIPs:** a short AI-written welcome in the VIP lounge listing their perks (falls back to a fixed message).
 
+### Blacklist (owner-approved)
+- The AI ends its reply with a hidden tag when the message it's answering is genuinely mean (insulting, hateful, harassing) or asks for sexual/NSFW content. Playful teasing and jokes don't count. The code removes the tag before posting.
+- Each tag is a strike for that message's author only. `ai-strike-limit` strikes (default 2) within 24 hours add them to the blacklist, and the bot stops replying to them. It's posted in the mod-log.
+- The server owner is never struck or blacklisted. Admins manage the list with `/bot ai-blacklist`; removing someone also clears their strikes.
+- Only who and when is saved, never the message.
+
 ### Privacy
 - Messages that mention or reply to the bot in main chat are **sent to the AI provider** to answer them. The bot itself still never saves them.
 - Check the chosen provider's data policy before going live. (Gemini's free tier, for example, uses prompts to improve Google's products, which is one reason it isn't the default.)
@@ -322,13 +328,14 @@ Five commands, all registered to the guild only and replying privately (ephemera
 | `/settings view` · `/settings set <key> <value>` | admin | Slots, window, buffer, min hold, inactivity days, min score, day boundary, timezone, voice weight, daily voice cap, spam filter thresholds, polls daily cap, colours, AI per-user limit |
 | `/settings channel <purpose> <channel>` | admin | Announcements, mod-log, polls, main chat (AI and shoutouts), VIP board |
 | `/settings channel-weight <channel> <weight>` | admin | Set weight; `0` ignores the channel |
-| `/settings role <action> [role]` | admin | Staff roles (add/remove/list), the highest level role, the Polls role |
+| `/settings role <action> [role]` | admin | Staff roles (add/remove/list), the highest level role, the Polls role, and binding an existing role as the VIP, Crown or a title role |
 | `/settings colour <action> …` | admin | Manage colour options (list/add/edit/remove) |
 | `/settings badge <action> …` | admin | Manage badge milestones (list/set/remove) |
 | `/settings blocked-word <action> [word]` | admin | Name filter for custom roles, room names, shoutouts and decrees |
 | `/bot health` | staff | Version, uptime, DB connection, last reshuffle time/result, pending writes, intents check, AI status |
 | `/bot setup` | admin | Creates or repairs all roles, the VIP category/channels, the VIP board and the panels. Safe to run again. Checks role positions and warns if the bot's role is too low. |
 | `/bot ai <action>` · `/bot ai-provider <provider> <setting> [value]` | admin | AI chat controls (§9a) |
+| `/bot ai-blacklist <add\|remove\|list> [@user]` | admin | Who the AI won't reply to (§9a "Blacklist") |
 | `/announce [channel]` | owner | Owner only (not admins or staff): opens a form, shows a private preview with Send / Cancel, then the bot posts it with an `@everyone` ping. No other mentions ping. The draft is deleted after sending or after 15 minutes. |
 
 ---

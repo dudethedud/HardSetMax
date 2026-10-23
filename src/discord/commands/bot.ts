@@ -1,5 +1,5 @@
 import { hostname } from 'node:os';
-import { EmbedBuilder, IntentsBitField, time, TimestampStyles, type ChatInputCommandInteraction } from 'discord.js';
+import { EmbedBuilder, IntentsBitField, time, TimestampStyles, userMention, type ChatInputCommandInteraction } from 'discord.js';
 import { MANUAL_RESHUFFLE_JOB, RESHUFFLE_JOB } from '../../services/vipService.js';
 import { serverDayAt } from '../../core/serverDay.js';
 import { VERSION } from '../../version.js';
@@ -35,6 +35,19 @@ export const botCommand = defineCommand({
       )
       .addSubcommand((s) =>
         s
+          .setName('ai-blacklist')
+          .setDescription('Admin: who Puppyboy Carter won’t reply to (added automatically for mean/NSFW messages)')
+          .addStringOption((o) =>
+            o
+              .setName('action')
+              .setDescription('What to do')
+              .setRequired(true)
+              .addChoices({ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }),
+          )
+          .addUserOption((o) => o.setName('user').setDescription('Member (not needed for list)')),
+      )
+      .addSubcommand((s) =>
+        s
           .setName('ai-provider')
           .setDescription('Admin: change an AI provider')
           .addStringOption((o) => o.setName('provider').setDescription('Provider name, e.g. groq').setRequired(true).setMaxLength(32))
@@ -60,6 +73,7 @@ export const botCommand = defineCommand({
       return;
     }
     if (sub === 'ai') return ai(interaction, ctx);
+    if (sub === 'ai-blacklist') return aiBlacklist(interaction, ctx);
     return aiProvider(interaction, ctx);
   },
 });
@@ -162,8 +176,8 @@ async function ai(interaction: ChatInputCommandInteraction<'cached'>, ctx: AppCo
     return;
   }
   const stats = await ctx.chat.statsFor(actorId, interaction.member.displayName);
-  const text = await ctx.chat.reply(stats, [{ role: 'user', content: `${interaction.member.displayName}: ${question}` }], { count: false });
-  await interaction.editReply(text ? `🤖 ${text}` : '⚠️ No AI provider answered (or AI is off). Members would get a pre-written reply. See `/bot ai action:status`.');
+  const { text, strike } = await ctx.chat.reply(stats, [{ role: 'user', content: `${interaction.member.displayName}: ${question}` }], { count: false });
+  await interaction.editReply(text ? `🤖 ${text}${strike ? '\n-# (this would count as a mean/NSFW flag for a member)' : ''}` : '⚠️ No AI provider answered (or AI is off). Members would get a pre-written reply. See `/bot ai action:status`.');
 }
 
 async function aiProvider(interaction: ChatInputCommandInteraction<'cached'>, ctx: AppContext): Promise<void> {
@@ -196,4 +210,44 @@ async function aiProvider(interaction: ChatInputCommandInteraction<'cached'>, ct
   ]);
   const shown = Object.entries(data).filter(([k]) => k !== 'cooldownUntil' && k !== 'lastError');
   await interaction.editReply(`✅ ${name}: ${shown.map(([k, v]) => `${k} = ${String(v)}`).join(', ')}`);
+}
+
+async function aiBlacklist(interaction: ChatInputCommandInteraction<'cached'>, ctx: AppContext): Promise<void> {
+  const act = interaction.options.getString('action', true);
+  const actorId = interaction.user.id;
+  if (act === 'list') {
+    const rows = await ctx.db.aiBlock.findMany({ orderBy: { createdAt: 'asc' } });
+    await interaction.editReply(
+      rows.length
+        ? `**Puppyboy Carter won't reply to:**\n${rows.map((r) => `• ${userMention(r.userId)} (${r.auto ? 'automatic' : `added by ${userMention(r.actorId ?? '')}`}, ${time(r.createdAt, TimestampStyles.ShortDate)})`).join('\n')}`.slice(0, 2000)
+        : 'Nobody is blacklisted.',
+    );
+    return;
+  }
+  const user = interaction.options.getUser('user');
+  if (!user) {
+    await interaction.editReply(`❌ \`${act}\` needs the \`user\` option.`);
+    return;
+  }
+  if (act === 'add') {
+    if (user.id === interaction.guild.ownerId) {
+      await interaction.editReply("❌ The server owner can't be blacklisted.");
+      return;
+    }
+    await ctx.db.$transaction([
+      ctx.db.aiBlock.upsert({ where: { userId: user.id }, create: { userId: user.id, auto: false, actorId }, update: { auto: false, actorId } }),
+      ctx.db.auditLog.create({ data: { action: 'ai.block', actorId, targetId: user.id } }),
+    ]);
+    await ctx.modLog.post(`🙊 <@${actorId}> blacklisted <@${user.id}> from Puppyboy Carter's replies`);
+    await interaction.editReply(`🙊 Puppyboy Carter won't reply to ${userMention(user.id)} any more.`);
+    return;
+  }
+  // Removing also clears their strikes, so one more flag doesn't block them straight away.
+  const [{ count }] = await ctx.db.$transaction([
+    ctx.db.aiBlock.deleteMany({ where: { userId: user.id } }),
+    ctx.db.aiStrike.deleteMany({ where: { userId: user.id } }),
+    ctx.db.auditLog.create({ data: { action: 'ai.unblock', actorId, targetId: user.id } }),
+  ]);
+  if (count) await ctx.modLog.post(`✅ <@${actorId}> removed <@${user.id}> from Puppyboy Carter's blacklist`);
+  await interaction.editReply(count ? `✅ Puppyboy Carter will reply to ${userMention(user.id)} again.` : `${userMention(user.id)} wasn't blacklisted.`);
 }

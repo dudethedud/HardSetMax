@@ -26,8 +26,10 @@ export async function pruneOldData(db: Db, config: ConfigStore, now: Date): Prom
     db.aiUsage.deleteMany({ where: { providerDay: { lt: oldest.toISOString().slice(0, 10) } } }),
     db.modalDraft.deleteMany({ where: { expiresAt: { lt: now } } }),
     db.shoutout.deleteMany({ where: { serverDay: { lt: oldestDay } } }),
+    // Strikes only matter for 24 h; blacklist entries stay until an admin removes them.
+    db.aiStrike.deleteMany({ where: { at: { lt: new Date(now.getTime() - 2 * 86_400_000) } } }),
   ]);
-  const [activityDays, adjustments, pollPosts, voiceSessions, timeouts, aiUsage, drafts, shoutouts] = counts.map((c) => c.count);
+  const [activityDays, adjustments, pollPosts, voiceSessions, timeouts, aiUsage, drafts, shoutouts, aiStrikes] = counts.map((c) => c.count);
   return {
     activityDays: activityDays!,
     adjustments: adjustments!,
@@ -37,6 +39,7 @@ export async function pruneOldData(db: Db, config: ConfigStore, now: Date): Prom
     aiUsage: aiUsage!,
     drafts: drafts!,
     shoutouts: shoutouts!,
+    aiStrikes: aiStrikes!,
   };
 }
 

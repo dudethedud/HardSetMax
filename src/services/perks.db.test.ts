@@ -50,7 +50,7 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
   });
   afterAll(() => db.$disconnect());
 
-  async function setup(opts: { members: number[]; staff?: number[]; bots?: number[]; vips?: number[]; failSend?: boolean }) {
+  async function setup(opts: { members: number[]; staff?: number[]; bots?: number[]; vips?: number[]; failSend?: boolean; existingRoles?: { id: string; name: string; perms?: bigint }[] }) {
     const memberRoles = new Map<string, Set<string>>();
     const nicks = new Map<string, string | null>();
     const all = [...opts.members, ...(opts.staff ?? []), ...(opts.bots ?? [])];
@@ -76,11 +76,15 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
         setNickname: (nick: string | null) => (nicks.set(uid, nick), Promise.resolve()),
       };
     };
-    const roles = new Collection<string, { id: string; position: number; members: Collection<string, unknown>; edit: () => Promise<unknown>; setPosition: () => Promise<unknown> }>();
+    type FakeRole = { id: string; name: string; managed: boolean; permissions: { bitfield: bigint }; position: number; members: Collection<string, unknown>; edit: () => Promise<unknown>; setPosition: () => Promise<unknown> };
+    const roles = new Collection<string, FakeRole>();
     let nextRole = 0;
-    const addRole = (rid: string, position: number) => {
-      const role = {
+    const addRole = (rid: string, position: number, name = `role ${rid}`) => {
+      const role: FakeRole = {
         id: rid,
+        name,
+        managed: false,
+        permissions: { bitfield: 0n },
         position,
         get members() {
           return new Collection([...memberRoles].filter(([, s]) => s.has(rid)).map(([uid]) => [uid, {}]));
@@ -91,12 +95,14 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
       roles.set(rid, role);
       return role;
     };
-    addRole(CROWN_ROLE, 20);
+    addRole(CROWN_ROLE, 20, '👑 Crown');
+    const botRole = addRole('900000000000000097', 50, 'Bot');
+    for (const r of opts.existingRoles ?? []) addRole(r.id, 5, r.name).permissions.bitfield = r.perms ?? 0n;
     const guild = {
       id: GUILD,
       ownerId: OWNER,
       premiumTier: 0,
-      members: { cache: { get: member, has: (uid: string) => memberRoles.has(uid) }, fetch: (uid: string) => Promise.resolve(member(uid) ?? null) },
+      members: { me: { roles: { highest: botRole } }, cache: { get: member, has: (uid: string) => memberRoles.has(uid) }, fetch: (uid: string) => Promise.resolve(member(uid) ?? null) },
       roles: { cache: roles, create: () => Promise.resolve(addRole(`90000000000000200${nextRole++}`, 10)) },
     };
     const sent: { channelId: string; content: string; allowedMentions: unknown }[] = [];
@@ -138,6 +144,19 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
     const titles = await t.powers.titles();
     expect(titles.map((x) => x.slot)).toEqual(['champion', 'advisor', 'jester']);
     expect(titles.every((x) => x.roleId)).toBe(true);
+  });
+
+  it('setup reuses an existing role with the same name, but never one that has permissions', async () => {
+    await setup({
+      members: [1],
+      existingRoles: [
+        { id: '900000000000000301', name: 'Champion' },
+        { id: '900000000000000302', name: 'Jester', perms: 8n },
+      ],
+    });
+    const titles = await db.crownTitle.findMany();
+    expect(titles.find((x) => x.slot === 'champion')!.roleId).toBe('900000000000000301');
+    expect(titles.find((x) => x.slot === 'jester')!.roleId).not.toBe('900000000000000302');
   });
 
   it('only the Crown appoints; not to bots, staff or themselves; one title per person', async () => {

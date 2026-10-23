@@ -7,6 +7,7 @@ import { ConfigStore } from '../../config/configStore.js';
 import { createDb, type Db } from '../../db/prisma.js';
 import type { Clock } from '../clock.js';
 import type { CrownService } from '../crown.js';
+import type { ModLog } from '../modLog.js';
 import type { VipService } from '../vipService.js';
 import { AiService, PREWRITTEN, REASONING_ALLOWANCE, type FetchLike } from './aiService.js';
 import { ChatService } from './chat.js';
@@ -22,6 +23,8 @@ const NOW = new Date('2026-10-26T23:59:00Z');
 
 type Reply = { status: number; body: string } | 'timeout' | 'network';
 
+const OWNER_ID = '100000000000000099';
+
 describe.skipIf(!url)('AI chat', () => {
   const db: Db = createDb({ connectionString: url }, 3);
   let now = NOW;
@@ -36,6 +39,8 @@ describe.skipIf(!url)('AI chat', () => {
       db.activityDay.deleteMany(),
       db.memberName.deleteMany(),
       db.pollPost.deleteMany(),
+      db.aiStrike.deleteMany(),
+      db.aiBlock.deleteMany(),
       db.guildConfig.deleteMany({ where: { guildId: GUILD } }),
     ]);
     await db.guildConfig.create({ data: { guildId: GUILD, mainChatChannelId: MAIN } });
@@ -166,6 +171,7 @@ describe.skipIf(!url)('AI chat', () => {
       const m = {
         id: String(Math.random()),
         guildId: GUILD,
+        guild: { ownerId: OWNER_ID },
         channelId: opts.channel ?? MAIN,
         inGuild: () => true,
         author: { id: author, bot: author === BOT, displayName: `User ${author.slice(-2)}` },
@@ -197,6 +203,57 @@ describe.skipIf(!url)('AI chat', () => {
       expect(system).toContain('Rank: #2 of 2');
       expect(system).not.toContain('99'); // the other member's score
       expect(t.calls[0]!.body.messages.at(-1)!.content).toBe("User 01: what's my rank?");
+    });
+
+    it('a flagged reply hides the tag; 2 flags in 24 h stop replies to that person only', async () => {
+      const flagged = ok('nuh uh im a good boy lets keep it nice [[STRIKE]]');
+      const t = await makeChat({ groq: [flagged, flagged] });
+      const posts: string[] = [];
+      t.chat.modLog = { post: (x: string) => (posts.push(x), Promise.resolve()) } as unknown as ModLog;
+
+      const first = message({ content: `<@${BOT}> something mean`, mentionsBot: true });
+      await t.chat.handle(first.m, 'counted');
+      expect(first.replies[0]!.content).toBe('nuh uh im a good boy lets keep it nice');
+      expect(await db.aiBlock.count()).toBe(0);
+
+      now = new Date(NOW.getTime() + 60 * 60_000);
+      await t.chat.handle(message({ content: `<@${BOT}> zzqx secret insult`, mentionsBot: true }).m, 'counted');
+      expect(await db.aiBlock.findUnique({ where: { userId: id(1) } })).toMatchObject({ auto: true });
+      expect(posts.join('\n')).toContain('stopped replying');
+
+      // Blocked: no reply, no AI call.
+      const calls = t.calls.length;
+      const blocked = message({ content: `<@${BOT}> hi`, mentionsBot: true });
+      await t.chat.handle(blocked.m, 'counted');
+      expect(blocked.replies).toHaveLength(0);
+      expect(t.calls).toHaveLength(calls);
+      // Someone else still gets replies.
+      const other = message({ author: id(2), content: `<@${BOT}> hi`, mentionsBot: true });
+      await t.chat.handle(other.m, 'counted');
+      expect(other.replies).toHaveLength(1);
+      // Nothing of what they said is saved.
+      expect(JSON.stringify([await db.auditLog.findMany(), await db.aiStrike.findMany(), await db.aiBlock.findMany()])).not.toContain('zzqx');
+    });
+
+    it('strikes older than a day expire, and the owner is never flagged or blocked', async () => {
+      const flagged = ok('no thanks [[STRIKE]]');
+      const t = await makeChat({ groq: [flagged, flagged, flagged, flagged] });
+      await t.chat.handle(message({ content: `<@${BOT}> x`, mentionsBot: true }).m, 'counted');
+      now = new Date(NOW.getTime() + 25 * 60 * 60_000);
+      await t.chat.handle(message({ content: `<@${BOT}> y`, mentionsBot: true }).m, 'counted');
+      expect(await db.aiBlock.count()).toBe(0);
+
+      for (let i = 0; i < 2; i++) await t.chat.handle(message({ author: OWNER_ID, content: `<@${BOT}> z${i}`, mentionsBot: true }).m, 'counted');
+      expect(await db.aiStrike.count({ where: { userId: OWNER_ID } })).toBe(0);
+      expect(await db.aiBlock.count()).toBe(0);
+    });
+
+    it('the owner is never ignored, even if added to the blacklist by hand', async () => {
+      const t = await makeChat();
+      await db.aiBlock.create({ data: { userId: OWNER_ID, auto: false } });
+      const { m, replies } = message({ author: OWNER_ID, content: `<@${BOT}> hi`, mentionsBot: true });
+      await t.chat.handle(m, 'counted');
+      expect(replies).toHaveLength(1);
     });
 
     it('ignores other channels, messages not aimed at it, and spam-flagged messages', async () => {

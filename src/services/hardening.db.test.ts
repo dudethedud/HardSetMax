@@ -33,6 +33,7 @@ describe.skipIf(!url)('hardening', () => {
       db.modalDraft.deleteMany(),
       db.shoutout.deleteMany(),
       db.crownTitle.deleteMany(),
+      db.aiStrike.deleteMany(),
       db.auditLog.deleteMany(),
       db.vipStint.deleteMany(),
       db.colourOption.deleteMany(),
@@ -58,11 +59,12 @@ describe.skipIf(!url)('hardening', () => {
     await db.aiUsage.createMany({ data: [{ provider: 'groq', providerDay: '2026-08-01' }, { provider: 'groq', providerDay: '2026-10-26' }] });
     await db.modalDraft.create({ data: { userId: '1', data: {}, expiresAt: old } });
     await db.shoutout.createMany({ data: [{ userId: '1', serverDay: '2026-08-01' }, { userId: '1', serverDay: '2026-10-20' }] });
+    await db.aiStrike.createMany({ data: [{ userId: '1', at: old }, { userId: '1', at: NOW }] });
     await db.auditLog.create({ data: { action: 'x', at: old } });
     await db.vipStint.create({ data: { userId: '1', startedAt: old, endedAt: old } });
 
     const deleted = await pruneOldData(db, config, NOW);
-    expect(deleted).toEqual({ activityDays: 1, adjustments: 1, pollPosts: 1, voiceSessions: 1, timeouts: 1, aiUsage: 1, drafts: 1, shoutouts: 1 });
+    expect(deleted).toEqual({ activityDays: 1, adjustments: 1, pollPosts: 1, voiceSessions: 1, timeouts: 1, aiUsage: 1, drafts: 1, shoutouts: 1, aiStrikes: 1 });
     expect((await db.activityDay.findMany()).map((d) => d.serverDay)).toEqual(['2026-08-27']);
     expect(await db.voiceSession.count()).toBe(2); // recent and still open
     expect(await db.auditLog.count()).toBe(1); // kept forever

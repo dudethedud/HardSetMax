@@ -8,13 +8,13 @@ const VIP_SUMMARY =
 export function fallbackReply(question: string, stats: AskerStats): string {
   const q = question.toLowerCase();
   if (/\b(rank|score|stats|points|me|my|standing|position)\b/.test(q)) {
-    return `heres where u stand :3 🐶\n${describeStats(stats).split('\n').slice(1).join('\n')}`;
+    return `heres where u stand :3\n${describeStats(stats).split('\n').slice(1).join('\n')}`;
   }
   if (/\b(vip|crown|poll|colou?r|badge|how)\b/.test(q)) return VIP_SUMMARY;
-  return 'heyyy :3 my brain is taking a lil nap rn 🐶 but ask me about vip or your stats and ill help ^^';
+  return 'heyyy :3 my brain is taking a lil nap rn but ask me about vip or your stats and ill help ^^';
 }
 
-export const BLOCKED_OUTPUT_FALLBACK = 'oopsie lets keep it friendly >w< ask me about vip or your stats 🐶';
+export const BLOCKED_OUTPUT_FALLBACK = 'oopsie lets keep it friendly >w< ask me about vip or your stats';
 
 export function fallbackWelcome(): string {
   return '🎉 welcome to the vip lounge :3 u get image perms and external emojis and stickers plus ur own vip colour and vip polls and ur own temp voice channel so stay active to keep ur slot >w<';

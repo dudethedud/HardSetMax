@@ -3,6 +3,7 @@
 // are channel permission overwrites, saved as PollLock rows and removed by the
 // daily poll-unlock job once they expire.
 import {
+  ChannelType,
   OverwriteType,
   PermissionFlagsBits,
   ThreadAutoArchiveDuration,
@@ -22,6 +23,7 @@ import type { Logger } from '../logger.js';
 import type { Clock } from './clock.js';
 import { claimJob, completeJob, failJob } from './jobs.js';
 import type { ModLog } from './modLog.js';
+import { findExistingChannel, findExistingRole } from './reuse.js';
 import type { VipService } from './vipService.js';
 
 export const POLL_UNLOCK_JOB = 'poll-unlock';
@@ -254,7 +256,12 @@ export class PollService {
     const me = await guild.members.fetchMe();
     let pollsRoleId = cfg.pollsRoleId && guild.roles.cache.has(cfg.pollsRoleId) ? cfg.pollsRoleId : null;
     try {
-      if (!pollsRoleId) {
+      const reuse = pollsRoleId ? undefined : await findExistingRole(guild, this.db, cfg, ['Polls', 'Poll Ping', 'Poll Pings']);
+      if (reuse) {
+        pollsRoleId = reuse.id;
+        if (reuse.mentionable) await reuse.setMentionable(false, 'Only the bot pings the Polls role');
+        report.push(`♻️ Using the existing ${reuse.toString()} role for poll pings`);
+      } else if (!pollsRoleId) {
         const role = await guild.roles.create({ name: 'Polls', mentionable: false, permissions: [], reason: 'Pinged for new VIP polls' });
         pollsRoleId = role.id;
         report.push(`✅ Polls role ${role.toString()} created. Give it to members who want poll pings.`);
@@ -294,9 +301,10 @@ export class PollService {
     ];
     let channelId = cfg.pollsChannelId;
     try {
-      const existing = channelId ? guild.channels.cache.get(channelId) : undefined;
+      const existing = (channelId ? guild.channels.cache.get(channelId) : undefined) ?? findExistingChannel(guild, ['polls'], ChannelType.GuildText);
       if (existing && 'permissionOverwrites' in existing && existing.isTextBased()) {
         await existing.permissionOverwrites.set(overwrites, '/bot setup');
+        channelId = existing.id;
       } else {
         channelId = (await guild.channels.create({ name: 'polls', permissionOverwrites: overwrites, reason: '/bot setup' })).id;
       }

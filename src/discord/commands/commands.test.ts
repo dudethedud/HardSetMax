@@ -27,7 +27,7 @@ describe('registered commands', () => {
       expect(command('vip').levelFor(sub, null)).toBe('admin');
     }
     expect(command('bot').levelFor('health', null)).toBe('staff');
-    for (const sub of ['setup', 'ai', 'ai-provider']) expect(command('bot').levelFor(sub, null)).toBe('admin');
+    for (const sub of ['setup', 'ai', 'ai-blacklist', 'ai-provider']) expect(command('bot').levelFor(sub, null)).toBe('admin');
     expect(command('settings').levelFor('role', null)).toBe('admin');
     expect(command('announce').levelFor(null, null)).toBe('owner');
   });
@@ -36,6 +36,6 @@ describe('registered commands', () => {
     const subs = (name: string) => (command(name).data.options ?? []).map((o) => o.name).sort();
     expect(subs('vip')).toEqual(['adjust', 'crown', 'crown-give', 'crown-lock', 'crown-reset', 'list', 'pin', 'poll-unlock', 'polls', 'preview', 'remove', 'reshuffle', 'unblock', 'unpin']);
     expect(subs('settings')).toEqual(['badge', 'blocked-word', 'channel', 'channel-weight', 'colour', 'role', 'set', 'view']);
-    expect(subs('bot')).toEqual(['ai', 'ai-provider', 'health', 'setup']);
+    expect(subs('bot')).toEqual(['ai', 'ai-blacklist', 'ai-provider', 'health', 'setup']);
   });
 });

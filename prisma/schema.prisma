@@ -74,6 +74,7 @@ model GuildConfig {
   aiEnabled         Boolean @default(true)
   mainChatChannelId String?
   aiPerUserLimit    Int     @default(3) // replies per person per minute
+  aiStrikeLimit     Int     @default(2) // flags within 24 h before the bot stops replying to someone
 
   // VIP and Crown perks.
   vipBoardChannelId String? // public VIP board panel
@@ -384,4 +385,23 @@ model AiUsage {
   count       Int    @default(0)
 
   @@id([provider, providerDay])
+}
+
+// People Puppyboy Carter won't reply to. Added automatically after repeated
+// mean or NSFW messages (AiStrike), or by an admin; removed by an admin.
+model AiBlock {
+  userId    String   @id
+  auto      Boolean // true: added by the strike rule
+  actorId   String? // admin who added it, if not automatic
+  createdAt DateTime @default(now())
+}
+
+// One flag from the AI on a message to it: mean, or asking for NSFW. Only when
+// and who; the message itself is never saved.
+model AiStrike {
+  id     Int      @id @default(autoincrement())
+  userId String
+  at     DateTime @default(now())
+
+  @@index([userId, at])
 }

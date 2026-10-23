@@ -8,6 +8,7 @@ import type { Db } from '../db/prisma.js';
 import type { Logger } from '../logger.js';
 import type { ModLog } from './modLog.js';
 import { explainRoleError, type RoleQueue } from './roleQueue.js';
+import { findExistingRole } from './reuse.js';
 
 export interface BadgeAward {
   userId: string;
@@ -77,6 +78,10 @@ export class BadgeService {
             await role.edit({ name: badge.name, hoist: false, colors: { primaryColor: 0 }, reason: 'VIP badge' });
           }
         } else {
+          role = await findExistingRole(guild, this.db, this.config.current.guild, [badge.name]);
+          if (role) await this.db.badge.update({ where: { id: badge.id }, data: { roleId: role.id } });
+        }
+        if (!role) {
           role = await guild.roles.create({ name: badge.name, hoist: false, mentionable: false, permissions: [], reason: 'VIP badge' });
           await this.db.badge.update({ where: { id: badge.id }, data: { roleId: role.id } });
         }

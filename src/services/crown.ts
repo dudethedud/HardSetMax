@@ -16,6 +16,7 @@ import type { Clock } from './clock.js';
 import { claimJob, completeJob, failJob } from './jobs.js';
 import type { ModLog } from './modLog.js';
 import { explainRoleError, placeNextTo, type RoleQueue } from './roleQueue.js';
+import { findExistingRole } from './reuse.js';
 
 export const CROWN_JOB = 'crown';
 const DRAFT_MINUTES = 15;
@@ -331,6 +332,15 @@ export class CrownService {
     const colour = parseHexColour(cfg.crownColour) ?? 0xff00c8;
     let role = cfg.crownRoleId ? guild.roles.cache.get(cfg.crownRoleId) : undefined;
     try {
+      if (!role) {
+        // Take over an existing Crown role rather than making a second one.
+        role = await findExistingRole(guild, this.db, cfg, ['👑 Crown', 'Crown']);
+        if (role) {
+          await this.db.guildConfig.update({ where: { guildId: guild.id }, data: { crownRoleId: role.id } });
+          await this.config.load();
+          report.push(`♻️ Using the existing ${role.toString()} role for the Crown`);
+        }
+      }
       if (role) await role.edit({ colors: { primaryColor: colour }, hoist: true, mentionable: false, reason: '/bot setup' });
       else {
         role = await guild.roles.create({ name: '👑 Crown', colors: { primaryColor: colour }, hoist: true, mentionable: false, permissions: [], reason: '/bot setup' });
