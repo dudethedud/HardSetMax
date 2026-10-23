@@ -15,7 +15,7 @@ import type { Logger } from '../logger.js';
 import type { Clock } from './clock.js';
 import { claimJob, completeJob, failJob } from './jobs.js';
 import type { ModLog } from './modLog.js';
-import { explainRoleError, type RoleQueue } from './roleQueue.js';
+import { explainRoleError, placeNextTo, type RoleQueue } from './roleQueue.js';
 
 export const CROWN_JOB = 'crown';
 const DRAFT_MINUTES = 15;
@@ -162,7 +162,9 @@ export class CrownService {
         role = await guild.roles.create({ name: custom.name, colors: { primaryColor: colour }, hoist: false, mentionable: false, permissions: [], ...icon, reason: 'Crown custom role' });
         await this.db.customRole.update({ where: { userId }, data: { roleId: role.id } });
       }
-      if (crownRole) await role.setPosition(crownRole.position + 1, { reason: 'Custom role goes above the Crown role' }).catch(() => undefined);
+      if (crownRole) {
+        await placeNextTo(guild, role.id, crownRole.id, 'above').catch((err: unknown) => this.log.warn({ err }, "couldn't move the custom role"));
+      }
       const res = await this.roles.run({ userId, roleId: role.id, action: 'add', reason: 'Crown custom role' });
       return res.ok ? null : res.error;
     } catch (err) {
@@ -299,8 +301,11 @@ export class CrownService {
       }
       const colourRoleIds = (await this.db.colourOption.findMany()).map((o) => o.roleId).filter((id): id is string => !!id);
       await guild.roles.fetch();
-      const below = Math.max(vipRole.position, ...colourRoleIds.map((id) => guild.roles.cache.get(id)?.position ?? 0));
-      if (role.position !== below + 1) await role.setPosition(below + 1, { reason: 'Crown goes above the VIP colours' });
+      const highest = [vipRole.id, ...colourRoleIds]
+        .map((id) => guild.roles.cache.get(id))
+        .filter((r): r is Role => !!r)
+        .reduce((a, b) => (b.position > a.position ? b : a));
+      await placeNextTo(guild, role.id, highest.id, 'above');
       report.push(`✅ Crown role ${role.toString()} ready`);
     } catch (err) {
       report.push(`❌ Crown role: ${explainRoleError(err)}`);

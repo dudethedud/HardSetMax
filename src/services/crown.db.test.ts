@@ -63,18 +63,26 @@ describe.skipIf(!url)('Crown', () => {
         setPosition: (p: number) => ((role.position = p), Promise.resolve(role)),
         delete: () => (roles.delete(role.id), Promise.resolve()),
       };
+      // Discord's raw position: the same number as `position` in this fake.
+      Object.defineProperty(role, 'rawPosition', { get: () => role.position });
       roles.set(r.id, role);
       return role;
     };
     addRole({ id: GUILD, name: '@everyone', position: 0, colour: 0 });
     addRole({ id: CROWN_ROLE, name: '👑 Crown', position: 20, colour: 0 });
     addRole({ id: STAFF_ROLE, name: 'Moderator', position: 30, colour: 0 });
+    const botRole = addRole({ id: '900000000000000099', name: 'Bot', position: 40, colour: 0 });
     const guild = {
       id: GUILD,
       premiumTier,
-      members: { cache: { has: (uid: string) => memberRoles.has(uid) } },
+      members: { cache: { has: (uid: string) => memberRoles.has(uid) }, me: { roles: { highest: botRole } } },
       roles: {
         cache: roles,
+        fetch: () => Promise.resolve(roles),
+        setPositions: (list: { role: string; position: number }[]) => {
+          for (const { role, position } of list) roles.get(role)!.position = position;
+          return Promise.resolve();
+        },
         create: (o: { name: string; colors: { primaryColor: number }; unicodeEmoji?: string }) =>
           Promise.resolve(addRole({ id: `90000000000000100${nextRole++}`, name: o.name, position: 1, colour: o.colors.primaryColor, emoji: o.unicodeEmoji })),
       },
@@ -178,7 +186,10 @@ describe.skipIf(!url)('Crown', () => {
     await t.crown.afterReshuffle(MONDAY, result([cand(1, 90)], [1]));
     expect((await t.crown.submit(id(1), good)).ok).toBe(true);
     const roleId = (await db.customRole.findUniqueOrThrow({ where: { userId: id(1) } })).roleId!;
-    expect(t.roles.get(roleId)).toMatchObject({ name: 'Sunset Club', colour: 0xff8800, emoji: '🔥', position: 21 });
+    expect(t.roles.get(roleId)).toMatchObject({ name: 'Sunset Club', colour: 0xff8800, emoji: '🔥' });
+    // Directly above the Crown role: nothing in between.
+    const byPos = [...t.roles.values()].sort((a, b) => a.position - b.position).map((r) => r.id);
+    expect(byPos.indexOf(roleId)).toBe(byPos.indexOf(CROWN_ROLE) + 1);
     for (const n of [1, 2, 3]) expect((await t.crown.submit(id(1), { ...good, name: `Sunset ${n}` })).ok).toBe(true);
     const fourth = await t.crown.submit(id(1), { ...good, name: 'Sunset 4' });
     expect(fourth.ok).toBe(false);
