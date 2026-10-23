@@ -1,6 +1,7 @@
 // Role changes are applied one at a time (SPEC §13: Discord rate limits). A failure
 // never throws: it's returned, with a hint about what to fix.
-import { DiscordAPIError, RESTJSONErrorCodes, type Client } from 'discord.js';
+import { DiscordAPIError, RESTJSONErrorCodes, type Client, type Guild } from 'discord.js';
+import { moveNextTo, positionChanges } from '../core/roleOrder.js';
 import type { Logger } from '../logger.js';
 
 export interface RoleOp {
@@ -52,9 +53,29 @@ export class RoleQueue {
 export function explainRoleError(err: unknown): string {
   if (err instanceof DiscordAPIError) {
     if (err.code === RESTJSONErrorCodes.MissingPermissions) {
-      return "missing permission: give the bot Manage Roles and move the bot's role above the roles it manages, then run /bot setup";
+      return "Discord said the bot is missing permissions. It needs Manage Roles, and the roles it changes must be below the bot's highest role. Then run /bot setup again";
     }
     if (err.code === RESTJSONErrorCodes.UnknownRole) return 'the role no longer exists: run /bot setup';
   }
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Moves a role directly above (or below) another one. Reads fresh positions first,
+ * and only sends the roles whose place changes. Throws a clear error if the
+ * result would put the role at or above the bot's own highest role.
+ */
+export async function placeNextTo(guild: Guild, roleId: string, anchorId: string, side: 'above' | 'below'): Promise<void> {
+  await guild.roles.fetch();
+  const me = guild.members.me ?? (await guild.members.fetchMe());
+  const sorted = [...guild.roles.cache.values()].sort((a, b) => a.position - b.position);
+  const before = sorted.map((r) => r.id);
+  const after = moveNextTo(before, roleId, anchorId, side);
+  const botTop = me.roles.highest;
+  if (after.indexOf(roleId) >= after.indexOf(botTop.id)) {
+    const anchor = guild.roles.cache.get(anchorId);
+    throw new Error(`the bot's highest role (${botTop.name}) must be above ${anchor?.name ?? 'that role'}. Drag the bot's role higher in Server Settings → Roles`);
+  }
+  const changes = positionChanges(before, after, new Map(sorted.map((r) => [r.id, r.rawPosition])));
+  if (changes.length) await guild.roles.setPositions(changes.map((c) => ({ role: c.id, position: c.position })));
 }

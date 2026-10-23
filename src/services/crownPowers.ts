@@ -14,7 +14,7 @@ import type { Logger } from '../logger.js';
 import type { Clock } from './clock.js';
 import type { CrownService } from './crown.js';
 import type { ModLog } from './modLog.js';
-import { explainRoleError, type RoleQueue } from './roleQueue.js';
+import { explainRoleError, placeNextTo, type RoleQueue } from './roleQueue.js';
 
 export const DECREE_MAX = 500;
 
@@ -241,7 +241,7 @@ export class CrownPowers {
           role = await guild.roles.create({ name: title.name, permissions: [], mentionable: false, hoist: false, reason: 'Crown title' });
           await this.db.crownTitle.update({ where: { slot: title.slot }, data: { roleId: role.id } });
         }
-        if (crownRole && role.position >= crownRole.position) await role.setPosition(Math.max(1, crownRole.position - 1), { reason: 'Titles go below the Crown' });
+        if (crownRole && role.position >= crownRole.position) await placeNextTo(guild, role.id, crownRole.id, 'below');
       } catch (err) {
         report.push(`❌ Title ${title.name}: ${explainRoleError(err)}`);
       }

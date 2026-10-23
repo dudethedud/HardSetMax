@@ -10,7 +10,7 @@ import type { ColourOption } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
 import type { ModLog } from './modLog.js';
 import type { RoleQueue } from './roleQueue.js';
-import { explainRoleError } from './roleQueue.js';
+import { explainRoleError, placeNextTo } from './roleQueue.js';
 import type { VipService } from './vipService.js';
 
 export class ColourService {
@@ -52,10 +52,14 @@ export class ColourService {
         report.push(`❌ Colour role ${option.name}: ${explainRoleError(err)}`);
       }
     }
-    // Directly above the VIP role, first option on top (SPEC §12).
+    // Directly above the VIP role, first option on top (SPEC §12): the last option
+    // goes above VIP, then each one above the next.
     try {
-      const vipPos = (await guild.roles.fetch(vipRole.id))?.position ?? vipRole.position;
-      await guild.roles.setPositions(created.map((r, i) => ({ role: r.id, position: vipPos + created.length - i })));
+      let below = vipRole.id;
+      for (const role of [...created].reverse()) {
+        await placeNextTo(guild, role.id, below, 'above');
+        below = role.id;
+      }
       report.push(`✅ ${created.length} colour roles ready above ${vipRole.toString()}`);
     } catch (err) {
       report.push(`⚠️ Couldn't move the colour roles above VIP: ${explainRoleError(err)}`);

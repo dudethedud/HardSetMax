@@ -17,7 +17,7 @@ import { parseHexColour } from '../core/vipRules.js';
 import type { Db } from '../db/prisma.js';
 import type { Logger } from '../logger.js';
 import type { Panels } from './panels.js';
-import { explainRoleError } from './roleQueue.js';
+import { explainRoleError, placeNextTo } from './roleQueue.js';
 import type { VipService } from './vipService.js';
 
 /** What VIP gives (SPEC §3). */
@@ -97,17 +97,15 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
     if (!vipRole) return report;
   }
 
-  // 2. Role position: directly above the highest bleed level role, if set.
+  // 2. Role position: directly above the highest bleed level role, if set; else just below the bot.
   const botTop = me.roles.highest;
   const levelTop = cfg.levelRolesTopId ? guild.roles.cache.get(cfg.levelRolesTopId) : undefined;
   try {
-    const target = levelTop ? levelTop.position + 1 : botTop.position - 1;
-    if (target >= botTop.position) {
-      report.push(`⚠️ The bot's role (${botTop.toString()}) must be above the level roles. Drag it higher in Server Settings → Roles, then run /bot setup again.`);
-    } else if (vipRole.position !== target) {
-      await vipRole.setPosition(target, { reason: '/bot setup' });
+    if (levelTop) await placeNextTo(guild, vipRole.id, levelTop.id, 'above');
+    else {
+      await placeNextTo(guild, vipRole.id, botTop.id, 'below');
+      report.push('ℹ️ No level-roles-top set, so VIP was placed just below the bot. Set it with /settings role action:level-top.');
     }
-    if (!levelTop) report.push('ℹ️ No level-roles-top set, so VIP was placed just below the bot. Set it with /settings role action:level-top.');
   } catch (err) {
     report.push(`⚠️ Couldn't move the VIP role: ${explainRoleError(err)}`);
   }
