@@ -39,6 +39,8 @@ describe.skipIf(!url)('badges and weekly recap', () => {
       db.guildConfig.deleteMany({ where: { guildId: GUILD } }),
     ]);
     await db.guildConfig.create({ data: { guildId: GUILD, vipRoleId: VIP_ROLE, announceChannelId: ANNOUNCE, vipSlots: 2 } });
+    // The bot has been tracking for weeks, so the warm-up is over (an empty day long ago, out of every window).
+    await db.activityDay.create({ data: { userId: '100000000000000999', serverDay: '2026-01-01' } });
     await db.badge.createMany({
       data: [
         { weeks: 4, name: 'VIP Regular', roleId: '900000000000000091' },

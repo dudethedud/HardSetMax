@@ -31,10 +31,20 @@ export type MessageOutcome =
   | 'too-short'
   | 'emoji-only'
   | 'cooldown'
+  /** A command for another bot, like !rank or .work: not chat. */
+  | 'bot-command'
   /** Flagged by the spam filter; counted in `filteredMessages`. */
   | 'filtered-burst'
   | 'filtered-low-effort'
   | 'filtered-repeat';
+
+/** Prefixes other bots use for text commands. */
+const COMMAND_RE = /^[!?.$%+~;,-][a-z]/i;
+
+/** "!rank", "?help", ".work", "-play song": a command for another bot. */
+export function isBotCommand(text: string): boolean {
+  return COMMAND_RE.test(text.trimStart());
+}
 
 export function isFiltered(outcome: MessageOutcome): boolean {
   return outcome.startsWith('filtered-');
@@ -70,6 +80,7 @@ export function evaluateMessage(
   const done = (outcome: MessageOutcome, s: SpamState = state) => ({ state: s, outcome });
 
   if (at < mutedUntil) return done('filtered-burst');
+  if (isBotCommand(text)) return done('bot-command');
   if (trimmedLength(text) < cfg.minLength && !hasStickers) return done('too-short');
   if (isEmojiOrStickerOnly(text, hasStickers)) return done('emoji-only');
   if (trimmedLength(text) < cfg.minLength) return done('too-short');

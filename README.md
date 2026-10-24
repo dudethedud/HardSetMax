@@ -76,6 +76,16 @@ Five commands, all guild-only and replying privately unless they post on purpose
 
 **`/bot setup` reuses what's already there:** if a role or channel with the expected name exists (VIP, Polls, 👑 Crown, the titles, colours and badges; #vip-board, #polls, the VIP Lounge), it uses that instead of making a duplicate. Roles are only taken over if they have no permissions (except VIP). To use a role with a different name, bind it with `/settings role`.
 
+**Fitting into your server:** `/bot setup` fills in what isn't set yet and reports every guess (🔎 lines), so you can change any of them:
+- bleed's top level role (the highest role named like "Level 50"), staff roles (roles with moderator permissions), and the main chat, announcements and mod-log channels (by name)
+- the first time only: bot-command, spam and counting channels stop counting toward VIP
+- where a channel denies image/embed/emoji perks to everyone, VIP gets them back there (on the category for synced channels)
+- new bot channels go in the same category as your announcements
+
+**Fair from day one:** commands for other bots (`!rank`, `.work`, `-play`) don't count as chat, and the nightly reshuffle waits until there's a full week of activity before changing VIP (`/bot health` shows the warm-up). An admin can still run `/vip reshuffle` by hand.
+
+**Colours:** Discord shows a name in its highest coloured role's colour, so VIP gold (or a picked VIP colour) covers a level role's colour. That's on purpose.
+
 **AI blacklist:** if someone keeps being genuinely mean to Puppyboy Carter or asks for NSFW stuff, the AI flags the message. 2 flags in 24 hours (`/settings set ai-strike-limit`) and he stops replying to that person. Playful teasing doesn't count. The server owner is never flagged. Every block is posted in the mod-log, and `/bot ai-blacklist action:remove` undoes it.
 
 ## Member perks (buttons in the VIP lounge)

@@ -118,10 +118,12 @@ async function health(interaction: ChatInputCommandInteraction<'cached'>, ctx: A
   try {
     const last = await db.jobRun.findFirst({ where: { job: { in: [RESHUFFLE_JOB, MANUAL_RESHUFFLE_JOB] } }, orderBy: { startedAt: 'desc' } });
     if (last) {
-      const d = last.detail as { added?: unknown[]; removed?: unknown[]; error?: string } | null;
+      const d = last.detail as { added?: unknown[]; removed?: unknown[]; error?: string; warmupDaysLeft?: number } | null;
       const when = time(last.finishedAt ?? last.startedAt, TimestampStyles.RelativeTime);
       reshuffleLine =
-        last.status === 'succeeded'
+        last.status === 'succeeded' && d?.warmupDaysLeft
+          ? `⏳ ${when}: warming up, VIP starts changing in ${d.warmupDaysLeft} day(s)`
+          : last.status === 'succeeded'
           ? `✅ ${when}: ${d?.added?.length ?? 0} added, ${d?.removed?.length ?? 0} removed`
           : last.status === 'failed'
             ? `❌ ${when}: ${String(d?.error ?? 'failed').slice(0, 150)} (retries automatically)`

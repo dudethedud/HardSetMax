@@ -11,7 +11,7 @@ import { claimJob } from './jobs.js';
 import type { ModLog } from './modLog.js';
 import type { RoleOp, RoleQueue } from './roleQueue.js';
 import { DailyScheduler } from './scheduler.js';
-import { RESHUFFLE_JOB, VipService } from './vipService.js';
+import { MANUAL_RESHUFFLE_JOB, RESHUFFLE_JOB, VipService } from './vipService.js';
 
 const url = process.env['TEST_DATABASE_URL'];
 const log = pino({ level: 'silent' });
@@ -99,6 +99,8 @@ describe.skipIf(!url)('VIP service', () => {
       db.guildConfig.deleteMany({ where: { guildId: GUILD } }),
     ]);
     await db.guildConfig.create({ data: { guildId: GUILD, vipRoleId: VIP_ROLE, announceChannelId: ANNOUNCE, vipSlots: 2 } });
+    // The bot has been tracking for weeks, so the warm-up is over (an empty day long ago, out of every window).
+    await db.activityDay.create({ data: { userId: '100000000000000999', serverDay: '2026-01-01' } });
   });
   afterAll(() => db.$disconnect());
 
@@ -118,6 +120,21 @@ describe.skipIf(!url)('VIP service', () => {
     });
     await db.memberName.createMany({ data: Object.keys(scores).map((n) => ({ userId: id(Number(n)), name: `Member ${n}` })) });
   }
+
+  it('warm-up: scheduled reshuffles wait for a full week of activity; a manual one still runs', async () => {
+    await db.activityDay.deleteMany(); // a brand-new install
+    const t = await setup([1, 2].map((n) => ({ id: id(n), roles: new Set<string>() })));
+    await activity({ 1: 50, 2: 40 });
+    const run = await t.vip.runReshuffle(RESHUFFLE_JOB, '2026-10-22');
+    expect(run.status).toBe('skipped');
+    expect(run.message).toMatch(/warming up: VIP starts changing in 6 days/);
+    expect(t.vip.vips.size).toBe(0);
+    expect(t.sent).toHaveLength(0);
+    // It counts as done for that night, so it isn't retried every 15 seconds.
+    expect((await db.jobRun.findFirst({ where: { job: RESHUFFLE_JOB } }))?.status).toBe('succeeded');
+    expect((await t.vip.runReshuffle(MANUAL_RESHUFFLE_JOB, 'manual-1')).status).toBe('done');
+    expect(t.vip.vips.size).toBe(2);
+  });
 
   it('the scheduled reshuffle fills slots, saves everything, gives roles and announces', async () => {
     const t = await setup([1, 2, 3].map((n) => ({ id: id(n), roles: new Set<string>() })));

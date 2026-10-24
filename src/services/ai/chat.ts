@@ -24,10 +24,13 @@ import type { VipService } from '../vipService.js';
 import type { AiService, Prompts } from './aiService.js';
 
 const CHAIN_LENGTH = 6;
+const HINT_EVERY_MS = 10 * 60_000;
 
 export class ChatService {
   /** userId → times of recent AI replies, for the per-person limit. */
   #recent = new Map<string, number[]>();
+  /** userId → when they were last pointed to main chat. */
+  #hinted = new Map<string, number>();
   /** Set in index.ts: where automatic AI blocks are announced. */
   modLog: ModLog | null = null;
 
@@ -57,7 +60,11 @@ export class ChatService {
     const skipped = (reason: string) => {
       if (mentioned) this.log.info({ userId: message.author.id, channelId: message.channelId, reason }, 'AI chat: mention not answered');
     };
-    if (message.channelId !== this.config.current.guild.mainChatChannelId) return skipped('not the main chat channel (/settings channel purpose:main-chat)');
+    const mainChat = this.config.current.guild.mainChatChannelId;
+    if (message.channelId !== mainChat) {
+      if (mentioned && mainChat) await this.#pointToMainChat(message, mainChat);
+      return skipped('not the main chat channel (/settings channel purpose:main-chat)');
+    }
 
     const ref = message.reference?.messageId ? await message.fetchReference().catch(() => null) : null;
     if (!mentioned && ref?.author.id !== botId) return;
@@ -82,6 +89,20 @@ export class ChatService {
 
     await message.reply({ content: text, allowedMentions: { parse: [], users: [userId], repliedUser: true } });
     if (res.strike && !isOwner) await this.#strike(userId);
+  }
+
+  /**
+   * Mentioned outside main chat: a short note pointing there (deleted after 15 s),
+   * at most once per person per 10 minutes, so it never turns into spam.
+   */
+  async #pointToMainChat(message: Message<true>, mainChat: string): Promise<void> {
+    const now = Date.now();
+    if ((this.#hinted.get(message.author.id) ?? 0) > now - HINT_EVERY_MS) return;
+    this.#hinted.set(message.author.id, now);
+    const note = await message
+      .reply({ content: `hiii :3 come chat with me in <#${mainChat}>`, allowedMentions: { parse: [], repliedUser: false } })
+      .catch(() => null);
+    if (note) setTimeout(() => void note.delete().catch(() => undefined), 15_000).unref();
   }
 
   /** Counts a strike against this person; enough within a day blocks them. */

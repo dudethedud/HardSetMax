@@ -69,6 +69,14 @@ The bot saves each member's **last known display name** whenever it sees them, s
 
 ---
 
+### Other bots' commands
+Messages that start with a common bot-command prefix followed by a letter (`!rank`, `?help`, `.work`, `-play`) aren't chat: they don't count and aren't flagged as spam.
+
+### Warm-up
+The scheduled reshuffle changes nothing until there's a full score window of activity (the earliest saved activity day is at least `window` days ago). `/bot health` shows the days left. A manual `/vip reshuffle` still runs.
+
+---
+
 ## 3. The VIP role
 
 ### What VIP gives

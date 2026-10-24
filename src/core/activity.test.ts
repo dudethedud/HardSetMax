@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { channelWeight, countsVoiceMinute, minutesUnderCap, type VoiceMemberState } from './activityRules.js';
-import { emptySpamState, evaluateMessage, isFiltered, isSpamStateIdle, type MessageOutcome, type MessageRulesConfig, type SpamState } from './messageRules.js';
+import { emptySpamState, evaluateMessage, isBotCommand, isFiltered, isSpamStateIdle, type MessageOutcome, type MessageRulesConfig, type SpamState } from './messageRules.js';
 import { distinctAlnumCount, fingerprint, isEmojiOrStickerOnly, isOnlyMentionsLinksEmoji, normalize, similarity } from './messageText.js';
 import { compareUserIds, computeScores, rankScores } from './scoring.js';
 
@@ -99,6 +99,19 @@ describe('evaluateMessage: basic rules', () => {
     // "hahahaha" has only 2 distinct letters; with 3 required it's low effort. Lowering the
     // threshold lets it through:
     expect(send([['hahahaha', 0]], { ...cfg, minDistinctChars: 2 }).outcomes).toEqual(['counted']);
+  });
+});
+
+describe('evaluateMessage: commands for other bots', () => {
+  it("doesn't count !rank, ?help, .work or -play, and doesn't flag them as spam", () => {
+    for (const cmd of ['!rank', '?help me', '.work', '-play never gonna', '$balance']) expect(isBotCommand(cmd)).toBe(true);
+    expect(send([['!rank please', 0]]).outcomes).toEqual(['bot-command']);
+    expect(isFiltered('bot-command')).toBe(false);
+  });
+
+  it('ordinary messages that start with punctuation still count', () => {
+    for (const text of ['...anyway what now', '- bullet point', '! wow', '?? what', '> quoting someone']) expect(isBotCommand(text)).toBe(false);
+    expect(send([['...anyway what now', 0]]).outcomes).toEqual(['counted']);
   });
 });
 

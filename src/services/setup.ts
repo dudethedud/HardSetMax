@@ -20,6 +20,7 @@ import type { Panels } from './panels.js';
 import { explainRoleError, placeNextTo } from './roleQueue.js';
 import { findExistingChannel, findExistingRole } from './reuse.js';
 import { arrangeRoles } from './roleLayout.js';
+import { autoConfigure, homeCategoryId, unblockVipPerks } from './autoSetup.js';
 import type { VipService } from './vipService.js';
 
 /** What VIP gives (SPEC §3). */
@@ -105,9 +106,18 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
     if (!vipRole) return report;
   }
 
+  // Fit into the existing server: level role, staff, channels, quiet channels (only what isn't set).
+  try {
+    await autoConfigure(guild, db, config, report);
+  } catch (err) {
+    log.warn({ err }, 'setup: auto-configure');
+    report.push(`⚠️ Couldn't look through the server for existing roles and channels: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // 2. Role position: directly above the highest bleed level role, if set; else just below the bot.
   const botTop = me.roles.highest;
-  const levelTop = cfg.levelRolesTopId ? guild.roles.cache.get(cfg.levelRolesTopId) : undefined;
+  const levelTopId = config.current.guild.levelRolesTopId;
+  const levelTop = levelTopId ? guild.roles.cache.get(levelTopId) : undefined;
   try {
     if (levelTop && (levelTop.managed || levelTop.position >= botTop.position)) {
       // A wrong level-top (e.g. the bot's own role) can't work: say which setting, and fall back.
@@ -202,7 +212,7 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
       await board.permissionOverwrites.set(boardOverwrites, '/bot setup');
       vipBoardChannelId = board.id;
     }
-    else vipBoardChannelId = (await guild.channels.create({ name: 'vip-board', type: ChannelType.GuildText, permissionOverwrites: boardOverwrites, reason: '/bot setup' })).id;
+    else vipBoardChannelId = (await guild.channels.create({ name: 'vip-board', type: ChannelType.GuildText, parent: homeCategoryId(guild, config.current.guild), permissionOverwrites: boardOverwrites, reason: '/bot setup' })).id;
     report.push(`✅ VIP board <#${vipBoardChannelId}> ready`);
   } catch (err) {
     log.warn({ err }, 'setup: VIP board');
@@ -212,6 +222,9 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
   await db.guildConfig.update({ where: { guildId: guild.id }, data: { vipRoleId: vipRole.id, vipBoardChannelId, ...ids } });
   await db.auditLog.create({ data: { action: 'setup.run', data: { vipRoleId: vipRole.id, vipBoardChannelId, ...ids } } });
   await config.load();
+
+  // VIP perks a channel blocks for @everyone (images, embeds…) get unblocked for VIP there.
+  await unblockVipPerks(guild, vipRole, VIP_PERMISSIONS, config.current.guild, report).catch((err: unknown) => log.warn({ err }, 'setup: VIP perks'));
 
   for (const step of steps) {
     try {
