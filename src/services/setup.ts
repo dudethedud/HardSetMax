@@ -108,7 +108,13 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
   const botTop = me.roles.highest;
   const levelTop = cfg.levelRolesTopId ? guild.roles.cache.get(cfg.levelRolesTopId) : undefined;
   try {
-    if (levelTop) await placeNextTo(guild, vipRole.id, levelTop.id, 'above');
+    if (levelTop && (levelTop.managed || levelTop.position >= botTop.position)) {
+      // A wrong level-top (e.g. the bot's own role) can't work: say which setting, and fall back.
+      report.push(
+        `⚠️ The top level role is set to ${levelTop.toString()}, which is the bot's own role or above it, so VIP can't go above it. Set it to bleed's highest level role with \`/settings role action:level-top\`. VIP was placed just below the bot for now.`,
+      );
+      await placeNextTo(guild, vipRole.id, botTop.id, 'below');
+    } else if (levelTop) await placeNextTo(guild, vipRole.id, levelTop.id, 'above');
     else {
       await placeNextTo(guild, vipRole.id, botTop.id, 'below');
       report.push('ℹ️ No level-roles-top set, so VIP was placed just below the bot. Set it with /settings role action:level-top.');
