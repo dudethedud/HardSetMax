@@ -1,18 +1,21 @@
 import { hostname } from 'node:os';
-import { EmbedBuilder, IntentsBitField, time, TimestampStyles, userMention, type ChatInputCommandInteraction } from 'discord.js';
+import { ApplicationCommandOptionType, EmbedBuilder, MessageFlags, IntentsBitField, PermissionFlagsBits, time, TimestampStyles, userMention, type ChatInputCommandInteraction } from 'discord.js';
 import { MANUAL_RESHUFFLE_JOB, RESHUFFLE_JOB } from '../../services/vipService.js';
 import { serverDayAt } from '../../core/serverDay.js';
+import { chunkLines } from '../../core/chunk.js';
 import { VERSION } from '../../version.js';
 import { REQUIRED_INTENT_NAMES } from '../client.js';
-import { defineCommand, type AppContext } from './types.js';
+import type { AccessLevel } from '../../core/access.js';
+import { defineCommand, type AppContext, type Command } from './types.js';
 
 export const botCommand = defineCommand({
   name: 'bot',
   description: 'Bot health, setup and AI chat',
-  levels: { default: 'admin', health: 'staff' },
+  levels: { default: 'admin', health: 'staff', help: 'staff' },
   build: (b) =>
     b
-      .addSubcommand((s) => s.setName('health').setDescription('Version, uptime, database, leader lock and intents'))
+      .addSubcommand((s) => s.setName('help').setDescription('Every command you can use, with what it does'))
+      .addSubcommand((s) => s.setName('health').setDescription('Is the bot OK? Database, last reshuffle, AI and more'))
       .addSubcommand((s) => s.setName('setup').setDescription('Admin: create or repair roles, channels and panels (safe to run again)'))
       .addSubcommand((s) =>
         s
@@ -42,7 +45,11 @@ export const botCommand = defineCommand({
               .setName('action')
               .setDescription('What to do')
               .setRequired(true)
-              .addChoices({ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }),
+              .addChoices(
+                { name: 'list: who he won’t reply to', value: 'list' },
+                { name: 'add: stop replying to someone', value: 'add' },
+                { name: 'remove: reply to them again (clears their flags)', value: 'remove' },
+              ),
           )
           .addUserOption((o) => o.setName('user').setDescription('Member (not needed for list)')),
       )
@@ -50,7 +57,7 @@ export const botCommand = defineCommand({
         s
           .setName('ai-provider')
           .setDescription('Admin: change an AI provider')
-          .addStringOption((o) => o.setName('provider').setDescription('Provider name, e.g. groq').setRequired(true).setMaxLength(32))
+          .addStringOption((o) => o.setName('provider').setDescription('Which provider').setRequired(true).setMaxLength(32).setAutocomplete(true))
           .addStringOption((o) =>
             o
               .setName('setting')
@@ -62,19 +69,29 @@ export const botCommand = defineCommand({
                 { name: 'toggle: skip or use it', value: 'toggle' },
               ),
           )
-          .addStringOption((o) => o.setName('value').setDescription('For cap: a number. For model: e.g. llama-3.1-8b-instant').setMaxLength(100)),
+          .addStringOption((o) => o.setName('value').setDescription('For cap: a number. For model: a model ID, e.g. openai/gpt-oss-20b').setMaxLength(100)),
       ),
   async execute(interaction, ctx) {
     const sub = interaction.options.getSubcommand();
     if (sub === 'health') return health(interaction, ctx);
     if (sub === 'setup') {
       const report = await ctx.runSetup(interaction.guild);
-      await interaction.editReply(report.join('\n').slice(0, 2000));
+      // Long reports are split over several messages instead of being cut off.
+      const [first, ...rest] = chunkLines(report, 2000);
+      await interaction.editReply(first ?? 'Nothing to report.');
+      for (const part of rest) await interaction.followUp({ content: part, flags: MessageFlags.Ephemeral });
       return;
     }
+    if (sub === 'help') return help(interaction);
     if (sub === 'ai') return ai(interaction, ctx);
     if (sub === 'ai-blacklist') return aiBlacklist(interaction, ctx);
     return aiProvider(interaction, ctx);
+  },
+  async autocomplete(interaction, ctx) {
+    const typed = String(interaction.options.getFocused()).toLowerCase();
+    return (await ctx.ai.providers())
+      .filter((p) => p.name.includes(typed))
+      .map((p) => ({ name: `${p.name} (${p.model}${p.enabled ? '' : ', off'})`, value: p.name }));
   },
 });
 
@@ -250,4 +267,28 @@ async function aiBlacklist(interaction: ChatInputCommandInteraction<'cached'>, c
   ]);
   if (count) await ctx.modLog.post(`✅ <@${actorId}> removed <@${user.id}> from Puppyboy Carter's blacklist`);
   await interaction.editReply(count ? `✅ Puppyboy Carter will reply to ${userMention(user.id)} again.` : `${userMention(user.id)} wasn't blacklisted.`);
+}
+
+const RANK: Record<AccessLevel, number> = { staff: 0, admin: 1, owner: 2 };
+
+async function help(interaction: ChatInputCommandInteraction<'cached'>): Promise<void> {
+  // Loaded here: the command list imports this file.
+  const { COMMANDS } = (await import('./index.js')) as { COMMANDS: readonly Command[] };
+  const mine: AccessLevel =
+    interaction.guild.ownerId === interaction.user.id ? 'owner' : interaction.memberPermissions.has(PermissionFlagsBits.Administrator) ? 'admin' : 'staff';
+  const embed = new EmbedBuilder()
+    .setTitle('📖 Commands you can use')
+    .setColor(0xf1c40f)
+    .setDescription(`You're **${mine}**. Members don't use commands: they use the buttons in the VIP lounge.`);
+  for (const command of COMMANDS) {
+    const subs = (command.data.options ?? []).filter((o) => o.type === ApplicationCommandOptionType.Subcommand);
+    const lines = (subs.length ? subs : [null])
+      .filter((sub) => RANK[command.levelFor(sub?.name ?? null, null)] <= RANK[mine])
+      .map((sub) => {
+        const text = (sub ?? command.data).description.replace(/^(Admin|Owner only): /, '');
+        return `\`/${command.name}${sub ? ` ${sub.name}` : ''}\` ${text}`;
+      });
+    if (lines.length) embed.addFields({ name: `/${command.name}`, value: lines.join('\n').slice(0, 1024) });
+  }
+  await interaction.editReply({ embeds: [embed] });
 }

@@ -1,4 +1,4 @@
-import { ChannelType, channelMention, inlineCode, roleMention, type SlashCommandStringOption } from 'discord.js';
+import { ChannelType, channelMention, EmbedBuilder, inlineCode, roleMention, type SlashCommandStringOption } from 'discord.js';
 import { CONFIG_KEYS, parseConfigValue } from '../../core/configKeys.js';
 import { DEFAULT_CHANNEL_WEIGHT } from '../../core/activityRules.js';
 import { normalizeRoleName } from '../../core/crown.js';
@@ -24,12 +24,13 @@ const CHANNEL_FIELDS = {
   'vip-board': 'vipBoardChannelId',
 } as const;
 
-const action = (...choices: string[]) => (o: SlashCommandStringOption) =>
+/** A required "action" choice; each choice is [value, what it does]. */
+const action = (...choices: [string, string][]) => (o: SlashCommandStringOption) =>
   o
     .setName('action')
     .setDescription('What to do')
     .setRequired(true)
-    .addChoices(...choices.map((c) => ({ name: c, value: c })));
+    .addChoices(...choices.map(([value, label]) => ({ name: `${value}: ${label}`.slice(0, 100), value })));
 
 export const settingsCommand = defineCommand({
   name: 'settings',
@@ -49,7 +50,7 @@ export const settingsCommand = defineCommand({
               .setRequired(true)
               .addChoices(...Object.entries(CONFIG_KEYS).map(([key, def]) => ({ name: `${key}: ${def.description}`.slice(0, 100), value: key }))),
           )
-          .addStringOption((o) => o.setName('value').setDescription('New value').setRequired(true).setMaxLength(100)),
+          .addStringOption((o) => o.setName('value').setDescription('New value (suggestions show the current one)').setRequired(true).setMaxLength(100).setAutocomplete(true)),
       )
       .addSubcommand((s) =>
         s
@@ -83,32 +84,47 @@ export const settingsCommand = defineCommand({
         s
           .setName('role')
           .setDescription('Staff roles, or use an existing role for VIP, the Crown, a title, polls or the top level role')
-          .addStringOption(action('add-staff', 'remove-staff', 'list-staff', 'level-top', 'polls', 'vip', 'crown', 'title-champion', 'title-advisor', 'title-jester'))
-          .addRoleOption((o) => o.setName('role').setDescription('Role (not needed for list-staff)')),
+          .addStringOption(
+            action(
+              ['list-staff', 'show the staff roles'],
+              ['add-staff', 'members with this role can use staff commands'],
+              ['remove-staff', 'stop treating this role as staff'],
+              ['level-top', "bleed's highest level role (VIP goes above it)"],
+              ['polls', 'the role pinged for new VIP polls'],
+              ['vip', 'use this existing role as the VIP role'],
+              ['crown', 'use this existing role as the Crown role'],
+              ['title-champion', 'use this role for the Champion title'],
+              ['title-advisor', 'use this role for the Advisor title'],
+              ['title-jester', 'use this role for the Jester title'],
+            ),
+          )
+          .addRoleOption((o) => o.setName('role').setDescription('The role (not needed for list-staff)')),
       )
       .addSubcommand((s) =>
         s
           .setName('colour')
           .setDescription('VIP colour options')
-          .addStringOption(action('list', 'add', 'edit', 'remove'))
-          .addStringOption((o) => o.setName('name').setDescription('Name shown in the picker (current name, for edit)').setMaxLength(32))
-          .addStringOption((o) => o.setName('hex').setDescription('Colour, e.g. #FF8800').setMaxLength(7))
+          .addStringOption(
+            action(['list', 'show the colours'], ['add', 'needs name and hex'], ['edit', 'needs name, then new_name and/or hex'], ['remove', 'needs name (deletes its role)']),
+          )
+          .addStringOption((o) => o.setName('name').setDescription('The colour’s name in the picker').setMaxLength(32).setAutocomplete(true))
+          .addStringOption((o) => o.setName('hex').setDescription('Colour code, e.g. #FF8800').setMaxLength(7))
           .addStringOption((o) => o.setName('new_name').setDescription('New name (edit only)').setMaxLength(32)),
       )
       .addSubcommand((s) =>
         s
           .setName('badge')
           .setDescription('VIP history badge milestones')
-          .addStringOption(action('list', 'set', 'remove'))
-          .addIntegerOption((o) => o.setName('weeks').setDescription('Weeks of VIP (pinned time doesn’t count)').setMinValue(1).setMaxValue(520))
+          .addStringOption(action(['list', 'show the badges'], ['set', 'add or rename one: needs weeks and name'], ['remove', 'needs weeks (removes its role from everyone)']))
+          .addIntegerOption((o) => o.setName('weeks').setDescription('Weeks of VIP needed (pinned time doesn’t count)').setMinValue(1).setMaxValue(520).setAutocomplete(true))
           .addStringOption((o) => o.setName('name').setDescription('Badge name, e.g. VIP Regular (set only)').setMaxLength(32)),
       )
       .addSubcommand((s) =>
         s
           .setName('blocked-word')
           .setDescription('Words custom roles, room names, shoutouts and decrees can’t contain')
-          .addStringOption(action('list', 'add', 'remove'))
-          .addStringOption((o) => o.setName('word').setDescription('Word').setMaxLength(50)),
+          .addStringOption(action(['list', 'show the blocked words'], ['add', 'block a word (lookalikes like 0 for o are caught)'], ['remove', 'unblock a word']))
+          .addStringOption((o) => o.setName('word').setDescription('The word (not needed for list)').setMaxLength(50).setAutocomplete(true)),
       ),
   async execute(interaction, ctx) {
     const guildId = interaction.guildId;
@@ -119,21 +135,48 @@ export const settingsCommand = defineCommand({
     const needs = async (what: string) => interaction.editReply(`❌ \`${act}\` needs the \`${what}\` option.`);
 
     if (sub === 'view') {
-      const lines = Object.entries(CONFIG_KEYS).map(([key, def]) => `${inlineCode(key)} = ${inlineCode(String(config[def.field]))}`);
-      const weights = [...channelWeights].map(([id, w]) => `${channelMention(id)} = ${inlineCode(String(w))}`);
-      const ref = (id: string | null, mention: (id: string) => string) => (id ? mention(id) : 'not set');
+      const ref = (id: string | null, mention: (id: string) => string) => (id ? mention(id) : '⚠️ not set');
       const staff = await ctx.db.staffRole.findMany();
-      lines.push(
-        '',
-        `**Announcements:** ${ref(config.announceChannelId, channelMention)} · **Mod-log:** ${ref(config.modLogChannelId, channelMention)}`,
-        `**VIP role:** ${ref(config.vipRoleId, roleMention)} · **Level roles top:** ${ref(config.levelRolesTopId, roleMention)}`,
-        `**Polls channel:** ${ref(config.pollsChannelId, channelMention)} · **Polls role:** ${ref(config.pollsRoleId, roleMention)}`,
-        `**Main chat:** ${ref(config.mainChatChannelId, channelMention)} · **AI chat:** ${config.aiEnabled ? 'on' : 'off'}`,
-        `**VIP board:** ${ref(config.vipBoardChannelId, channelMention)}`,
-        `**Staff roles:** ${staff.length ? staff.map((r) => roleMention(r.roleId)).join(', ') : 'none'}`,
-      );
-      lines.push('', `**Channel weights** (others: ${DEFAULT_CHANNEL_WEIGHT})`, ...(weights.length ? weights : ['none set']));
-      await interaction.editReply(lines.join('\n').slice(0, 2000));
+      const setting = (keys: (keyof typeof CONFIG_KEYS)[]) => keys.map((k) => `${inlineCode(k)} ${String(config[CONFIG_KEYS[k].field])}`).join('\n');
+      const weights = [...channelWeights].map(([id, w]) => `${channelMention(id)} ${w}`);
+      const embed = new EmbedBuilder()
+        .setTitle('⚙️ Bot settings')
+        .setColor(0xf1c40f)
+        .addFields(
+          {
+            name: 'Channels',
+            value: [
+              `Announcements: ${ref(config.announceChannelId, channelMention)}`,
+              `Mod-log: ${ref(config.modLogChannelId, channelMention)}`,
+              `Main chat: ${ref(config.mainChatChannelId, channelMention)}`,
+              `Polls: ${ref(config.pollsChannelId, channelMention)}`,
+              `VIP board: ${ref(config.vipBoardChannelId, channelMention)}`,
+            ].join('\n'),
+            inline: true,
+          },
+          {
+            name: 'Roles',
+            value: [
+              `VIP: ${ref(config.vipRoleId, roleMention)}`,
+              `Crown: ${ref(config.crownRoleId, roleMention)}`,
+              `Polls: ${ref(config.pollsRoleId, roleMention)}`,
+              `Top level role: ${ref(config.levelRolesTopId, roleMention)}`,
+              `Staff: ${staff.length ? staff.map((r) => roleMention(r.roleId)).join(', ') : '⚠️ none'}`,
+            ].join('\n'),
+            inline: true,
+          },
+          { name: 'Time', value: setting(['timezone', 'day-boundary', 'window']) },
+          { name: 'VIP', value: setting(['slots', 'buffer', 'min-hold', 'inactivity-days', 'min-score', 'timeout-days', 'polls-daily-cap', 'vip-colour', 'crown-colour']), inline: true },
+          { name: 'Activity', value: setting(['message-cooldown', 'min-message-length', 'voice-weight', 'voice-daily-cap']), inline: true },
+          {
+            name: 'Spam filter',
+            value: setting(['spam-repeat-history', 'spam-repeat-minutes', 'spam-repeat-similarity', 'spam-min-distinct', 'spam-burst-count', 'spam-burst-seconds', 'spam-burst-mute']),
+          },
+          { name: 'AI chat', value: `${config.aiEnabled ? 'on' : 'off'}\n${setting(['ai-per-user-limit', 'ai-strike-limit'])}`, inline: true },
+          { name: `Channel weights (others: ${DEFAULT_CHANNEL_WEIGHT})`, value: (weights.join('\n') || 'none set').slice(0, 1024), inline: true },
+        )
+        .setFooter({ text: 'Change one with /settings set, a channel with /settings channel, a role with /settings role' });
+      await interaction.editReply({ embeds: [embed] });
       return;
     }
 
@@ -359,5 +402,30 @@ export const settingsCommand = defineCommand({
       ctx.db.auditLog.create({ data: { action: `crown.blocked-word.${act}`, actorId, data: { word } } }),
     ]);
     await interaction.editReply(act === 'add' ? `✅ Blocked \`${word}\` (also catches lookalikes like 0 for o).` : `✅ Unblocked \`${word}\`.`);
+  },
+  async autocomplete(interaction, ctx) {
+    const focused = interaction.options.getFocused(true);
+    const typed = String(focused.value).toLowerCase();
+    const sub = interaction.options.getSubcommand(false);
+    const matches = (s: string) => s.toLowerCase().includes(typed);
+    if (sub === 'set' && focused.name === 'value') {
+      // The current value, so it's easy to see what's being changed.
+      const key = interaction.options.getString('key') as keyof typeof CONFIG_KEYS | null;
+      const def = key ? CONFIG_KEYS[key] : undefined;
+      if (!def) return [];
+      const current = String(ctx.config.current.guild[def.field]);
+      const typedRaw = String(focused.value);
+      return [...(typedRaw && typedRaw !== current ? [{ name: `${typedRaw} (new)`, value: typedRaw }] : []), { name: `${current} (current)`, value: current }];
+    }
+    if (sub === 'colour' && focused.name === 'name') {
+      return (await ctx.colours.options()).filter((o) => matches(o.name)).map((o) => ({ name: `${o.name} (${o.hex})`, value: o.name }));
+    }
+    if (sub === 'badge' && focused.name === 'weeks') {
+      return (await ctx.db.badge.findMany({ orderBy: { weeks: 'asc' } })).filter((b) => matches(`${b.weeks} ${b.name}`)).map((b) => ({ name: `${b.weeks} weeks: ${b.name}`, value: b.weeks }));
+    }
+    if (sub === 'blocked-word' && focused.name === 'word' && interaction.options.getString('action') === 'remove') {
+      return (await ctx.db.blockedWord.findMany({ orderBy: { word: 'asc' } })).filter((w) => matches(w.word)).map((w) => ({ name: w.word, value: w.word }));
+    }
+    return [];
   },
 });

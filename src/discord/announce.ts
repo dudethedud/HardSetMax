@@ -7,6 +7,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  EmbedBuilder,
   MessageFlags,
   ModalBuilder,
   TextInputBuilder,
@@ -95,15 +96,17 @@ export async function previewAnnouncement(interaction: ModalSubmitInteraction<'c
     new ButtonBuilder().setCustomId(ANNOUNCE_SEND_ID).setLabel('Send and ping @everyone').setEmoji('📢').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(ANNOUNCE_CANCEL_ID).setLabel('Cancel').setStyle(ButtonStyle.Secondary),
   );
+  // The whole text fits in an embed (4096), so the preview is never cut short.
   await interaction.editReply({
-    content: `**Preview** (posts in <#${draft.channelId}>, from the bot):\n\n@everyone\n${text}`.slice(0, 2000),
+    content: `**Preview:** this posts in <#${draft.channelId}> from the bot, starting with @everyone.`,
+    embeds: [new EmbedBuilder().setDescription(text).setColor(0xf1c40f)],
     components: [row],
     allowedMentions: { parse: [] },
   });
 }
 
 export async function sendAnnouncement(interaction: ButtonInteraction<'cached'>, ctx: AppContext): Promise<void> {
-  await interaction.update({ content: '⏳ Sending…', components: [] });
+  await interaction.update({ content: '⏳ Sending…', embeds: [], components: [] });
   const draft = await loadDraft(ctx, interaction.user.id);
   if (!draft?.text) {
     await interaction.editReply('⌛ This draft expired. Run `/announce` again.');
@@ -129,5 +132,5 @@ export async function sendAnnouncement(interaction: ButtonInteraction<'cached'>,
 
 export async function cancelAnnouncement(interaction: ButtonInteraction<'cached'>, ctx: AppContext): Promise<void> {
   await ctx.db.modalDraft.deleteMany({ where: { userId: draftKey(interaction.user.id) } });
-  await interaction.update({ content: 'Cancelled. Nothing was posted.', components: [] });
+  await interaction.update({ content: 'Cancelled. Nothing was posted.', embeds: [], components: [] });
 }

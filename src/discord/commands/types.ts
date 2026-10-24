@@ -2,6 +2,8 @@ import {
   InteractionContextType,
   PermissionFlagsBits,
   SlashCommandBuilder,
+  type ApplicationCommandOptionChoiceData,
+  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
   type Client,
   type Guild,
@@ -64,7 +66,11 @@ export interface Command {
    */
   defer: boolean;
   execute(interaction: ChatInputCommandInteraction<'cached'>, ctx: AppContext): Promise<void>;
+  /** Suggestions for an option marked setAutocomplete (up to 25). Runs after the same access check. */
+  autocomplete?: Autocomplete;
 }
+
+export type Autocomplete = (interaction: AutocompleteInteraction<'cached'>, ctx: AppContext) => Promise<ApplicationCommandOptionChoiceData[]>;
 
 export interface CommandSpec {
   name: string;
@@ -75,6 +81,7 @@ export interface CommandSpec {
   defer?: boolean;
   build: (b: SlashCommandBuilder) => { toJSON(): RESTPostAPIChatInputApplicationCommandsJSONBody };
   execute: Command['execute'];
+  autocomplete?: Autocomplete;
 }
 
 const RANK: Record<AccessLevel, number> = { staff: 0, admin: 1, owner: 2 };
@@ -99,5 +106,6 @@ export function defineCommand(spec: CommandSpec): Command {
     defer: spec.defer ?? true,
     levelFor: (sub, group) => (group && sub ? spec.levels[`${group} ${sub}`] : undefined) ?? (sub ? spec.levels[sub] : undefined) ?? spec.levels.default,
     execute: spec.execute,
+    ...(spec.autocomplete ? { autocomplete: spec.autocomplete } : {}),
   };
 }

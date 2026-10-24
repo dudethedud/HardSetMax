@@ -43,7 +43,7 @@ Nothing important is stored on the bot's server: everything lives in Postgres, s
 GitHub (for backups): secrets `BACKUP_DATABASE_URL` and `SUPABASE_CA_CERT`, and variable `BACKUP_AGE_RECIPIENT` (see SETUP part 7).
 
 ## Commands
-Five commands, all guild-only and replying privately unless they post on purpose. Who can use what is checked every time:
+Five commands, all guild-only and replying privately unless they post on purpose. Not sure which one you need? Run `/bot help`. Colour names, badges, blocked words and AI providers are suggested as you type, and `/settings set` shows the current value. Who can use what is checked every time:
 - **Staff:** a staff role (`/settings role action:add-staff`), Administrator, or the owner. Staff also need **Timeout Members** for Discord to show them the commands.
 - **Admin:** Administrator, or the owner.
 - **Owner:** the server owner only.
@@ -66,6 +66,7 @@ Five commands, all guild-only and replying privately unless they post on purpose
 | `/settings colour action ...` | admin | VIP colour options: `list`, `add name hex`, `edit name [new_name] [hex]`, `remove name` |
 | `/settings badge action ...` | admin | History badges: `list`, `set weeks name`, `remove weeks` |
 | `/settings blocked-word action [word]` | admin | Words custom roles, room names, shoutouts and decrees can't contain |
+| `/bot help` | staff | Every command *you* can use, with a line on what each does |
 | `/bot health` | staff | Version, uptime, database (or database-down mode), lock, intents, server-day, last reshuffle, unsaved writes, AI |
 | `/bot setup` | admin | Creates or repairs every role, channel and panel. Checks permissions and role order. Safe to run any time |
 | `/bot ai action [question]` | admin | AI chat: `status`, `on`, `off`, `providers`, `test` |

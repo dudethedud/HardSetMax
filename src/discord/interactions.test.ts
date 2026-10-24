@@ -26,6 +26,7 @@ function command(name: string, sub: string | null, who: Who) {
     isStringSelectMenu: () => false,
     isUserSelectMenu: () => false,
     isModalSubmit: () => false,
+    isAutocomplete: () => false,
     isChatInputCommand: () => true,
     inCachedGuild: () => true,
     get deferred() {
@@ -74,5 +75,28 @@ describe('command access', () => {
     expect(await run('announce', null, 'admin')).toEqual(['Only the server owner can use this.']);
     expect(await run('announce', null, 'staff')).toEqual(['Only the server owner can use this.']);
     expect(await run('announce', null, 'owner')).toEqual(['<modal>']);
+  });
+});
+
+describe('autocomplete', () => {
+  async function suggest(who: Who): Promise<unknown[]> {
+    const { interaction } = command('bot', 'ai-provider', who);
+    let shown: unknown[] = ['not answered'];
+    const auto = {
+      ...interaction,
+      isChatInputCommand: () => false,
+      isAutocomplete: () => true,
+      options: { ...interaction.options, getFocused: () => '' },
+      respond: (choices: unknown[]) => ((shown = choices), Promise.resolve()),
+    };
+    const withProviders = { ...ctx, ai: { providers: () => Promise.resolve([{ name: 'groq', model: 'm', enabled: true }]) } } as unknown as AppContext;
+    await handleInteraction(auto as never, withProviders);
+    return shown;
+  }
+
+  it('suggests to people who can run the subcommand, and shows nothing to others', async () => {
+    expect(await suggest('admin')).toEqual([{ name: 'groq (m)', value: 'groq' }]);
+    expect(await suggest('staff')).toEqual([]);
+    expect(await suggest('member')).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@
 import {
   MessageFlags,
   PermissionFlagsBits,
+  type AutocompleteInteraction,
   type ButtonInteraction,
   type Interaction,
   type ModalSubmitInteraction,
@@ -33,6 +34,7 @@ export async function handleInteraction(interaction: Interaction, ctx: AppContex
   if (interaction.isStringSelectMenu()) return handleSelect(interaction, ctx);
   if (interaction.isUserSelectMenu()) return handleUserSelect(interaction, ctx);
   if (interaction.isModalSubmit()) return handleModal(interaction, ctx);
+  if (interaction.isAutocomplete()) return handleAutocomplete(interaction, ctx);
   if (!interaction.isChatInputCommand()) return;
 
   const command = COMMANDS_BY_NAME.get(interaction.commandName);
@@ -63,6 +65,23 @@ export async function handleInteraction(interaction: Interaction, ctx: AppContex
     await (interaction.replied || interaction.deferred ? interaction.editReply(msg) : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral })).catch(
       () => undefined,
     );
+  }
+}
+
+/** Suggestions while typing an option. Nothing is shown to people who can't run the subcommand. */
+async function handleAutocomplete(interaction: AutocompleteInteraction, ctx: AppContext): Promise<void> {
+  const command = COMMANDS_BY_NAME.get(interaction.commandName);
+  if (!command?.autocomplete || !interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
+    await interaction.respond([]).catch(() => undefined);
+    return;
+  }
+  try {
+    const check = await accessOf(interaction, command.levelFor(interaction.options.getSubcommand(false), interaction.options.getSubcommandGroup(false)), ctx);
+    const choices = check.ok ? await command.autocomplete(interaction, ctx) : [];
+    await interaction.respond(choices.slice(0, 25).map((c) => ({ ...c, name: c.name.slice(0, 100) })));
+  } catch (err) {
+    ctx.log.warn({ err, command: interaction.commandName }, 'autocomplete failed');
+    await interaction.respond([]).catch(() => undefined);
   }
 }
 
