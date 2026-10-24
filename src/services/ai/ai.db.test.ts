@@ -256,6 +256,19 @@ describe.skipIf(!url)('AI chat', () => {
       expect(replies).toHaveLength(1);
     });
 
+    it('a mention outside main chat gets a short pointer to main chat, once per 10 minutes', async () => {
+      const t = await makeChat();
+      const first = message({ content: `<@${BOT}> hi`, mentionsBot: true, channel: '900000000000000071' });
+      await t.chat.handle(first.m, 'counted');
+      expect(first.replies).toHaveLength(1);
+      expect(first.replies[0]!.content).toContain(`<#${MAIN}>`);
+      expect(first.replies[0]!.allowedMentions).toEqual({ parse: [], repliedUser: false });
+      const again = message({ content: `<@${BOT}> hello?`, mentionsBot: true, channel: '900000000000000071' });
+      await t.chat.handle(again.m, 'counted');
+      expect(again.replies).toHaveLength(0);
+      expect(t.calls).toHaveLength(0); // no AI used
+    });
+
     it('ignores other channels, messages not aimed at it, and spam-flagged messages', async () => {
       const t = await makeChat();
       await t.chat.handle(message({ content: `<@${BOT}> hi`, mentionsBot: true, channel: '900000000000000071' }).m, 'counted');

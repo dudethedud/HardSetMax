@@ -78,6 +78,8 @@ model GuildConfig {
 
   // VIP and Crown perks.
   vipBoardChannelId String? // public VIP board panel
+  // /bot setup zeroes bot/spam/counting channel weights once; later changes are the admins'.
+  autoWeightsDone   Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

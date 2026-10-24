@@ -16,8 +16,9 @@ import {
   type Candidate,
   type ReshuffleInput,
   type ReshuffleResult,
+  warmupDaysLeft,
 } from '../core/reshuffle.js';
-import { serverDayAt } from '../core/serverDay.js';
+import { serverDayAt, serverDaysBetween } from '../core/serverDay.js';
 import { eligibilityOf, roleDrift } from '../core/vipRules.js';
 import { loadStandings, namesFor } from '../db/activityRepo.js';
 import type { Db } from '../db/prisma.js';
@@ -56,6 +57,8 @@ interface StoredDetail {
   badges?: { userId: string; badgeId: number; name: string }[];
   announcement: Announcement | null;
   posted: boolean;
+  /** Set when a scheduled run was skipped during warm-up. */
+  warmupDaysLeft?: number;
 }
 
 export const RESHUFFLE_JOB = 'reshuffle';
@@ -180,6 +183,20 @@ export class VipService {
     try {
       // Count everything up to the boundary before scoring.
       await this.buffer.flush(this.db);
+      if (job === RESHUFFLE_JOB) {
+        const today = this.#today(now);
+        const first = await this.db.activityDay.findFirst({ orderBy: { serverDay: 'asc' }, select: { serverDay: true } });
+        const left = warmupDaysLeft(first?.serverDay ?? null, today, this.config.current.guild.windowDays, serverDaysBetween);
+        if (left > 0) {
+          // Nothing changes until there's a full window of activity; the run still counts as done.
+          const detail: StoredDetail = { added: [], removed: [], announcement: null, posted: true, warmupDaysLeft: left };
+          await this.db.$transaction((tx) => completeJob(tx, job, period, detail as unknown as Prisma.InputJsonValue, now));
+          committed = true;
+          const message = `warming up: VIP starts changing in ${left} day${left === 1 ? '' : 's'}, once there's a full week of activity.`;
+          this.log.info({ left }, 'reshuffle skipped: warming up');
+          return { status: 'skipped', message };
+        }
+      }
       const result = computeReshuffle((await this.buildInput(now)).input);
       const today = this.#today(now);
 

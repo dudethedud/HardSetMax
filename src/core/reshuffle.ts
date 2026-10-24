@@ -184,3 +184,13 @@ export function describeRemove(r: RemoveReason): string {
 export function formatScore(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
+
+/**
+ * Warm-up (owner-approved): scheduled reshuffles wait until the bot has a full
+ * score window of activity, so the first VIPs aren't picked from a day or two of
+ * data. `firstDay` is the earliest server-day with any activity saved.
+ */
+export function warmupDaysLeft(firstDay: string | null, today: string, windowDays: number, daysBetween: (a: string, b: string) => number): number {
+  const tracked = firstDay ? daysBetween(firstDay, today) : 0;
+  return Math.max(0, windowDays - tracked);
+}
