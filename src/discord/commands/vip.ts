@@ -6,7 +6,7 @@ import { RESHUFFLE_CANCEL_ID, RESHUFFLE_CONFIRM_ID } from '../buttons.js';
 import { defineCommand } from './types.js';
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
-const member = (o: SlashCommandUserOption) => o.setName('user').setDescription('Member').setRequired(true);
+const member = (o: SlashCommandUserOption) => o.setName('user').setDescription('Which member').setRequired(true);
 
 export const vipCommand = defineCommand({
   name: 'vip',
