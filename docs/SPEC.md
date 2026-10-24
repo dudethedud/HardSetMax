@@ -390,15 +390,17 @@ Two copies can end up running at once: a host restarting the bot while the old p
 
 ```
 Bot's role               ← must be above everything it manages
-Custom crown role
+Custom crown role        ← on top so the holder's own colour shows
+VIP colour roles         ← first option on top; above VIP so a picked colour shows
 Crown role
-VIP colour roles
-VIP role
+Title roles              (Champion, Advisor, Jester; colourless)
+VIP role                 ← directly above bleed's highest level role
+Polls role               (colourless)
+History badge roles      (colourless, fewest weeks first)
 bleed level roles
-History badge roles      (colourless)
 @everyone
 ```
-`/bot setup` checks this order and warns if the bot's role is too low.
+All of the bot's roles sit together as one block (owner-approved). `/bot setup` puts them in this order around the VIP role, leaves every other role where it is, and warns if the bot's role is too low. A Crown holder who picked a VIP colour shows that colour; with no colour picked, the Crown's colour shows.
 
 ---
 

@@ -14,7 +14,7 @@ import type { Logger } from '../logger.js';
 import type { Clock } from './clock.js';
 import type { CrownService } from './crown.js';
 import type { ModLog } from './modLog.js';
-import { explainRoleError, placeNextTo, type RoleQueue } from './roleQueue.js';
+import { explainRoleError, type RoleQueue } from './roleQueue.js';
 import { findExistingRole } from './reuse.js';
 
 export const DECREE_MAX = 500;
@@ -231,9 +231,8 @@ export class CrownPowers {
     for (const ended of await this.db.crownHolder.findMany({ where: { nickApplied: true, endedAt: { not: null } } })) await this.#restoreNick(ended);
   }
 
-  /** /bot setup: a role per title, just below the Crown role. */
+  /** /bot setup: a role per title (placed below the Crown by roleLayout.ts). */
   async setup(guild: Guild, _vipRole: Role, report: string[]): Promise<void> {
-    const crownRole = this.config.current.guild.crownRoleId ? guild.roles.cache.get(this.config.current.guild.crownRoleId) : undefined;
     for (const title of await this.titles()) {
       try {
         let role = title.roleId ? guild.roles.cache.get(title.roleId) : undefined;
@@ -247,7 +246,6 @@ export class CrownPowers {
           role = await guild.roles.create({ name: title.name, permissions: [], mentionable: false, hoist: false, reason: 'Crown title' });
           await this.db.crownTitle.update({ where: { slot: title.slot }, data: { roleId: role.id } });
         }
-        if (crownRole && role.position >= crownRole.position) await placeNextTo(guild, role.id, crownRole.id, 'below');
       } catch (err) {
         report.push(`❌ Title ${title.name}: ${explainRoleError(err)}`);
       }

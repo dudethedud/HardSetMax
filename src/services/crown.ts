@@ -201,9 +201,13 @@ export class CrownService {
         role = await guild.roles.create({ name: custom.name, colors: { primaryColor: colour }, hoist: false, mentionable: false, permissions: [], ...icon, reason: 'Crown custom role' });
         await this.db.customRole.update({ where: { userId }, data: { roleId: role.id } });
       }
-      if (crownRole) {
-        await placeNextTo(guild, role.id, crownRole.id, 'above').catch((err: unknown) => this.log.warn({ err }, "couldn't move the custom role"));
-      }
+      // On top of the bot's roles (above the colours), so its colour shows.
+      const colourRoleIds = (await this.db.colourOption.findMany()).map((o) => o.roleId);
+      const top = [crownRole?.id, ...colourRoleIds]
+        .map((id) => (id ? guild.roles.cache.get(id) : undefined))
+        .filter((r): r is Role => !!r)
+        .reduce<Role | undefined>((a, b) => (!a || b.position > a.position ? b : a), undefined);
+      if (top) await placeNextTo(guild, role.id, top.id, 'above').catch((err: unknown) => this.log.warn({ err }, "couldn't move the custom role"));
       const res = await this.roles.run({ userId, roleId: role.id, action: 'add', reason: 'Crown custom role' });
       return res.ok ? null : res.error;
     } catch (err) {
@@ -347,13 +351,7 @@ export class CrownService {
         await this.db.guildConfig.update({ where: { guildId: guild.id }, data: { crownRoleId: role.id } });
         await this.config.load();
       }
-      const colourRoleIds = (await this.db.colourOption.findMany()).map((o) => o.roleId).filter((id): id is string => !!id);
-      await guild.roles.fetch();
-      const highest = [vipRole.id, ...colourRoleIds]
-        .map((id) => guild.roles.cache.get(id))
-        .filter((r): r is Role => !!r)
-        .reduce((a, b) => (b.position > a.position ? b : a));
-      await placeNextTo(guild, role.id, highest.id, 'above');
+      // Its place (just below the colours, above the titles and VIP) is set by roleLayout.ts.
       report.push(`✅ Crown role ${role.toString()} ready`);
     } catch (err) {
       report.push(`❌ Crown role: ${explainRoleError(err)}`);

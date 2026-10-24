@@ -85,8 +85,7 @@ export class BadgeService {
           role = await guild.roles.create({ name: badge.name, hoist: false, mentionable: false, permissions: [], reason: 'VIP badge' });
           await this.db.badge.update({ where: { id: badge.id }, data: { roleId: role.id } });
         }
-        // Just above @everyone, below the level roles (SPEC §12).
-        if (role.position !== 1) await role.setPosition(1, { reason: 'Badges go below the level roles' });
+        // Placed below Polls with the bot's other roles by roleLayout.ts.
         ready++;
       } catch (err) {
         report.push(`❌ Badge role ${badge.name}: ${explainRoleError(err)}`);
