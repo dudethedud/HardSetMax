@@ -298,6 +298,22 @@ export const settingsCommand = defineCommand({
         return;
       }
       const field = act === 'polls' ? 'pollsRoleId' : 'levelRolesTopId';
+      {
+        // Same checks as binding: e.g. the bot's own role can't be the top level role (VIP goes above it).
+        const guild = interaction.guild;
+        const used = await rolesInUse(ctx.db, config);
+        const current = config[field];
+        if (current) used.delete(current);
+        const botTop = (guild.members.me ?? (await guild.members.fetchMe())).roles.highest;
+        const live = guild.roles.cache.get(role.id);
+        const error = live
+          ? bindRoleError({ id: live.id, managed: live.managed, position: live.position }, { everyoneId: guild.id, botTopPosition: botTop.position, usedElsewhere: used.has(live.id) })
+          : 'That role no longer exists.';
+        if (error) {
+          await interaction.editReply(`❌ ${error}${act === 'level-top' ? " Pick bleed's highest level role, e.g. your top Level role." : ''}`);
+          return;
+        }
+      }
       await ctx.db.$transaction([
         ctx.db.guildConfig.update({ where: { guildId }, data: { [field]: role.id } }),
         ctx.db.auditLog.create({ data: { action: act === 'polls' ? 'config.polls-role' : 'config.level-roles-top', actorId, targetId: role.id } }),
