@@ -27,7 +27,7 @@ const TEXT_TYPES = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement
 
 /** Channels the bot made for itself; never guessed at or changed here. */
 function botChannels(guild: Guild, cfg: ConfigStore['current']['guild']): Set<string> {
-  const ids = new Set([cfg.loungeCategoryId, cfg.loungeTextId, cfg.loungeVoiceId, cfg.pollsChannelId, cfg.vipBoardChannelId].filter((id): id is string => !!id));
+  const ids = new Set([cfg.loungeCategoryId, cfg.loungeTextId, cfg.loungePerksId, cfg.loungeVoiceId, cfg.pollsChannelId, cfg.vipBoardChannelId].filter((id): id is string => !!id));
   for (const c of guild.channels.cache.values()) if (c.parentId && ids.has(c.parentId)) ids.add(c.id);
   return ids;
 }
