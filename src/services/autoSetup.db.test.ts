@@ -3,7 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { ChannelType, Collection, PermissionFlagsBits, type Guild, type Role } from 'discord.js';
 import { ConfigStore } from '../config/configStore.js';
 import { createDb, type Db } from '../db/prisma.js';
-import { autoConfigure, homeCategoryId, unblockVipPerks } from './autoSetup.js';
+import { autoConfigure, categoryFor, placeInCategory, unblockVipPerks } from './autoSetup.js';
 
 const url = process.env['TEST_DATABASE_URL'];
 const GUILD = '900000000000000001';
@@ -52,6 +52,10 @@ describe.skipIf(!url)('fitting into an existing server', () => {
         parent: null as unknown,
         permissionsLocked: opts.locked ?? false,
         isThread: () => false,
+        setParent(this: { parentId: string | null }, id: string) {
+          this.parentId = id;
+          return Promise.resolve();
+        },
         permissionOverwrites: {
           cache: overwrites,
           edit: (r: { id: string }, allow: Record<string, boolean>) => (edits.push({ channel: id, role: r.id, allow }), Promise.resolve()),
@@ -87,7 +91,8 @@ describe.skipIf(!url)('fitting into an existing server', () => {
     expect([cfg.mainChatChannelId, cfg.announceChannelId, cfg.modLogChannelId]).toEqual(['general', 'news', 'logs']);
     expect(await db.channelWeight.findMany({ select: { channelId: true, weight: true } })).toEqual([{ channelId: 'cmds', weight: 0 }]);
     expect(report).toHaveLength(6);
-    expect(homeCategoryId(guild, cfg)).toBe('cat');
+    expect(categoryFor(guild, cfg, 'info')).toBe('cat');
+    expect(categoryFor(guild, cfg, 'chat')).toBe('cat');
 
     // Admin changes stick: the weight isn't zeroed again, set values aren't replaced.
     await db.channelWeight.deleteMany();
@@ -98,6 +103,17 @@ describe.skipIf(!url)('fitting into an existing server', () => {
     expect(await db.channelWeight.count()).toBe(0);
     expect(config.current.guild.mainChatChannelId).toBe('memes');
     expect(again).toEqual([]);
+  });
+
+  it('moves a bot channel with no category into its category, but never one an admin placed', async () => {
+    const { guild } = fakeGuild();
+    const report: string[] = [];
+    await placeInCategory(guild, 'cmds', 'cat', report); // no category yet
+    await placeInCategory(guild, 'general', 'logs', report); // already in a category: left alone
+    const channels = (guild as unknown as { channels: { cache: Map<string, { parentId: string | null }> } }).channels.cache;
+    expect(channels.get('cmds')!.parentId).toBe('cat');
+    expect(channels.get('general')!.parentId).toBe('cat');
+    expect(report).toEqual(['📁 Moved <#cmds> into Community']);
   });
 
   it('unblocks VIP perks where a channel denies them to everyone, on the category for synced channels', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockedVipPerks, isLowValueChannel, pickChannel, pickLevelTop } from './autoSetup.js';
+import { blockedVipPerks, isLowValueChannel, pickCategory, pickChannel, pickLevelTop } from './autoSetup.js';
 
 describe('isLowValueChannel', () => {
   it('spots bot, command, spam and counting channels', () => {
@@ -43,5 +43,28 @@ describe('blockedVipPerks', () => {
   it('ignores channels @everyone cannot see or post in', () => {
     expect(blockedVipPerks({ ...base, everyoneDeny: view | attach })).toBe(0n);
     expect(blockedVipPerks({ ...base, everyoneDeny: send | attach })).toBe(0n);
+  });
+});
+
+describe('pickCategory', () => {
+  const cats = [
+    { id: 'info', name: '📌 ・ IMPORTANT ・' },
+    { id: 'chat', name: '💬 community' },
+    { id: 'vc', name: 'voice' },
+    { id: 'vip', name: 'VIP Lounge' },
+  ];
+  const none = { info: null, chat: null };
+  it('uses the category of announcements / main chat first', () => {
+    expect(pickCategory(cats, 'info', { info: 'vc', chat: null })).toBe('vc');
+    expect(pickCategory(cats, 'chat', { info: null, chat: 'vc' })).toBe('vc');
+  });
+  it('otherwise goes by category name, ignoring decorations', () => {
+    expect(pickCategory(cats, 'info', none)).toBe('info');
+    expect(pickCategory(cats, 'chat', none)).toBe('chat');
+  });
+  it('falls back to the other kind, and never picks the VIP Lounge', () => {
+    expect(pickCategory([{ id: 'chat', name: 'chat' }], 'info', none)).toBe('chat');
+    expect(pickCategory([{ id: 'vip', name: 'VIP Lounge' }], 'chat', none, new Set(['vip']))).toBeUndefined();
+    expect(pickCategory([{ id: 'x', name: 'misc' }], 'chat', none)).toBeUndefined();
   });
 });

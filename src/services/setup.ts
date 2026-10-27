@@ -20,7 +20,7 @@ import type { Panels } from './panels.js';
 import { explainRoleError, placeNextTo } from './roleQueue.js';
 import { findExistingChannel, findExistingRole } from './reuse.js';
 import { arrangeRoles, rolesCoveringVip } from './roleLayout.js';
-import { autoConfigure, homeCategoryId, unblockVipPerks } from './autoSetup.js';
+import { autoConfigure, categoryFor, placeInCategory, placeLoungeCategory, unblockVipPerks } from './autoSetup.js';
 import type { VipService } from './vipService.js';
 
 /** What VIP gives (SPEC §3). */
@@ -164,7 +164,10 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
     let category = existing(cfg.loungeCategoryId) as CategoryChannel | null;
     if (category?.type !== ChannelType.GuildCategory) category = (findExistingChannel(guild, ['VIP Lounge'], ChannelType.GuildCategory) as CategoryChannel | undefined) ?? null;
     if (category) await category.permissionOverwrites.set(overwrites, '/bot setup');
-    else category = await guild.channels.create({ name: 'VIP Lounge', type: ChannelType.GuildCategory, permissionOverwrites: overwrites, reason: '/bot setup' });
+    else {
+      category = await guild.channels.create({ name: 'VIP Lounge', type: ChannelType.GuildCategory, permissionOverwrites: overwrites, reason: '/bot setup' });
+      await placeLoungeCategory(guild, config.current.guild, category.id);
+    }
     ids.loungeCategoryId = category.id;
 
     const ensureChild = async (id: string | null, name: string, type: ChannelType.GuildText | ChannelType.GuildVoice): Promise<GuildBasedChannel> => {
@@ -241,8 +244,9 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
       await board.permissionOverwrites.set(boardOverwrites, '/bot setup');
       vipBoardChannelId = board.id;
     }
-    else vipBoardChannelId = (await guild.channels.create({ name: 'vip-board', type: ChannelType.GuildText, parent: homeCategoryId(guild, config.current.guild), permissionOverwrites: boardOverwrites, reason: '/bot setup' })).id;
+    else vipBoardChannelId = (await guild.channels.create({ name: 'vip-board', type: ChannelType.GuildText, parent: categoryFor(guild, config.current.guild, 'info'), permissionOverwrites: boardOverwrites, reason: '/bot setup' })).id;
     report.push(`✅ VIP board <#${vipBoardChannelId}> ready`);
+    await placeInCategory(guild, vipBoardChannelId, categoryFor(guild, config.current.guild, 'info'), report);
   } catch (err) {
     log.warn({ err }, 'setup: VIP board');
     report.push(`❌ VIP board: ${err instanceof Error ? err.message : String(err)}`);
