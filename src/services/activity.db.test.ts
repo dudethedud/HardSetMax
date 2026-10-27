@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pino } from 'pino';
 import type { Client } from 'discord.js';
 import { ConfigStore } from '../config/configStore.js';
-import { loadStandings, loadWeeklyStandings } from '../db/activityRepo.js';
+import { loadStandings, loadWeeklyStandings, resetWeeklyBoard } from '../db/activityRepo.js';
 import { createDb, type Db } from '../db/prisma.js';
 import { ActivityBuffer } from './activityBuffer.js';
 import { TimeoutTracker, timedOutWithin } from './timeoutTracker.js';
@@ -24,6 +24,7 @@ describe.skipIf(!url)('activity storage', () => {
     await db.$transaction([
       db.activityDay.deleteMany(),
       db.activityAdjustment.deleteMany(),
+      db.weeklyBaseline.deleteMany(),
       db.memberName.deleteMany(),
       db.voiceSession.deleteMany(),
       db.timeoutEvent.deleteMany(),
@@ -236,5 +237,32 @@ describe.skipIf(!url)('activity storage', () => {
     expect(w.thisWeek.ranked.map((s) => [s.userId, s.score])).toEqual([[C, 2], [A, 1]]);
     expect(w.lastWeek).toMatchObject({ from: '2026-10-19', to: '2026-10-25' });
     expect(w.lastWeek.ranked.map((s) => [s.userId, s.score])).toEqual([[B, 20], [A, 8]]);
+  });
+
+  it('/vip board-reset restarts this week from 0 mid-day, without touching VIP scores', async () => {
+    await db.guildConfig.create({ data: { guildId: GUILD } });
+    const config = new ConfigStore(db, GUILD);
+    await config.load();
+    const now = new Date('2026-10-28T18:00:00Z'); // Wednesday
+    await db.activityDay.createMany({
+      data: [
+        { userId: A, serverDay: '2026-10-26', weightedMessages: 50 },
+        { userId: A, serverDay: '2026-10-28', weightedMessages: 4 },
+        { userId: B, serverDay: '2026-10-28', weightedMessages: 2 },
+      ],
+    });
+    const before = await loadStandings(db, config.current, now);
+    await resetWeeklyBoard(db, config.current, GUILD, A, now);
+    await config.load();
+    expect((await loadWeeklyStandings(db, config.current, now)).thisWeek).toEqual({ from: '2026-10-28', ranked: [] });
+    // New activity after the reset counts; what was there before doesn't.
+    await db.activityDay.update({ where: { userId_serverDay: { userId: B, serverDay: '2026-10-28' } }, data: { weightedMessages: 5 } });
+    const after = await loadWeeklyStandings(db, config.current, now);
+    expect(after.thisWeek.ranked.map((s) => [s.userId, s.score])).toEqual([[B, 3]]);
+    expect(await loadStandings(db, config.current, now)).toEqual(before);
+    // Next Monday it's back to normal.
+    await db.activityDay.create({ data: { userId: A, serverDay: '2026-11-02', weightedMessages: 1 } });
+    const nextWeek = await loadWeeklyStandings(db, config.current, new Date('2026-11-02T18:00:00Z'));
+    expect(nextWeek.thisWeek).toMatchObject({ from: '2026-11-02', ranked: [{ userId: A, score: 1 }] });
   });
 });

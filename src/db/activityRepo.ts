@@ -39,14 +39,39 @@ export interface WeeklyStandings {
 /**
  * Weekly points for the VIP board (owner-approved): they count from 0 each Monday
  * and last week's totals stay on show. Display only: VIP still uses the rolling window.
+ * After a /vip board-reset this week counts from that moment (weeklyFrom minus the
+ * points members already had that day).
  */
 export async function loadWeeklyStandings(db: Db, config: RuntimeConfig, now = new Date()): Promise<WeeklyStandings> {
   const today = serverDayAt(now, config.boundary).key;
-  const from = weekStartOf(today);
-  const lastFrom = addServerDays(from, -7);
+  const monday = weekStartOf(today);
+  const lastFrom = addServerDays(monday, -7);
+  const reset = config.guild.weeklyFrom && config.guild.weeklyFrom >= monday && config.guild.weeklyFrom <= today ? config.guild.weeklyFrom : null;
+  const from = reset ?? monday;
   const span = (start: string, count: number) => Array.from({ length: count }, (_, i) => addServerDays(start, i));
-  const [thisWeek, lastWeek] = await Promise.all([scoresFor(db, config, span(from, serverDaysBetween(from, today) + 1)), scoresFor(db, config, span(lastFrom, 7))]);
-  return { thisWeek: { from, ranked: thisWeek }, lastWeek: { from: lastFrom, to: addServerDays(from, -1), ranked: lastWeek } };
+  const [raw, lastWeek, baselines] = await Promise.all([
+    scoresFor(db, config, span(from, serverDaysBetween(from, today) + 1)),
+    scoresFor(db, config, span(lastFrom, 7)),
+    reset ? db.weeklyBaseline.findMany() : Promise.resolve([]),
+  ]);
+  const base = new Map(baselines.map((b) => [b.userId, b.score]));
+  const thisWeek = reset ? rankScores(raw.map((s) => ({ ...s, score: s.score - (base.get(s.userId) ?? 0) })).filter((s) => s.score > 0)) : raw;
+  return { thisWeek: { from, ranked: thisWeek }, lastWeek: { from: lastFrom, to: addServerDays(monday, -1), ranked: lastWeek } };
+}
+
+/**
+ * /vip board-reset: this week's board starts everyone at 0 from now. Nothing is
+ * deleted and VIP scores don't change. Call after flushing the activity buffer.
+ */
+export async function resetWeeklyBoard(db: Db, config: RuntimeConfig, guildId: string, actorId: string, now = new Date()): Promise<void> {
+  const today = serverDayAt(now, config.boundary).key;
+  const sofar = await scoresFor(db, config, [today]);
+  await db.$transaction([
+    db.weeklyBaseline.deleteMany(),
+    db.weeklyBaseline.createMany({ data: sofar.map((s) => ({ userId: s.userId, score: s.score })) }),
+    db.guildConfig.update({ where: { guildId }, data: { weeklyFrom: today } }),
+    db.auditLog.create({ data: { action: 'board.reset', actorId, data: { from: today } } }),
+  ]);
 }
 
 export function todayKey(config: RuntimeConfig, now = new Date()): string {

@@ -25,6 +25,7 @@ import { profileEmbed } from './profile.js';
 import { rerunSetup, SETUP_RERUN_ID } from './setupPicks.js';
 import { jesterStatus, jesterStatusModal, jesterTrick, speechOptOut, titlePerks } from './titlePerks.js';
 import { crownExtraButtons, crownExtraModals } from './crownExtras.js';
+import { freshStartCancel, freshStartConfirm } from './freshStart.js';
 import { colourRequestApprove, colourRequestButton, colourRequestDecline, colourRequestModal, treatButton, treatPick } from './vipExtras.js';
 import type { FormPrefill } from '../services/crown.js';
 import { COLOUR_NONE, COLOUR_PICKER_ID, CROWN_CREATE_ID, CROWN_DECREE_ID, CROWN_EDIT_ID, CROWN_TITLES_ID, VIP_PROFILE_ID, VIP_SHOUTOUT_ID } from '../services/panels.js';
@@ -234,6 +235,8 @@ export const BUTTONS = new Map(
     announceCancel,
     reshuffleConfirm,
     reshuffleCancel,
+    freshStartConfirm,
+    freshStartCancel,
     openCrownForm(CROWN_CREATE_ID),
     openCrownForm(CROWN_EDIT_ID),
     openCrownForm(CROWN_RETRY_ID),

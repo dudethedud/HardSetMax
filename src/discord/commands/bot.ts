@@ -3,6 +3,7 @@ import { ApplicationCommandOptionType, EmbedBuilder, IntentsBitField, Permission
 import { MANUAL_RESHUFFLE_JOB, RESHUFFLE_JOB } from '../../services/vipService.js';
 import { serverDayAt } from '../../core/serverDay.js';
 import { sendSetupResult } from '../setupPicks.js';
+import { askFreshStart } from '../freshStart.js';
 import { VERSION } from '../../version.js';
 import { REQUIRED_INTENT_NAMES } from '../client.js';
 import type { AccessLevel } from '../../core/access.js';
@@ -11,12 +12,18 @@ import { defineCommand, type AppContext, type Command } from './types.js';
 export const botCommand = defineCommand({
   name: 'bot',
   description: 'Bot health, setup and AI chat',
-  levels: { default: 'admin', health: 'staff', help: 'staff' },
+  levels: { default: 'admin', health: 'staff', help: 'staff', 'fresh-start': 'owner' },
   build: (b) =>
     b
       .addSubcommand((s) => s.setName('help').setDescription('Every command you can use, with what it does'))
       .addSubcommand((s) => s.setName('health').setDescription('Is the bot OK? Database, last reshuffle, AI and more'))
       .addSubcommand((s) => s.setName('setup').setDescription('Admin: create or repair roles, channels and panels (safe to run again)'))
+      .addSubcommand((s) =>
+        s
+          .setName('fresh-start')
+          .setDescription('Owner: wipe activity and VIP history and start over (keeps settings). Asks to confirm')
+          .addStringOption((o) => o.setName('server-name').setDescription("Type this server's name to show you mean it").setRequired(true).setMaxLength(100)),
+      )
       .addSubcommand((s) =>
         s
           .setName('ai')
@@ -80,6 +87,7 @@ export const botCommand = defineCommand({
       return;
     }
     if (sub === 'help') return help(interaction);
+    if (sub === 'fresh-start') return askFreshStart(interaction);
     if (sub === 'ai') return ai(interaction, ctx);
     if (sub === 'ai-blacklist') return aiBlacklist(interaction, ctx);
     return aiProvider(interaction, ctx);

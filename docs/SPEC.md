@@ -337,6 +337,8 @@ Five commands, all registered to the guild only and replying privately (ephemera
 | `/vip poll-unlock @user` | admin | Give someone their poll back for today (logged) |
 | `/vip crown-give @user` | admin | Give this week's Crown to a VIP now; the current holder loses it the usual way. Lasts until next week's award |
 | `/vip crown-reset @user` · `/vip crown-lock @user <locked>` | admin | Delete a custom role · block or allow custom roles |
+| `/vip board-reset` | admin | This week's board points restart from 0 now (a per-member baseline for today; nothing deleted, VIP scores unchanged) |
+| `/bot fresh-start <server-name>` | owner | Wipes activity, VIPs, VIP history, the Crown and its history, earned badges, colour picks, polls, shoutouts, treats, requests, temp voice, the Jester status and rainbow speech; keeps settings, channels, roles, colours, badge definitions, staff roles, blocked words, AI setup, AI blocks, opt-outs and the audit log. Discord is tidied first, then one transaction, then reconcile. Typed server name + Confirm within 5 minutes. VIP warms up again |
 | `/vip rainbow @user` · `/vip rainbow-stop @user` | staff | 🌈 speech filter on for 10 minutes · stop it early |
 | `/settings view` · `/settings set <key> <value>` | admin | Slots, window, buffer, min hold, inactivity days, min score, day boundary, timezone, voice weight, daily voice cap, spam filter thresholds, polls daily cap, colours, AI per-user limit |
 | `/settings channel <purpose> <channel>` | admin | Announcements, mod-log, polls, main chat (AI and shoutouts), VIP board |
