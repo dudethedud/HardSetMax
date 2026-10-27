@@ -31,7 +31,8 @@ async function scoresFor(db: Db, config: RuntimeConfig, days: string[]): Promise
 
 export interface WeeklyStandings {
   /** This week so far: Monday to today (everyone started from 0 on Monday). */
-  thisWeek: { from: string; ranked: MemberScore[] };
+  /** `restarted`: an admin ran /vip board-reset this week, so it counts from that moment. */
+  thisWeek: { from: string; restarted: boolean; ranked: MemberScore[] };
   /** Last week's final totals, Monday to Sunday. */
   lastWeek: { from: string; to: string; ranked: MemberScore[] };
 }
@@ -56,7 +57,7 @@ export async function loadWeeklyStandings(db: Db, config: RuntimeConfig, now = n
   ]);
   const base = new Map(baselines.map((b) => [b.userId, b.score]));
   const thisWeek = reset ? rankScores(raw.map((s) => ({ ...s, score: s.score - (base.get(s.userId) ?? 0) })).filter((s) => s.score > 0)) : raw;
-  return { thisWeek: { from, ranked: thisWeek }, lastWeek: { from: lastFrom, to: addServerDays(monday, -1), ranked: lastWeek } };
+  return { thisWeek: { from, restarted: !!reset, ranked: thisWeek }, lastWeek: { from: lastFrom, to: addServerDays(monday, -1), ranked: lastWeek } };
 }
 
 /**

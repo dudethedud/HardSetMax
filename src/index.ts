@@ -158,7 +158,14 @@ const speech = new SpeechFilterService(client, env.GUILD_ID, db, crown, modLog, 
 speech.skipChannel = (channelId) => channelId === config.current.guild.pollsChannelId;
 speech.noticeChannel = () => config.current.guild.mainChatChannelId ?? config.current.guild.announceChannelId;
 const scheduler = new DailyScheduler(config, clock, log, () => leader!.isHeld());
-scheduler.register(RESHUFFLE_JOB, (period) => vip.runReshuffle(RESHUFFLE_JOB, period));
+scheduler.register(RESHUFFLE_JOB, async (period) => {
+  try {
+    return await vip.runReshuffle(RESHUFFLE_JOB, period);
+  } finally {
+    // A new day (and on Mondays a new week on the board), even when the reshuffle was skipped (warm-up).
+    refreshBoard();
+  }
+});
 scheduler.register(POLL_UNLOCK_JOB, (period) => polls.runUnlockJob(period));
 scheduler.register(PRUNE_JOB, (period) => runPruneJob(db, config, clock, log, period));
 const permissionCheck = new PermissionCheck(client, env.GUILD_ID, db, config, modLog);

@@ -233,7 +233,7 @@ describe.skipIf(!url)('activity storage', () => {
       ],
     });
     const w = await loadWeeklyStandings(db, config.current, new Date('2026-10-27T18:00:00Z')); // Tuesday
-    expect(w.thisWeek.from).toBe('2026-10-26');
+    expect(w.thisWeek).toMatchObject({ from: '2026-10-26', restarted: false });
     expect(w.thisWeek.ranked.map((s) => [s.userId, s.score])).toEqual([[C, 2], [A, 1]]);
     expect(w.lastWeek).toMatchObject({ from: '2026-10-19', to: '2026-10-25' });
     expect(w.lastWeek.ranked.map((s) => [s.userId, s.score])).toEqual([[B, 20], [A, 8]]);
@@ -254,7 +254,7 @@ describe.skipIf(!url)('activity storage', () => {
     const before = await loadStandings(db, config.current, now);
     await resetWeeklyBoard(db, config.current, GUILD, A, now);
     await config.load();
-    expect((await loadWeeklyStandings(db, config.current, now)).thisWeek).toEqual({ from: '2026-10-28', ranked: [] });
+    expect((await loadWeeklyStandings(db, config.current, now)).thisWeek).toEqual({ from: '2026-10-28', restarted: true, ranked: [] });
     // New activity after the reset counts; what was there before doesn't.
     await db.activityDay.update({ where: { userId_serverDay: { userId: B, serverDay: '2026-10-28' } }, data: { weightedMessages: 5 } });
     const after = await loadWeeklyStandings(db, config.current, now);
@@ -263,6 +263,6 @@ describe.skipIf(!url)('activity storage', () => {
     // Next Monday it's back to normal.
     await db.activityDay.create({ data: { userId: A, serverDay: '2026-11-02', weightedMessages: 1 } });
     const nextWeek = await loadWeeklyStandings(db, config.current, new Date('2026-11-02T18:00:00Z'));
-    expect(nextWeek.thisWeek).toMatchObject({ from: '2026-11-02', ranked: [{ userId: A, score: 1 }] });
+    expect(nextWeek.thisWeek).toMatchObject({ from: '2026-11-02', restarted: false, ranked: [{ userId: A, score: 1 }] });
   });
 });
