@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import type { ConfigStore } from '../../config/configStore.js';
 import { cooldownAfter, providerDay, usableProviders, type Failure } from '../../core/ai/chain.js';
+import { VIP_AI_RESERVE } from '../../core/vipExtras.js';
 import type { ChatMessage } from '../../core/ai/prompt.js';
 import type { Db } from '../../db/prisma.js';
 import type { AiProvider } from '../../generated/prisma/client.js';
@@ -112,8 +113,9 @@ export class AiService {
   /**
    * Text from the first provider that answers, or null if all are out.
    * `count: false` (for /bot ai action:test) doesn't use up the daily cap.
+   * `priority: false` (chat with non-VIPs) can't use the share of each cap kept for VIPs.
    */
-  async complete(messages: ChatMessage[], { maxTokens = 160, count = true } = {}): Promise<{ text: string; provider: string } | null> {
+  async complete(messages: ChatMessage[], { maxTokens = 160, count = true, priority = true } = {}): Promise<{ text: string; provider: string } | null> {
     const now = this.clock.now();
     const all = await this.providers();
     const used = new Map(await Promise.all(all.map(async (p) => [p.name, await this.usedToday(p, now)] as const)));
@@ -121,6 +123,7 @@ export class AiService {
       all.map((p) => ({ ...p, hasKey: !!this.#key(p) && this.#url(p) !== null })),
       (p) => used.get(p.name) ?? 0,
       now,
+      priority ? 0 : VIP_AI_RESERVE,
     );
 
     for (const p of usable) {

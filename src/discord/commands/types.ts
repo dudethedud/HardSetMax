@@ -23,6 +23,8 @@ import type { ColourService } from '../../services/colours.js';
 import type { CrownService } from '../../services/crown.js';
 import type { CrownPowers } from '../../services/crownPowers.js';
 import type { JesterService } from '../../services/jester.js';
+import type { TreatService } from '../../services/treats.js';
+import type { ColourRequestService } from '../../services/colourRequests.js';
 import type { ShoutoutService } from '../../services/shoutouts.js';
 import type { Panels } from '../../services/panels.js';
 import type { PollService } from '../../services/polls.js';
@@ -47,6 +49,8 @@ export interface AppContext {
   crown: CrownService;
   powers: CrownPowers;
   jester: JesterService;
+  treats: TreatService;
+  colourRequests: ColourRequestService;
   shoutouts: ShoutoutService;
   badges: BadgeService;
   polls: PollService;

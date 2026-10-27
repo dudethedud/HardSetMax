@@ -431,3 +431,30 @@ model BotStatus {
   setById String
   setAt   DateTime @default(now())
 }
+
+// A VIP's daily treat to another member (cosmetic; doesn't change scores).
+model Treat {
+  giverId    String
+  serverDay  String
+  receiverId String
+  createdAt  DateTime @default(now())
+
+  @@id([giverId, serverDay])
+  @@index([receiverId, createdAt])
+}
+
+// A VIP's suggestion for a new VIP gradient, approved or declined by staff in the mod-log.
+model ColourRequest {
+  id        Int       @id @default(autoincrement())
+  userId    String
+  name      String
+  hex       String
+  hex2      String
+  status    String    @default("pending") // pending | approved | declined
+  messageId String?   @unique // the mod-log message with the buttons
+  decidedBy String?
+  createdAt DateTime  @default(now())
+  decidedAt DateTime?
+
+  @@index([userId, createdAt])
+}

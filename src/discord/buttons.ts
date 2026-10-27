@@ -24,6 +24,7 @@ import { ANNOUNCE_CANCEL_ID, ANNOUNCE_MODAL_ID, ANNOUNCE_SEND_ID, cancelAnnounce
 import { profileEmbed } from './profile.js';
 import { rerunSetup, SETUP_RERUN_ID } from './setupPicks.js';
 import { jesterStatus, jesterStatusModal, jesterTrick, titlePerks } from './titlePerks.js';
+import { colourRequestApprove, colourRequestButton, colourRequestDecline, colourRequestModal, treatButton, treatPick } from './vipExtras.js';
 import type { FormPrefill } from '../services/crown.js';
 import { COLOUR_NONE, COLOUR_PICKER_ID, CROWN_CREATE_ID, CROWN_DECREE_ID, CROWN_EDIT_ID, CROWN_TITLES_ID, VIP_PROFILE_ID, VIP_SHOUTOUT_ID } from '../services/panels.js';
 import { TEMP_VOICE_CREATE_ID, TEMP_VOICE_LIMIT_ID, TEMP_VOICE_RENAME_ID } from '../services/tempVoice.js';
@@ -217,6 +218,10 @@ export const BUTTONS = new Map(
     profile,
     shoutout,
     titlePerks,
+    treatButton,
+    colourRequestButton,
+    colourRequestApprove,
+    colourRequestDecline,
     jesterStatus,
     jesterTrick,
     decree,
@@ -304,7 +309,7 @@ const decreeModal: ModalHandler = {
 
 const announceModal: ModalHandler = { id: ANNOUNCE_MODAL_ID, level: 'owner', run: previewAnnouncement };
 
-export const MODALS = new Map([crownModal, tempVoiceRename, tempVoiceLimit, shoutoutModal, decreeModal, jesterStatusModal, announceModal].map((m) => [m.id, m]));
+export const MODALS = new Map([crownModal, tempVoiceRename, tempVoiceLimit, shoutoutModal, decreeModal, jesterStatusModal, colourRequestModal, announceModal].map((m) => [m.id, m]));
 
 export interface SelectHandler {
   id: string;
@@ -338,4 +343,4 @@ const titleSelect = (slot: string): UserSelectHandler => ({
   },
 });
 
-export const USER_SELECTS = new Map(TITLE_SLOTS.map((t) => [TITLE_SELECT_PREFIX + t.slot, titleSelect(t.slot)]));
+export const USER_SELECTS = new Map([...TITLE_SLOTS.map((t) => titleSelect(t.slot)), treatPick].map((h) => [h.id, h]));

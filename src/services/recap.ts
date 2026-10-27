@@ -7,6 +7,7 @@ import { compareUserIds } from '../core/scoring.js';
 import type { ReshuffleResult } from '../core/reshuffle.js';
 import { addServerDays, serverDayByKey, serverDaysBetween, weekStartOf } from '../core/serverDay.js';
 import type { Db } from '../db/prisma.js';
+import type { TreatService } from './treats.js';
 import type { Logger } from '../logger.js';
 import type { Clock } from './clock.js';
 import { claimJob, completeJob, failJob } from './jobs.js';
@@ -26,6 +27,7 @@ export class RecapService {
     private readonly modLog: ModLog,
     private readonly clock: Clock,
     private readonly log: Logger,
+    private readonly treats?: TreatService,
   ) {}
 
   /** The recap text for the week that ends just before `weekStart`. */
@@ -56,6 +58,7 @@ export class RecapService {
       longest: longest ?? null,
       swaps,
       badges: badges.map((x) => ({ userId: x.userId, name: x.badge.name })),
+      treats: (await this.treats?.top(fromAt, toAt)) ?? null,
     });
   }
 

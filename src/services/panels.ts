@@ -33,6 +33,8 @@ export const CROWN_TITLES_ID = 'crown:titles';
 export const CROWN_DECREE_ID = 'crown:decree';
 export const VIP_PROFILE_ID = 'vip:profile';
 export const VIP_SHOUTOUT_ID = 'vip:shoutout';
+export const VIP_TREAT_ID = 'vip:treat';
+export const VIP_COLOUR_REQUEST_ID = 'vip:colour-request';
 
 /** The VIP lounge panel: perks, the colour dropdown, and the VIP and Crown buttons. */
 export function loungePanel(colourOptions: () => Promise<ColourOption[]>): PanelDef {
@@ -55,6 +57,9 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             '• This private lounge (text and voice), plus your own temporary voice channel (button below)',
             '• A VIP colour (pick below) and VIP polls in the polls channel',
             '• ⭐ Your name on the public VIP board, a profile card, and one 📣 shoutout a day in main chat',
+            '• 🦴 One treat a day to give anyone, and 🎨 suggest a new VIP colour (staff approve it)',
+            '• 💎 VIP 14 days in a row: Veteran on the board and a second daily shoutout',
+            '• 🐶 Carter answers VIPs first when he’s busy',
             '',
             '**👑 Crown of the week** (the #1 VIP each week)',
             '• Your own custom role and a 👑 in front of your name',
@@ -71,6 +76,8 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
         new ButtonBuilder().setCustomId(VIP_PROFILE_ID).setLabel('My profile').setEmoji('🪪').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId(VIP_SHOUTOUT_ID).setLabel('Shoutout').setEmoji('📣').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(TEMP_VOICE_CREATE_ID).setLabel('Create VIP voice').setEmoji('🔊').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(VIP_TREAT_ID).setLabel('Give a treat').setEmoji('🦴').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(VIP_COLOUR_REQUEST_ID).setLabel('Suggest a colour').setEmoji('🎨').setStyle(ButtonStyle.Secondary),
       );
       const crownRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(CROWN_CREATE_ID).setLabel('Create your role').setEmoji('👑').setStyle(ButtonStyle.Primary),

@@ -56,6 +56,8 @@ export interface RecapInput {
   longest: { userId: string; days: number } | null;
   swaps: number;
   badges: EarnedBadge[];
+  /** Who got the most treats from VIPs this week. */
+  treats?: { userId: string; count: number } | null;
 }
 
 /** The Monday recap post (SPEC §9). Mentions show names; the caller sends it with no pings. */
@@ -68,6 +70,7 @@ export function formatRecap(r: RecapInput): string {
     r.longest ? `⏳ Longest-standing VIP: <@${r.longest.userId}> (${r.longest.days} day${r.longest.days === 1 ? '' : 's'} in a row)` : '',
     `🔄 VIP swaps this week: ${r.swaps}`,
     r.badges.length ? `🏅 Badges earned: ${r.badges.map((b) => `<@${b.userId}> ${b.name}`).join(', ')}` : '',
+    r.treats ? `🦴 Most treats: <@${r.treats.userId}> (${r.treats.count})` : '',
   ]
     .filter(Boolean)
     .join('\n');

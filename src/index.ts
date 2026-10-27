@@ -31,6 +31,8 @@ import { RoleQueue } from './services/roleQueue.js';
 import { DailyScheduler } from './services/scheduler.js';
 import { runSetup, VIP_PERMISSIONS } from './services/setup.js';
 import { JesterService } from './services/jester.js';
+import { TreatService } from './services/treats.js';
+import { ColourRequestService } from './services/colourRequests.js';
 import { createShutdown } from './services/shutdown.js';
 import { RESHUFFLE_JOB, VipService } from './services/vipService.js';
 import { TimeoutTracker } from './services/timeoutTracker.js';
@@ -118,7 +120,10 @@ const chat = new ChatService(client, env.GUILD_ID, db, config, ai, vip, crown, l
 vip.hype = (summary) => chat.hypeLine('vip-update', summary);
 chat.modLog = modLog;
 const badges = new BadgeService(client, env.GUILD_ID, db, config, roleQueue, modLog, log);
-const recap = new RecapService(client, db, config, modLog, clock, log);
+const treats = new TreatService(client, env.GUILD_ID, db, config, vip, modLog, clock, log);
+const recap = new RecapService(client, db, config, modLog, clock, log, treats);
+// Approving a colour request makes its role and refreshes the colour menu, like /settings colour add.
+const colourRequests = new ColourRequestService(db, config, vip, colours, modLog, clock, async () => [...(await colours.syncRoles()), ...(await panels.ensureAll())]);
 vip.badges = badges;
 recap.hype = (summary) => chat.hypeLine('recap', summary);
 // Order matters: the recap names the Crown holder that was just picked.
@@ -201,6 +206,8 @@ const ctx: AppContext = {
   crown,
   powers,
   jester,
+  treats,
+  colourRequests,
   shoutouts,
   badges,
   polls,
