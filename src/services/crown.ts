@@ -3,7 +3,7 @@
 // Monday). Losing VIP takes the Crown and the custom role with it; the Crown isn't
 // given to anyone else until next week. Custom role settings are kept, so the
 // role is recreated if they win again.
-import { GuildPremiumTier, type Client, type Guild, type Role } from 'discord.js';
+import { GuildFeature, GuildPremiumTier, type Client, type Guild, type Role } from 'discord.js';
 import type { ConfigStore } from '../config/configStore.js';
 import { checkCustomRole, MAX_CUSTOM_ROLE_EDITS, pickCrown, type CustomRoleCheck, type CustomRoleInput } from '../core/crown.js';
 import type { ReshuffleResult } from '../core/reshuffle.js';
@@ -13,6 +13,7 @@ import type { Db } from '../db/prisma.js';
 import type { CrownHolder, CustomRole } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
 import type { Clock } from './clock.js';
+import { downloadIcon } from './iconImage.js';
 import { claimJob, completeJob, failJob } from './jobs.js';
 import type { ModLog } from './modLog.js';
 import { explainRoleError, placeNextTo, type RoleQueue } from './roleQueue.js';
@@ -24,8 +25,20 @@ const DRAFT_MINUTES = 15;
 export interface FormPrefill {
   name: string;
   hex: string;
+  hex2?: string;
   emoji: string;
+  /** They already have an uploaded image icon (forms can't prefill uploads). */
+  hasImage?: boolean;
 }
+
+/** An image uploaded in the form (an attachment on Discord's CDN). */
+export interface IconUpload {
+  url: string;
+  contentType: string | null;
+  size: number;
+}
+
+type AppliedRole = Pick<CustomRole, 'name' | 'hex' | 'hex2' | 'emoji' | 'iconImage' | 'roleId'>;
 
 export type FormAccess = { ok: true; prefill: FormPrefill | null } | { ok: false; message: string };
 
@@ -188,17 +201,27 @@ export class CrownService {
   }
 
   /** Creates or updates the member's custom role from saved settings, directly above the Crown role. */
-  async #applyCustomRole(userId: string, custom: Pick<CustomRole, 'name' | 'hex' | 'emoji' | 'roleId'>): Promise<string | null> {
+  async #applyCustomRole(userId: string, custom: AppliedRole): Promise<string | null> {
     const guild = this.#guild();
     if (!guild) return 'the bot is not in the server';
     const crownRole = this.config.current.guild.crownRoleId ? guild.roles.cache.get(this.config.current.guild.crownRoleId) : undefined;
-    const colour = parseHexColour(custom.hex) ?? 0xffffff;
-    const icon = custom.emoji && guild.premiumTier >= GuildPremiumTier.Tier2 ? { unicodeEmoji: custom.emoji } : {};
+    const primaryColor = parseHexColour(custom.hex) ?? 0xffffff;
+    // Like the VIP colours: a gradient only where the server has gradient roles, otherwise the first colour.
+    const second = custom.hex2 && guild.features.includes(GuildFeature.EnhancedRoleColors) ? parseHexColour(custom.hex2) : null;
+    const iconsAllowed = guild.premiumTier >= GuildPremiumTier.Tier2;
+    const icon = !iconsAllowed
+      ? {}
+      : custom.iconImage
+        ? { icon: Buffer.from(custom.iconImage), unicodeEmoji: null }
+        : custom.emoji
+          ? { icon: null, unicodeEmoji: custom.emoji }
+          : { icon: null, unicodeEmoji: null };
     try {
       let role: Role | undefined = custom.roleId ? guild.roles.cache.get(custom.roleId) : undefined;
-      if (role) await role.edit({ name: custom.name, colors: { primaryColor: colour }, ...icon, reason: 'Crown custom role edited' });
+      if (role) await role.edit({ name: custom.name, colors: { primaryColor, secondaryColor: second }, ...icon, reason: 'Crown custom role edited' });
       else {
-        role = await guild.roles.create({ name: custom.name, colors: { primaryColor: colour }, hoist: false, mentionable: false, permissions: [], ...icon, reason: 'Crown custom role' });
+        const colors = second === null ? { primaryColor } : { primaryColor, secondaryColor: second };
+        role = await guild.roles.create({ name: custom.name, colors, hoist: false, mentionable: false, permissions: [], ...icon, reason: 'Crown custom role' });
         await this.db.customRole.update({ where: { userId }, data: { roleId: role.id } });
       }
       // On top of the bot's roles (above the colours), so its colour shows.
@@ -224,12 +247,13 @@ export class CrownService {
     const now = this.clock.now();
     await this.db.modalDraft.deleteMany({ where: { expiresAt: { lte: now } } });
     const draft = await this.db.modalDraft.findUnique({ where: { userId } });
-    const prefill = (draft?.data as FormPrefill | undefined) ?? (custom ? { name: custom.name, hex: custom.hex, emoji: custom.emoji ?? '' } : null);
+    const saved = custom ? { name: custom.name, hex: custom.hex, hex2: custom.hex2 ?? '', emoji: custom.emoji ?? '', hasImage: !!custom.iconImage } : null;
+    const prefill = (draft?.data as FormPrefill | undefined) ?? saved;
     return { ok: true, prefill };
   }
 
   /** Form submitted. Errors are saved as a draft for "Try again". */
-  async submit(userId: string, input: CustomRoleInput): Promise<{ ok: true; message: string } | { ok: false; errors: string[] }> {
+  async submit(userId: string, input: CustomRoleInput, upload: IconUpload | null = null): Promise<{ ok: true; message: string } | { ok: false; errors: string[] }> {
     const access = await this.formAccess(userId);
     if (!access.ok) return { ok: false, errors: [access.message] };
     const guild = this.#guild();
@@ -242,7 +266,7 @@ export class CrownService {
     const isEdit = !!custom?.roleId;
     const editsUsed = custom?.editsWeek === week ? custom.editsCount : 0;
 
-    const check: CustomRoleCheck = checkCustomRole(input, {
+    const check: CustomRoleCheck = checkCustomRole({ ...input, image: upload && { contentType: upload.contentType, size: upload.size } }, {
       otherRoleNames: guild.roles.cache.filter((r) => r.id !== custom?.roleId && r.id !== guild.id).map((r) => r.name),
       staffRoleNames: guild.roles.cache.filter((r) => staffIds.has(r.id)).map((r) => r.name),
       blockedWords: blocked,
@@ -251,33 +275,49 @@ export class CrownService {
       editsUsedThisWeek: editsUsed,
       maxEditsPerWeek: MAX_CUSTOM_ROLE_EDITS,
     });
-    if (!check.ok) {
+    const fail = async (errors: string[]) => {
       const expiresAt = new Date(this.clock.now().getTime() + DRAFT_MINUTES * 60_000);
-      const data = { name: input.name, hex: input.hex, emoji: input.emoji } satisfies FormPrefill;
+      const data = { name: input.name, hex: input.hex, hex2: input.hex2 ?? '', emoji: input.emoji, hasImage: !!custom?.iconImage } satisfies FormPrefill;
       await this.db.modalDraft.upsert({ where: { userId }, create: { userId, data, expiresAt }, update: { data, expiresAt } });
-      return { ok: false, errors: check.errors };
-    }
+      return { ok: false as const, errors };
+    };
+    if (!check.ok) return fail(check.errors);
 
     const v = check.value;
+    // The icon: a new upload wins; a new emoji replaces an old image; otherwise the old image stays.
+    let icon: { iconImage: Uint8Array<ArrayBuffer> | null; iconType: string | null } = { iconImage: custom?.iconImage ?? null, iconType: custom?.iconType ?? null };
+    if (v.useImage && upload) {
+      const got = await downloadIcon(upload.url);
+      if (!got.ok) return fail([got.error]);
+      icon = { iconImage: new Uint8Array(got.data), iconType: got.type };
+    } else if (v.emoji) icon = { iconImage: null, iconType: null };
+
     const editsCount = isEdit ? editsUsed + 1 : editsUsed;
+    const fields = { name: v.name, hex: v.hex, hex2: v.hex2, emoji: v.emoji, ...icon, editsWeek: week, editsCount };
     await this.db.$transaction([
-      this.db.customRole.upsert({
-        where: { userId },
-        create: { userId, name: v.name, hex: v.hex, emoji: v.emoji, editsWeek: week, editsCount },
-        update: { name: v.name, hex: v.hex, emoji: v.emoji, editsWeek: week, editsCount },
-      }),
+      this.db.customRole.upsert({ where: { userId }, create: { userId, ...fields }, update: fields }),
       this.db.modalDraft.deleteMany({ where: { userId } }),
-      this.db.auditLog.create({ data: { action: isEdit ? 'crown.role.edit' : 'crown.role.create', actorId: userId, targetId: userId, data: { ...v } } }),
+      this.db.auditLog.create({
+        data: { action: isEdit ? 'crown.role.edit' : 'crown.role.create', actorId: userId, targetId: userId, data: { name: v.name, hex: v.hex, hex2: v.hex2, emoji: v.emoji, image: !!icon.iconImage } },
+      }),
     ]);
-    const err = await this.#applyCustomRole(userId, { name: v.name, hex: v.hex, emoji: v.emoji, roleId: custom?.roleId ?? null });
-    await this.modLog.post(`👑 <@${userId}> ${isEdit ? 'edited' : 'created'} their custom role: "${v.name}" ${v.hex}${v.emoji ? ` ${v.emoji}` : ''}${err ? `\n⚠️ ${err}` : ''}`);
+    const err = await this.#applyCustomRole(userId, { ...fields, roleId: custom?.roleId ?? null });
+    const gradient = v.hex2 ? (guild.features.includes(GuildFeature.EnhancedRoleColors) ? ` → ${v.hex2}` : ` (${v.hex2} unused: no gradient roles here)`) : '';
+    const shownIcon = icon.iconImage ? ' with an image icon (below)' : v.emoji ? ` ${v.emoji}` : '';
+    // Every uploaded image is shown to staff, so an unsuitable one can be removed with /vip crown-reset.
+    const newImage = v.useImage && icon.iconImage ? { name: `icon.${icon.iconType === 'image/png' ? 'png' : 'jpg'}`, data: Buffer.from(icon.iconImage) } : undefined;
+    await this.modLog.post(
+      `👑 <@${userId}> ${isEdit ? 'edited' : 'created'} their custom role: "${v.name}" ${v.hex}${gradient}${shownIcon}${newImage ? '\nRemove an unsuitable icon with `/vip crown-reset`.' : ''}${err ? `\n⚠️ ${err}` : ''}`,
+      newImage,
+    );
     if (err) return { ok: false, errors: [`Saved, but the role couldn't be made: ${err}`] };
     const left = MAX_CUSTOM_ROLE_EDITS - editsCount;
     return {
       ok: true,
       message: [
         `✅ Your role **${v.name}** is ${isEdit ? 'updated' : 'ready'}!`,
-        v.emojiIgnored ? 'ℹ️ The emoji icon needs Server Boost Level 2, so it was left off.' : '',
+        v.emojiIgnored ? 'ℹ️ Role icons need Server Boost Level 2, so the icon was left off.' : '',
+        v.hex2 && !guild.features.includes(GuildFeature.EnhancedRoleColors) ? 'ℹ️ This server doesn’t have gradient roles, so only your first colour is used.' : '',
         `Edits left this week: ${left}.`,
       ]
         .filter(Boolean)

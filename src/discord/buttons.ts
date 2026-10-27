@@ -4,6 +4,8 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  FileUploadBuilder,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   TextInputBuilder,
@@ -58,23 +60,31 @@ const reshuffleCancel: ButtonHandler = {
 };
 
 export const CROWN_RETRY_ID = 'crown:role-retry';
+export const CROWN_ICON_FIELD = 'icon';
 export const CROWN_MODAL_ID = 'crown:role-modal';
 
 /** The custom role form (SPEC §6), filled in with earlier answers when there are any. */
 export function crownRoleModal(prefill: FormPrefill | null): ModalBuilder {
-  const input = (id: string, label: string, opts: { min?: number; max: number; required: boolean; placeholder: string; value?: string }) => {
-    const t = new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(opts.required).setMaxLength(opts.max).setPlaceholder(opts.placeholder);
+  const input = (id: string, label: string, opts: { min?: number; max: number; required: boolean; placeholder: string; value?: string; hint?: string }) => {
+    const t = new TextInputBuilder().setCustomId(id).setStyle(TextInputStyle.Short).setRequired(opts.required).setMaxLength(opts.max).setPlaceholder(opts.placeholder);
     if (opts.min) t.setMinLength(opts.min);
     if (opts.value) t.setValue(opts.value.slice(0, opts.max));
-    return new ActionRowBuilder<TextInputBuilder>().addComponents(t);
+    const l = new LabelBuilder().setLabel(label).setTextInputComponent(t);
+    return opts.hint ? l.setDescription(opts.hint) : l;
   };
+  const upload = new FileUploadBuilder().setCustomId(CROWN_ICON_FIELD).setRequired(false).setMinValues(0).setMaxValues(1);
   return new ModalBuilder()
     .setCustomId(CROWN_MODAL_ID)
     .setTitle('👑 Your Crown role')
-    .addComponents(
+    .addLabelComponents(
       input('name', 'Role name', { min: 2, max: 32, required: true, placeholder: 'e.g. Sunset Club', value: prefill?.name }),
       input('hex', 'Colour (hex)', { max: 7, required: true, placeholder: '#FF8800', value: prefill?.hex }),
-      input('emoji', 'Emoji icon (optional, needs Boost Level 2)', { max: 10, required: false, placeholder: '🔥', value: prefill?.emoji }),
+      input('hex2', 'Second colour (optional)', { max: 7, required: false, placeholder: '#9B8CFF', value: prefill?.hex2, hint: 'Makes a gradient on servers that have gradient roles.' }),
+      input('emoji', 'Emoji icon (optional)', { max: 10, required: false, placeholder: '🔥', value: prefill?.emoji, hint: 'Role icons need Server Boost Level 2.' }),
+      new LabelBuilder()
+        .setLabel('Image icon (optional)')
+        .setDescription(`PNG or JPG, up to 256 KB. Used instead of the emoji.${prefill?.hasImage ? ' Leave empty to keep your current image.' : ''}`)
+        .setFileUploadComponent(upload),
     );
 }
 
@@ -233,7 +243,12 @@ const crownModal: ModalHandler = {
   async run(interaction, ctx) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const field = (name: string) => interaction.fields.getTextInputValue(name) ?? '';
-    const result = await ctx.crown.submit(interaction.user.id, { name: field('name'), hex: field('hex'), emoji: field('emoji') });
+    const file = interaction.fields.getUploadedFiles(CROWN_ICON_FIELD)?.first();
+    const result = await ctx.crown.submit(
+      interaction.user.id,
+      { name: field('name'), hex: field('hex'), hex2: field('hex2'), emoji: field('emoji') },
+      file ? { url: file.url, contentType: file.contentType, size: file.size } : null,
+    );
     if (result.ok) {
       await interaction.editReply(result.message);
       return;

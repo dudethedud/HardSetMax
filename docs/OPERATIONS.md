@@ -175,7 +175,7 @@ Five commands: `/stats`, `/vip`, `/settings`, `/bot` and `/announce`. They reply
 ### How the Crown works
 - The week's first reshuffle (normally Monday's, at midnight) gives the **👑 Crown** role to the top member of the new VIP list, for that week (Monday to Sunday). No VIPs means no Crown that week.
 - If the holder loses VIP mid-week, the Crown and their custom role go with it, and nobody else gets the Crown until next week.
-- **Custom role:** the Crown holder clicks **Create your role** in the VIP Lounge panel and fills in a name (2–32 characters), a hex colour and an optional emoji. The emoji needs Server Boost Level 2; otherwise it's left off.
+- **Custom role:** the Crown holder clicks **Create your role** in the VIP Lounge panel and fills in a name (2–32 characters), a hex colour, an optional second colour (a gradient where the server has gradient roles, otherwise ignored), and an optional emoji or image icon (PNG/JPG up to 256 KB). Icons need Server Boost Level 2; otherwise they're left off. Every uploaded image appears in the mod-log; remove an unsuitable one with `/vip crown-reset`.
   - **Rejected:** names that match or imitate any role, or contain a staff role's name; blocked words; near-black colours.
   - If something's wrong, a **Try again** button reopens the form with their answers, for 15 minutes.
   - Creating is free, then 3 edits per Crown week.
