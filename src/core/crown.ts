@@ -32,8 +32,16 @@ const EMOJI_RE = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_
 export interface CustomRoleInput {
   name: string;
   hex: string;
+  /** Optional second colour: a gradient where the server supports gradient roles. */
+  hex2?: string;
   emoji: string;
+  /** An uploaded icon image, if any (only what's needed to check it). */
+  image?: { contentType: string | null; size: number } | null;
 }
+
+/** Discord's limit for role icon images. */
+export const ROLE_ICON_MAX_BYTES = 256 * 1024;
+const ICON_TYPES = new Set(['image/png', 'image/jpeg']);
 
 export interface CustomRoleContext {
   /** Names of every role in the server except this member's own custom role. */
@@ -52,8 +60,12 @@ export interface CustomRoleRequest {
   name: string;
   /** "#RRGGBB" */
   hex: string;
+  /** Second gradient colour, "#RRGGBB", or null. */
+  hex2: string | null;
   emoji: string | null;
-  /** They gave an emoji, but the server can't show role icons. */
+  /** Use the uploaded image as the icon (it wins over the emoji). */
+  useImage: boolean;
+  /** They gave an emoji or image, but the server can't show role icons. */
   emojiIgnored: boolean;
 }
 
@@ -81,17 +93,29 @@ export function checkCustomRole(input: CustomRoleInput, ctx: CustomRoleContext):
   if (colour === null) errors.push('Colour must be a hex code like #FF8800.');
   else if (isNearBlack(colour)) errors.push("That colour is too dark to read on dark mode. Pick a brighter one.");
 
+  const hex2Raw = (input.hex2 ?? '').trim();
+  const colour2 = hex2Raw ? parseHexColour(hex2Raw) : null;
+  if (hex2Raw && colour2 === null) errors.push('Second colour must be a hex code like #9B8CFF (or leave it empty).');
+  else if (colour2 !== null && isNearBlack(colour2)) errors.push('The second colour is too dark to read on dark mode.');
+
   const emojiRaw = input.emoji.trim();
   if (emojiRaw && (!EMOJI_RE.test(emojiRaw) || [...emojiRaw].length > 10)) errors.push('Emoji must be a single standard emoji (like 🔥), not a custom one.');
 
+  const image = input.image ?? null;
+  if (image && !ICON_TYPES.has((image.contentType ?? '').split(';')[0]!.trim())) errors.push('The icon image must be a PNG or JPG.');
+  else if (image && image.size > ROLE_ICON_MAX_BYTES) errors.push('The icon image must be 256 KB or smaller (Discord’s limit for role icons).');
+
   if (errors.length) return { ok: false, errors };
+  const wantsIcon = !!emojiRaw || !!image;
   return {
     ok: true,
     value: {
       name,
       hex: formatHexColour(colour!),
+      hex2: colour2 === null ? null : formatHexColour(colour2),
       emoji: emojiRaw && ctx.roleIconsAllowed ? emojiRaw : null,
-      emojiIgnored: !!emojiRaw && !ctx.roleIconsAllowed,
+      useImage: !!image && ctx.roleIconsAllowed,
+      emojiIgnored: wantsIcon && !ctx.roleIconsAllowed,
     },
   };
 }

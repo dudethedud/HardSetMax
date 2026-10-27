@@ -204,13 +204,17 @@ Slash commands would be visible to everyone, so this uses a button instead, whic
 2. Clicking opens a **modal** with:
    - **Role name** (required, 2–32 chars)
    - **Hex colour** (required, e.g. `#ff8800`)
-   - **Emoji icon** (optional; only applied if the server has Boost Level 2, otherwise ignored with a note)
+   - **Second colour** (optional): the role becomes a gradient on servers with gradient roles (`ENHANCED_ROLE_COLORS`); otherwise only the first colour is used, with a note. Rejected if near-black.
+   - **Emoji icon** (optional)
+   - **Image icon** (optional upload): a PNG or JPG of at most 256 KB (Discord's limit for role icons). It's used instead of the emoji. Editing without a new upload keeps the current image; entering an emoji replaces it.
+   - Role icons (emoji or image) only show at Boost Level 2; below that they're ignored with a note.
 3. Validation. Discord doesn't let a form open another form, so on an error the bot sends a private reply listing what's wrong with a **"Try again" button**. That button reopens the form **with their previous answers filled in** (the draft is saved in the DB for 15 minutes, then deleted). Checks:
    - Hex must be valid; reject near-black (invisible on dark mode).
    - Name checked against an admin-managed **blocked words list**.
    - Name can't match or imitate any existing role name (case-insensitive, ignoring spaces/symbols), especially staff roles.
    - Edit limit: 3 edits per Crown week.
-4. The bot creates the role directly above the Crown role and assigns it. Logged with the full name/colour.
+4. The bot creates the role directly above the Crown role and assigns it. Logged with the full name/colour. **Every uploaded image is posted in the mod-log entry** so staff can see it; `/vip crown-reset` removes an unsuitable one.
+   - Images are only downloaded from Discord's own file servers (`cdn.discordapp.com`, `media.discordapp.net`) over https, with a 10-second limit, stopping at 256 KB. The file's first bytes must really be a PNG or JPG. The image is saved in the DB (not on disk) so the role can be recreated.
 5. **When the Crown is lost, the custom role is deleted** from the server. Its settings are **saved**; if that person wins the Crown again, it's recreated automatically.
 6. Admins: `/vip crown-reset @user` (delete it and clear saved settings), `/vip crown-lock locked:true @user` (block custom role creation).
 

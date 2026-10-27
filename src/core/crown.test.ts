@@ -56,7 +56,7 @@ describe('checkCustomRole', () => {
   it('accepts a good role and tidies it', () => {
     expect(checkCustomRole({ ...ok, name: '  Sunset   Club ' }, ctx)).toEqual({
       ok: true,
-      value: { name: 'Sunset Club', hex: '#FF8800', emoji: '🔥', emojiIgnored: false },
+      value: { name: 'Sunset Club', hex: '#FF8800', hex2: null, emoji: '🔥', useImage: false, emojiIgnored: false },
     });
   });
 
@@ -93,5 +93,22 @@ describe('checkCustomRole', () => {
     expect(checkCustomRole(ok, { ...ctx, isEdit: false, editsUsedThisWeek: 3 }).ok).toBe(true);
     expect(checkCustomRole(ok, { ...ctx, isEdit: true, editsUsedThisWeek: 2 }).ok).toBe(true);
     expect(checkCustomRole(ok, { ...ctx, isEdit: true, editsUsedThisWeek: 3 }).ok).toBe(false);
+  });
+
+  it('takes an optional second colour for a gradient', () => {
+    expect(checkCustomRole({ ...ok, hex2: '9b8cff' }, ctx)).toMatchObject({ ok: true, value: { hex: '#FF8800', hex2: '#9B8CFF' } });
+    expect(checkCustomRole({ ...ok, hex2: '  ' }, ctx)).toMatchObject({ ok: true, value: { hex2: null } });
+    expect(checkCustomRole({ ...ok, hex2: 'purple' }, ctx).ok).toBe(false);
+    expect(checkCustomRole({ ...ok, hex2: '#050505' }, ctx).ok).toBe(false);
+  });
+
+  it('takes a PNG or JPG icon up to 256 KB, which wins over the emoji', () => {
+    const png = { contentType: 'image/png', size: 40_000 };
+    expect(checkCustomRole({ ...ok, image: png }, ctx)).toMatchObject({ ok: true, value: { useImage: true } });
+    expect(checkCustomRole({ ...ok, image: { contentType: 'image/jpeg', size: 256 * 1024 } }, ctx).ok).toBe(true);
+    expect(checkCustomRole({ ...ok, image: { contentType: 'image/png', size: 256 * 1024 + 1 } }, ctx).ok).toBe(false);
+    expect(checkCustomRole({ ...ok, image: { contentType: 'image/gif', size: 1000 } }, ctx).ok).toBe(false);
+    expect(checkCustomRole({ ...ok, image: { contentType: null, size: 1000 } }, ctx).ok).toBe(false);
+    expect(checkCustomRole({ ...ok, emoji: '', image: png }, { ...ctx, roleIconsAllowed: false })).toMatchObject({ ok: true, value: { useImage: false, emojiIgnored: true } });
   });
 });

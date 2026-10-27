@@ -1,7 +1,7 @@
 // Needs a real Postgres with migrations applied: set TEST_DATABASE_URL to run.
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pino } from 'pino';
-import { Collection, type Client } from 'discord.js';
+import { Collection, GuildFeature, type Client } from 'discord.js';
 import { ConfigStore } from '../config/configStore.js';
 import type { Candidate, ReshuffleResult } from '../core/reshuffle.js';
 import { createDb, type Db } from '../db/prisma.js';
@@ -42,11 +42,13 @@ describe.skipIf(!url)('Crown', () => {
     await db.staffRole.create({ data: { roleId: STAFF_ROLE } });
   });
   afterAll(() => db.$disconnect());
+  afterEach(() => vi.unstubAllGlobals());
 
-  async function setup(members: number[], premiumTier = 2) {
+  async function setup(members: number[], premiumTier = 2, gradients = false) {
     const memberRoles = new Map(members.map((n) => [id(n), new Set<string>()]));
     let nextRole = 0;
-    type FakeRole = { id: string; name: string; position: number; colour: number; emoji?: string; members: Collection<string, unknown> };
+    type FakeRole = { id: string; name: string; position: number; colour: number; colour2?: number | null; emoji?: string | null; icon?: Buffer | null; members: Collection<string, unknown> };
+    type RoleOpts = { name?: string; colors?: { primaryColor: number; secondaryColor?: number | null }; unicodeEmoji?: string | null; icon?: Buffer | null };
     const roles = new Collection<string, FakeRole>();
     const addRole = (r: Omit<FakeRole, 'members'>) => {
       const role = {
@@ -54,10 +56,11 @@ describe.skipIf(!url)('Crown', () => {
         get members() {
           return new Collection([...memberRoles].filter(([, set]) => set.has(r.id)).map(([uid]) => [uid, {}]));
         },
-        edit(o: { name?: string; colors?: { primaryColor: number }; unicodeEmoji?: string }) {
+        edit(o: RoleOpts) {
           if (o.name) role.name = o.name;
-          if (o.colors) role.colour = o.colors.primaryColor;
-          if (o.unicodeEmoji) role.emoji = o.unicodeEmoji;
+          if (o.colors) [role.colour, role.colour2] = [o.colors.primaryColor, o.colors.secondaryColor ?? null];
+          if (o.unicodeEmoji !== undefined) role.emoji = o.unicodeEmoji;
+          if (o.icon !== undefined) role.icon = o.icon;
           return Promise.resolve(role);
         },
         setPosition: (p: number) => ((role.position = p), Promise.resolve(role)),
@@ -75,6 +78,7 @@ describe.skipIf(!url)('Crown', () => {
     const guild = {
       id: GUILD,
       premiumTier,
+      features: gradients ? [GuildFeature.EnhancedRoleColors] : [],
       members: { cache: { has: (uid: string) => memberRoles.has(uid) }, me: { roles: { highest: botRole } } },
       roles: {
         cache: roles,
@@ -83,8 +87,10 @@ describe.skipIf(!url)('Crown', () => {
           for (const { role, position } of list) roles.get(role)!.position = position;
           return Promise.resolve();
         },
-        create: (o: { name: string; colors: { primaryColor: number }; unicodeEmoji?: string }) =>
-          Promise.resolve(addRole({ id: `90000000000000100${nextRole++}`, name: o.name, position: 1, colour: o.colors.primaryColor, emoji: o.unicodeEmoji })),
+        create: (o: RoleOpts & { name: string; colors: { primaryColor: number } }) =>
+          Promise.resolve(
+            addRole({ id: `90000000000000100${nextRole++}`, name: o.name, position: 1, colour: o.colors.primaryColor, colour2: o.colors.secondaryColor ?? null, emoji: o.unicodeEmoji, icon: o.icon }),
+          ),
       },
     };
     const client = { guilds: { cache: new Map([[GUILD, guild]]) } } as unknown as Client;
@@ -97,11 +103,12 @@ describe.skipIf(!url)('Crown', () => {
       },
     } as unknown as RoleQueue;
     const modLines: string[] = [];
-    const modLog = { post: (t: string) => (modLines.push(t), Promise.resolve()) } as unknown as ModLog;
+    const modImages: { name: string; data: Buffer }[] = [];
+    const modLog = { post: (t: string, image?: { name: string; data: Buffer }) => (modLines.push(t), image && modImages.push(image), Promise.resolve()) } as unknown as ModLog;
     const config = new ConfigStore(db, GUILD);
     await config.load();
     const crown = new CrownService(client, GUILD, db, config, queue, modLog, clock, log);
-    return { crown, memberRoles, roles, modLines };
+    return { crown, memberRoles, roles, modLines, modImages };
   }
 
   const good = { name: 'Sunset Club', hex: '#FF8800', emoji: '🔥' };
@@ -176,7 +183,7 @@ describe.skipIf(!url)('Crown', () => {
     const r = await t.crown.submit(id(1), bad);
     expect(r.ok).toBe(false);
     expect(!r.ok && r.errors.length).toBe(2);
-    expect(await t.crown.formAccess(id(1))).toEqual({ ok: true, prefill: bad });
+    expect(await t.crown.formAccess(id(1))).toEqual({ ok: true, prefill: { ...bad, hex2: '', hasImage: false } });
     clockNow = new Date(NOW.getTime() + 16 * 60_000);
     expect(await t.crown.formAccess(id(1))).toEqual({ ok: true, prefill: null });
   });
@@ -204,6 +211,59 @@ describe.skipIf(!url)('Crown', () => {
     expect((await t.crown.submit(id(1), { ...good, name: 'Ru de' })).ok).toBe(false);
     expect((await t.crown.submit(id(1), good)).ok).toBe(true);
     expect((await t.crown.submit(id(1), { ...good, hex: '#00FF00' })).ok).toBe(true); // same name as its own role
+  });
+
+  it('a second colour makes a gradient only where the server has gradient roles', async () => {
+    const t = await setup([1], 2, true);
+    await t.crown.afterReshuffle(MONDAY, result([cand(1, 90)], [1]));
+    expect((await t.crown.submit(id(1), { ...good, hex2: '#9B8CFF' })).ok).toBe(true);
+    const roleId = (await db.customRole.findUniqueOrThrow({ where: { userId: id(1) } })).roleId!;
+    expect(t.roles.get(roleId)).toMatchObject({ colour: 0xff8800, colour2: 0x9b8cff });
+    // Dropping the second colour clears the gradient.
+    expect((await t.crown.submit(id(1), good)).ok).toBe(true);
+    expect(t.roles.get(roleId)).toMatchObject({ colour: 0xff8800, colour2: null });
+
+    const plain = await setup([1], 2, false);
+    await db.customRole.deleteMany();
+    const r = await plain.crown.submit(id(1), { ...good, hex2: '#9B8CFF' });
+    expect(r.ok && r.message).toMatch(/only your first colour/);
+    const plainId = (await db.customRole.findUniqueOrThrow({ where: { userId: id(1) } })).roleId!;
+    expect(plain.roles.get(plainId)).toMatchObject({ colour: 0xff8800, colour2: null });
+  });
+
+  it('an uploaded image becomes the icon, is shown in the mod-log, and stays until replaced by an emoji', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(png)));
+    vi.stubGlobal('fetch', fetchMock);
+    const t = await setup([1]);
+    await t.crown.afterReshuffle(MONDAY, result([cand(1, 90)], [1]));
+    const upload = { url: 'https://cdn.discordapp.com/attachments/1/2/icon.png', contentType: 'image/png', size: png.length };
+    expect((await t.crown.submit(id(1), good, upload)).ok).toBe(true);
+    const saved = await db.customRole.findUniqueOrThrow({ where: { userId: id(1) } });
+    expect(Buffer.from(saved.iconImage!)).toEqual(png);
+    expect(t.roles.get(saved.roleId!)).toMatchObject({ icon: png, emoji: null });
+    expect(t.modImages).toEqual([{ name: 'icon.png', data: png }]);
+    expect(t.modLines.at(-1)).toMatch(/crown-reset/);
+
+    // Editing without a new upload or emoji keeps the image.
+    expect((await t.crown.submit(id(1), { ...good, emoji: '' })).ok).toBe(true);
+    expect(t.roles.get(saved.roleId!)).toMatchObject({ icon: png });
+    expect((await t.crown.formAccess(id(1))).ok && (await t.crown.formAccess(id(1)))).toMatchObject({ prefill: { hasImage: true } });
+    // An emoji replaces it.
+    expect((await t.crown.submit(id(1), good)).ok).toBe(true);
+    expect(t.roles.get(saved.roleId!)).toMatchObject({ icon: null, emoji: '🔥' });
+    expect((await db.customRole.findUniqueOrThrow({ where: { userId: id(1) } })).iconImage).toBeNull();
+  });
+
+  it('refuses images from outside Discord or that are not really PNG/JPG', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('<html>not an image</html>'))));
+    const t = await setup([1]);
+    await t.crown.afterReshuffle(MONDAY, result([cand(1, 90)], [1]));
+    const r = await t.crown.submit(id(1), good, { url: 'https://cdn.discordapp.com/attachments/1/2/icon.png', contentType: 'image/png', size: 30 });
+    expect(!r.ok && r.errors[0]).toMatch(/PNG or JPG/);
+    const r2 = await t.crown.submit(id(1), good, { url: 'https://example.com/icon.png', contentType: 'image/png', size: 30 });
+    expect(!r2.ok && r2.errors[0]).toMatch(/uploaded to Discord/);
+    expect(await db.customRole.findUnique({ where: { userId: id(1) } })).toBeNull();
   });
 
   it('ignores the emoji below boost level 2', async () => {

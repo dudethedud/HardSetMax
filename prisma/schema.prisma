@@ -318,7 +318,10 @@ model CustomRole {
   userId     String   @id
   name       String
   hex        String
+  hex2       String? // second gradient colour
   emoji      String?
+  iconImage  Bytes? // uploaded role icon (PNG/JPG, at most 256 KB), kept so the role can be recreated
+  iconType   String?
   roleId     String?
   editsWeek  String? // week the edit count belongs to
   editsCount Int      @default(0)
