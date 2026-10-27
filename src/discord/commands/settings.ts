@@ -5,6 +5,7 @@ import { normalizeRoleName } from '../../core/crown.js';
 import { formatHexColour, parseHexColour } from '../../core/vipRules.js';
 import { bindRoleError } from '../../core/reuse.js';
 import { rolesInUse } from '../../services/reuse.js';
+import { setChannel, setRoleSetting, type ChannelSetting } from '../settingsActions.js';
 import { defineCommand } from './types.js';
 
 const WEIGHTED_CHANNEL_TYPES = [
@@ -16,13 +17,6 @@ const WEIGHTED_CHANNEL_TYPES = [
   ChannelType.GuildStageVoice,
 ] as const;
 
-const CHANNEL_FIELDS = {
-  announcements: 'announceChannelId',
-  'mod-log': 'modLogChannelId',
-  polls: 'pollsChannelId',
-  'main-chat': 'mainChatChannelId',
-  'vip-board': 'vipBoardChannelId',
-} as const;
 
 /** A required "action" choice; each choice is [value, what it does]. */
 const action = (...choices: [string, string][]) => (o: SlashCommandStringOption) =>
@@ -205,17 +199,9 @@ export const settingsCommand = defineCommand({
     }
 
     if (sub === 'channel') {
-      const purpose = interaction.options.getString('purpose', true) as keyof typeof CHANNEL_FIELDS;
+      const purpose = interaction.options.getString('purpose', true) as ChannelSetting;
       const channel = interaction.options.getChannel('channel', true, [ChannelType.GuildText, ChannelType.GuildAnnouncement]);
-      const field = CHANNEL_FIELDS[purpose];
-      await ctx.db.$transaction([
-        ctx.db.guildConfig.update({ where: { guildId }, data: { [field]: channel.id } }),
-        ctx.db.auditLog.create({ data: { action: 'config.channel', actorId, targetId: channel.id, data: { purpose, old: config[field] } } }),
-      ]);
-      await ctx.config.load();
-      const note = purpose === 'polls' || purpose === 'vip-board' ? '. Run `/bot setup` to set its permissions.' : '';
-      if (purpose === 'vip-board') await ctx.panels.refresh('vip-board');
-      await interaction.editReply(`✅ ${purpose} channel: ${channelMention(channel.id)}${note}`);
+      await interaction.editReply(await setChannel(ctx, guildId, purpose, channel.id, actorId));
       return;
     }
 
@@ -304,33 +290,7 @@ export const settingsCommand = defineCommand({
         );
         return;
       }
-      const field = act === 'polls' ? 'pollsRoleId' : 'levelRolesTopId';
-      {
-        // Same checks as binding: e.g. the bot's own role can't be the top level role (VIP goes above it).
-        const guild = interaction.guild;
-        const used = await rolesInUse(ctx.db, config);
-        const current = config[field];
-        if (current) used.delete(current);
-        const botTop = (guild.members.me ?? (await guild.members.fetchMe())).roles.highest;
-        const live = guild.roles.cache.get(role.id);
-        const error = live
-          ? bindRoleError({ id: live.id, managed: live.managed, position: live.position }, { everyoneId: guild.id, botTopPosition: botTop.position, usedElsewhere: used.has(live.id) })
-          : 'That role no longer exists.';
-        if (error) {
-          await interaction.editReply(`❌ ${error}${act === 'level-top' ? " Pick bleed's highest level role, e.g. your top Level role." : ''}`);
-          return;
-        }
-      }
-      await ctx.db.$transaction([
-        ctx.db.guildConfig.update({ where: { guildId }, data: { [field]: role.id } }),
-        ctx.db.auditLog.create({ data: { action: act === 'polls' ? 'config.polls-role' : 'config.level-roles-top', actorId, targetId: role.id } }),
-      ]);
-      await ctx.config.load();
-      await interaction.editReply(
-        act === 'polls'
-          ? `✅ Polls role: ${roleMention(role.id)}. Run \`/bot setup\` so only the bot can ping it.`
-          : `✅ Highest level role: ${roleMention(role.id)}. Run \`/bot setup\` to move the VIP role above it.`,
-      );
+      await interaction.editReply(await setRoleSetting(ctx, interaction.guild, act === 'polls' ? 'polls' : 'level-top', role.id, actorId));
       return;
     }
 

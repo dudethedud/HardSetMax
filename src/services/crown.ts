@@ -345,9 +345,10 @@ export class CrownService {
           report.push(`♻️ Using the existing ${role.toString()} role for the Crown`);
         }
       }
-      if (role) await role.edit({ colors: { primaryColor: colour }, hoist: true, mentionable: false, reason: '/bot setup' });
+      const icon = guild.premiumTier >= GuildPremiumTier.Tier2 ? { unicodeEmoji: '👑' } : {};
+      if (role) await role.edit({ colors: { primaryColor: colour }, hoist: true, mentionable: false, ...icon, reason: '/bot setup' });
       else {
-        role = await guild.roles.create({ name: '👑 Crown', colors: { primaryColor: colour }, hoist: true, mentionable: false, permissions: [], reason: '/bot setup' });
+        role = await guild.roles.create({ name: '👑 Crown', colors: { primaryColor: colour }, hoist: true, mentionable: false, permissions: [], ...icon, reason: '/bot setup' });
         await this.db.guildConfig.update({ where: { guildId: guild.id }, data: { crownRoleId: role.id } });
         await this.config.load();
       }

@@ -76,6 +76,10 @@ Five commands, all guild-only and replying privately unless they post on purpose
 
 **`/bot setup` reuses what's already there:** if a role or channel with the expected name exists (VIP, Polls, 👑 Crown, the titles, colours and badges; #vip-board, #polls, the VIP Lounge), it uses that instead of making a duplicate. Roles are only taken over if they have no permissions (except VIP). To use a role with a different name, bind it with `/settings role`.
 
+**If setup can't work something out** (announcements, main chat, mod-log, the role VIP goes above, or a category for #polls or #vip-board), it shows menus under its report so you can pick it there, plus a **Run setup again** button.
+
+**The mod-log** posts each entry as an embed, coloured by kind: green done, red removed, orange needs attention, pink Crown, gold VIP.
+
 **Fitting into your server:** `/bot setup` fills in what isn't set yet and reports every guess (🔎 lines), so you can change any of them:
 - bleed's top level role (the highest role named like "Level 50"), staff roles (roles with moderator permissions), and the main chat, announcements and mod-log channels (by name)
 - the first time only: bot-command, spam and counting channels stop counting toward VIP
