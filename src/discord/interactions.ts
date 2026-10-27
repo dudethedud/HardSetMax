@@ -5,6 +5,8 @@ import {
   PermissionFlagsBits,
   type AutocompleteInteraction,
   type ButtonInteraction,
+  type ChannelSelectMenuInteraction,
+  type RoleSelectMenuInteraction,
   type Interaction,
   type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
@@ -13,6 +15,7 @@ import {
 import { ACCESS_DENIED, checkAccess, type AccessLevel, type AccessResult } from '../core/access.js';
 import { BUTTONS, MODALS, SELECTS, USER_SELECTS } from './buttons.js';
 import { COMMANDS_BY_NAME } from './commands/index.js';
+import { CHANNEL_PICK_HANDLERS, ROLE_PICK_HANDLERS } from './setupPicks.js';
 import type { AppContext } from './commands/types.js';
 
 /** Owner, Administrator, or a staff role, checked against the live member. */
@@ -33,6 +36,8 @@ export async function handleInteraction(interaction: Interaction, ctx: AppContex
   if (interaction.isButton()) return handleButton(interaction, ctx);
   if (interaction.isStringSelectMenu()) return handleSelect(interaction, ctx);
   if (interaction.isUserSelectMenu()) return handleUserSelect(interaction, ctx);
+  if (interaction.isChannelSelectMenu()) return handleAdminSelect(interaction, CHANNEL_PICK_HANDLERS.get(interaction.customId), ctx);
+  if (interaction.isRoleSelectMenu()) return handleAdminSelect(interaction, ROLE_PICK_HANDLERS.get(interaction.customId), ctx);
   if (interaction.isModalSubmit()) return handleModal(interaction, ctx);
   if (interaction.isAutocomplete()) return handleAutocomplete(interaction, ctx);
   if (!interaction.isChatInputCommand()) return;
@@ -137,6 +142,30 @@ async function handleUserSelect(interaction: UserSelectMenuInteraction, ctx: App
     ctx.log.error({ err, select: interaction.customId }, 'menu failed');
     const reply = { content: '❌ Something went wrong. Please try again.', flags: MessageFlags.Ephemeral } as const;
     await (interaction.replied || interaction.deferred ? interaction.followUp(reply) : interaction.reply(reply)).catch(() => undefined);
+  }
+}
+
+/** The /bot setup menus: admin only, checked like commands. */
+async function handleAdminSelect<I extends ChannelSelectMenuInteraction | RoleSelectMenuInteraction>(
+  interaction: I,
+  handler: { run(i: never, ctx: AppContext): Promise<void> } | undefined,
+  ctx: AppContext,
+): Promise<void> {
+  if (!handler || !interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
+    await interaction.reply({ content: 'This menu no longer works.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const check = await accessOf(interaction, 'admin', ctx);
+  if (!check.ok) {
+    await interaction.reply({ content: ACCESS_DENIED[check.reason], flags: MessageFlags.Ephemeral });
+    return;
+  }
+  try {
+    await handler.run(interaction as never, ctx);
+  } catch (err) {
+    ctx.log.error({ err, select: interaction.customId }, 'setup menu failed');
+    const msg = '❌ Something went wrong. Details are in the bot logs.';
+    await (interaction.replied || interaction.deferred ? interaction.editReply(msg) : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral })).catch(() => undefined);
   }
 }
 

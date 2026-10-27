@@ -360,7 +360,7 @@ All through buttons on the lounge panel. Member-written text the bot posts (shou
 
 **The Crown** (in addition to the custom role, §6)
 - **👑 nickname:** "👑 Name" while they hold the Crown; their old nickname comes back when it ends (unless they renamed themselves since). Skipped for the server owner and anyone above the bot.
-- **🎖️ Titles:** the Crown appoints **Champion, Advisor and Jester** with member pickers. Each is a role with no permissions (cosmetic). Not for bots, staff or themselves; one title per person. All titles end with the Crown week, or when the Crown is lost.
+- **🎖️ Titles:** the Crown appoints **Champion, Advisor and Jester** with member pickers. Each is a role with no permissions, but it stands out: its own group in the member list, its own name colour (orange, teal, purple) and a role icon (🛡️ 📜 🃏) at Boost Level 2. The 👑 Crown role gets a 👑 icon too. Not for bots, staff or themselves; one title per person. All titles end with the Crown week, or when the Crown is lost.
 - **📜 Decree:** one announcement per Crown week (500 characters) in the announcements channel, with no pings.
 - **👑 Hall:** their temporary voice channel is called "👑 Name's Hall" and gives them Priority Speaker and Move Members in it.
 

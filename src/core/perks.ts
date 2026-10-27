@@ -2,10 +2,15 @@
 import { normalizeRoleName } from './crown.js';
 
 /** The Crown holder's titles, handed out for their week. Cosmetic roles only. */
+/**
+ * The Crown holder's titles, handed out for their week. They give no permissions,
+ * but they stand out: their own group in the member list, a name colour, and a
+ * role icon on servers at Boost Level 2.
+ */
 export const TITLE_SLOTS = [
-  { slot: 'champion', name: '🛡️ Champion' },
-  { slot: 'advisor', name: '📜 Advisor' },
-  { slot: 'jester', name: '🃏 Jester' },
+  { slot: 'champion', name: '🛡️ Champion', colour: 0xff8c1a, icon: '🛡️' },
+  { slot: 'advisor', name: '📜 Advisor', colour: 0x3fc1c9, icon: '📜' },
+  { slot: 'jester', name: '🃏 Jester', colour: 0x9b5de5, icon: '🃏' },
 ] as const;
 export type TitleSlot = (typeof TITLE_SLOTS)[number]['slot'];
 

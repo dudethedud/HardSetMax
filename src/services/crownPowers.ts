@@ -5,7 +5,7 @@
 // - wear a 👑 nickname prefix, restored when the Crown ends
 // Titles are roles with no permissions. The database is the source of truth and
 // reconcile makes the roles match it.
-import { PermissionFlagsBits, type Client, type Guild, type GuildMember, type Role } from 'discord.js';
+import { GuildPremiumTier, PermissionFlagsBits, type Client, type Guild, type GuildMember, type Role } from 'discord.js';
 import type { ConfigStore } from '../config/configStore.js';
 import { cleanPublicText, CROWN_NICK_PREFIX, crownNickname, isTitleSlot, TITLE_SLOTS, titleTargetError } from '../core/perks.js';
 import type { Db } from '../db/prisma.js';
@@ -241,9 +241,30 @@ export class CrownPowers {
           role = await findExistingRole(guild, this.db, this.config.current.guild, [title.name, plain], { unusedOnly: true });
           if (role) await this.db.crownTitle.update({ where: { slot: title.slot }, data: { roleId: role.id, name: role.name } });
         }
-        if (role) await role.edit({ name: role.id === title.roleId ? title.name : role.name, permissions: [], mentionable: false, reason: '/bot setup' });
-        else {
-          role = await guild.roles.create({ name: title.name, permissions: [], mentionable: false, hoist: false, reason: 'Crown title' });
+        // Stand out: own member-list group, a colour and an icon. A role an admin bound
+        // keeps its own colour and icon if it already has them.
+        const style = TITLE_SLOTS.find((t) => t.slot === title.slot)!;
+        const icons = guild.premiumTier >= GuildPremiumTier.Tier2;
+        if (role) {
+          await role.edit({
+            name: role.id === title.roleId ? title.name : role.name,
+            permissions: [],
+            mentionable: false,
+            hoist: true,
+            ...(role.colors.primaryColor === 0 ? { colors: { primaryColor: style.colour } } : {}),
+            ...(icons && !role.unicodeEmoji && !role.icon ? { unicodeEmoji: style.icon } : {}),
+            reason: '/bot setup',
+          });
+        } else {
+          role = await guild.roles.create({
+            name: title.name,
+            permissions: [],
+            mentionable: false,
+            hoist: true,
+            colors: { primaryColor: style.colour },
+            ...(icons ? { unicodeEmoji: style.icon } : {}),
+            reason: 'Crown title',
+          });
           await this.db.crownTitle.update({ where: { slot: title.slot }, data: { roleId: role.id } });
         }
       } catch (err) {

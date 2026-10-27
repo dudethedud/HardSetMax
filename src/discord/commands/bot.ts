@@ -1,8 +1,8 @@
 import { hostname } from 'node:os';
-import { ApplicationCommandOptionType, EmbedBuilder, MessageFlags, IntentsBitField, PermissionFlagsBits, time, TimestampStyles, userMention, type ChatInputCommandInteraction } from 'discord.js';
+import { ApplicationCommandOptionType, EmbedBuilder, IntentsBitField, PermissionFlagsBits, time, TimestampStyles, userMention, type ChatInputCommandInteraction } from 'discord.js';
 import { MANUAL_RESHUFFLE_JOB, RESHUFFLE_JOB } from '../../services/vipService.js';
 import { serverDayAt } from '../../core/serverDay.js';
-import { chunkLines } from '../../core/chunk.js';
+import { sendSetupResult } from '../setupPicks.js';
 import { VERSION } from '../../version.js';
 import { REQUIRED_INTENT_NAMES } from '../client.js';
 import type { AccessLevel } from '../../core/access.js';
@@ -75,11 +75,8 @@ export const botCommand = defineCommand({
     const sub = interaction.options.getSubcommand();
     if (sub === 'health') return health(interaction, ctx);
     if (sub === 'setup') {
-      const report = await ctx.runSetup(interaction.guild);
-      // Long reports are split over several messages instead of being cut off.
-      const [first, ...rest] = chunkLines(report, 2000);
-      await interaction.editReply(first ?? 'Nothing to report.');
-      for (const part of rest) await interaction.followUp({ content: part, flags: MessageFlags.Ephemeral });
+      // The report (split to fit), then menus for anything setup couldn't work out.
+      await sendSetupResult(interaction, ctx, interaction.guild, await ctx.runSetup(interaction.guild));
       return;
     }
     if (sub === 'help') return help(interaction);

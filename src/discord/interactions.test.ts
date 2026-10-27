@@ -25,6 +25,8 @@ function command(name: string, sub: string | null, who: Who) {
     isButton: () => false,
     isStringSelectMenu: () => false,
     isUserSelectMenu: () => false,
+    isChannelSelectMenu: () => false,
+    isRoleSelectMenu: () => false,
     isModalSubmit: () => false,
     isAutocomplete: () => false,
     isChatInputCommand: () => true,
@@ -98,5 +100,25 @@ describe('autocomplete', () => {
     expect(await suggest('admin')).toEqual([{ name: 'groq (m)', value: 'groq' }]);
     expect(await suggest('staff')).toEqual([]);
     expect(await suggest('member')).toEqual([]);
+  });
+});
+
+describe('setup menus', () => {
+  it('only admins (or the owner) can use them', async () => {
+    for (const [who, allowed] of [['staff', false], ['member', false], ['admin', true]] as const) {
+      const { interaction, replies } = command('bot', null, who);
+      let ran = false;
+      const pick = {
+        ...interaction,
+        customId: 'setup:pick:announcements',
+        values: [],
+        isChatInputCommand: () => false,
+        isChannelSelectMenu: () => true,
+        deferReply: () => ((ran = true), Promise.resolve()),
+      };
+      await handleInteraction(pick as never, ctx);
+      expect(ran).toBe(allowed);
+      if (!allowed) expect(replies).toEqual(['Admins only.']);
+    }
   });
 });
