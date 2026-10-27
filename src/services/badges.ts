@@ -78,7 +78,7 @@ export class BadgeService {
             await role.edit({ name: badge.name, hoist: false, colors: { primaryColor: 0 }, reason: 'VIP badge' });
           }
         } else {
-          role = await findExistingRole(guild, this.db, this.config.current.guild, [badge.name]);
+          role = await findExistingRole(guild, this.db, this.config.current.guild, [badge.name], { unusedOnly: true });
           if (role) await this.db.badge.update({ where: { id: badge.id }, data: { roleId: role.id } });
         }
         if (!role) {

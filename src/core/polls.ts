@@ -51,20 +51,24 @@ export function pollThreadName(question: string): string {
 export interface ColourDefault {
   name: string;
   hex: string;
+  /** Second colour of a gradient. */
+  hex2?: string;
 }
 
 /** Default VIP colours (owner-approved), added once by /bot setup. */
+// VIP-only gradients (owner request): names that don't clash with the server's own
+// colour roles. Servers without Discord's gradient roles feature show the first colour.
 export const DEFAULT_COLOURS: readonly ColourDefault[] = [
-  { name: 'Rose', hex: '#FF6B9D' },
-  { name: 'Crimson', hex: '#E63946' },
-  { name: 'Tangerine', hex: '#FF8C42' },
-  { name: 'Lemon', hex: '#FFE66D' },
-  { name: 'Mint', hex: '#5EEAD4' },
-  { name: 'Emerald', hex: '#2ECC71' },
-  { name: 'Sky', hex: '#4CC9F0' },
-  { name: 'Royal', hex: '#4361EE' },
-  { name: 'Lavender', hex: '#B794F4' },
-  { name: 'Snow', hex: '#F8F9FA' },
+  { name: 'Starlight Bloom', hex: '#FF9AE2', hex2: '#9B8CFF' },
+  { name: 'Sunset Candy', hex: '#FF7A59', hex2: '#FFC75F' },
+  { name: 'Ocean Glow', hex: '#2EC4FF', hex2: '#3DFFC5' },
+  { name: 'Sakura Drift', hex: '#FFB7D5', hex2: '#FF6FA8' },
+  { name: 'Golden Hour', hex: '#FFD86B', hex2: '#FF9F43' },
+  { name: 'Frostbite', hex: '#E0F7FF', hex2: '#7FB8FF' },
+  { name: 'Lava Lamp', hex: '#FF4D6D', hex2: '#B14CFF' },
+  { name: 'Galaxy Pop', hex: '#7B5CFF', hex2: '#FF5CDB' },
+  { name: 'Mint Sorbet', hex: '#9CFFD9', hex2: '#5ED1FF' },
+  { name: 'Cotton Candy', hex: '#A7D8FF', hex2: '#FFB3E6' },
 ];
 
 /** A select menu holds 25 options; one is "Remove colour". */

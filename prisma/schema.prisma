@@ -234,6 +234,7 @@ model ColourOption {
   id       Int     @id @default(autoincrement())
   name     String  @unique
   hex      String
+  hex2     String? // second colour: a gradient, on servers with gradient roles
   position Int     @default(0)
   roleId   String?
 

@@ -12,6 +12,7 @@ import { TITLE_SLOTS } from '../core/perks.js';
 import type { Db } from '../db/prisma.js';
 import type { GuildConfig } from '../generated/prisma/client.js';
 import { placeNextTo } from './roleQueue.js';
+import { rolesInUse } from './reuse.js';
 
 /** Role IDs above VIP, bottom to top, and below VIP, top to bottom. Only roles that exist. */
 export async function roleBlock(guild: Guild, db: Db, cfg: GuildConfig): Promise<{ above: string[]; below: string[] }> {
@@ -50,4 +51,21 @@ export async function arrangeRoles(guild: Guild, db: Db, cfg: GuildConfig): Prom
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
   }
+}
+
+/**
+ * Coloured roles members can have that sit above VIP (and aren't the bot's or
+ * staff's): Discord shows a name in its highest coloured role's colour, so these
+ * would hide VIP's colour and the VIP colour picks. Highest first.
+ */
+export async function rolesCoveringVip(guild: Guild, db: Db, cfg: GuildConfig): Promise<string[]> {
+  const vip = cfg.vipRoleId ? guild.roles.cache.get(cfg.vipRoleId) : undefined;
+  if (!vip) return [];
+  const botTop = (guild.members.me ?? (await guild.members.fetchMe())).roles.highest;
+  const mine = await rolesInUse(db, cfg);
+  const staff = new Set((await db.staffRole.findMany()).map((s) => s.roleId));
+  return [...guild.roles.cache.values()]
+    .filter((r) => r.position > vip.position && r.position < botTop.position && !r.managed && !mine.has(r.id) && !staff.has(r.id) && r.colors.primaryColor !== 0)
+    .sort((a, b) => b.position - a.position)
+    .map((r) => r.name);
 }

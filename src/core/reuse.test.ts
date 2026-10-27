@@ -15,6 +15,12 @@ describe('pickByName', () => {
     // Works with a one-time iterator (like Collection.values()) and later names.
     expect(pickByName(roles.values(), ['Nope', 'Crown'])?.id).toBe('4');
   });
+  it('ignores decorations around the name', () => {
+    expect(pickByName([{ id: 'p', name: 'Polls ⸝⸝' }], ['Polls'])?.id).toBe('p');
+    expect(pickByName([{ id: 'l', name: '・Level 100 ⸝⸝' }], ['level 100'])?.id).toBe('l');
+    expect(pickByName([{ id: 'x', name: 'Pollster' }], ['Polls'])).toBeUndefined();
+  });
+
   it('skips roles it was told to skip', () => {
     expect(pickByName(roles, ['vip'], (r) => r.id === '2')?.id).toBe('3');
   });

@@ -63,7 +63,7 @@ Five commands, all guild-only and replying privately unless they post on purpose
 | `/settings channel purpose channel` | admin | Announcements, mod-log, polls, main-chat (AI and shoutouts) or vip-board channel |
 | `/settings channel-weight channel weight` | admin | How much a channel's messages count (0 ignores it) |
 | `/settings role action [role]` | admin | `add-staff` / `remove-staff` / `list-staff`, `level-top` (bleed's highest level role; VIP goes above it), `polls` (role pinged for new polls), and `vip` / `crown` / `title-champion` / `title-advisor` / `title-jester` to use an existing role for that |
-| `/settings colour action ...` | admin | VIP colour options: `list`, `add name hex`, `edit name [new_name] [hex]`, `remove name` |
+| `/settings colour action ...` | admin | VIP colour options: `list`, `add name hex [hex2]` (hex2 makes a gradient), `edit name [new_name] [hex] [hex2]`, `remove name`, `reset` (switch to the default VIP gradients) |
 | `/settings badge action ...` | admin | History badges: `list`, `set weeks name`, `remove weeks` |
 | `/settings blocked-word action [word]` | admin | Words custom roles, room names, shoutouts and decrees can't contain |
 | `/bot help` | staff | Every command *you* can use, with a line on what each does |

@@ -105,10 +105,17 @@ export const settingsCommand = defineCommand({
           .setName('colour')
           .setDescription('VIP colour options')
           .addStringOption(
-            action(['list', 'show the colours'], ['add', 'needs name and hex'], ['edit', 'needs name, then new_name and/or hex'], ['remove', 'needs name (deletes its role)']),
+            action(
+              ['list', 'show the colours'],
+              ['add', 'needs name and hex (hex2 makes it a gradient)'],
+              ['edit', 'needs name, then new_name, hex and/or hex2'],
+              ['remove', 'needs name (deletes its role)'],
+              ['reset', 'replace all colours with the default VIP gradients'],
+            ),
           )
           .addStringOption((o) => o.setName('name').setDescription('The colour’s name in the picker').setMaxLength(32).setAutocomplete(true))
           .addStringOption((o) => o.setName('hex').setDescription('Colour code, e.g. #FF8800').setMaxLength(7))
+          .addStringOption((o) => o.setName('hex2').setDescription('Second colour for a gradient, e.g. #9B8CFF ("none" to make it solid)').setMaxLength(7))
           .addStringOption((o) => o.setName('new_name').setDescription('New name (edit only)').setMaxLength(32)),
       )
       .addSubcommand((s) =>
@@ -332,9 +339,15 @@ export const settingsCommand = defineCommand({
         const options = await ctx.colours.options();
         await interaction.editReply(
           options.length
-            ? options.map((o) => `• **${o.name}** ${o.hex}${o.roleId ? ` <@&${o.roleId}>` : ' (no role yet: run /bot setup)'}`).join('\n')
+            ? options.map((o) => `• **${o.name}** ${o.hex2 ? `${o.hex} → ${o.hex2}` : o.hex}${o.roleId ? ` <@&${o.roleId}>` : ' (no role yet: run /bot setup)'}`).join('\n')
             : 'No colours. Add some with `/settings colour action:add`.',
         );
+        return;
+      }
+      if (act === 'reset') {
+        const reply = await ctx.colours.resetToDefaults(actorId);
+        const report = [...(await ctx.colours.syncRoles()), ...(await ctx.panels.ensureAll())];
+        await interaction.editReply([reply, ...report.filter((l) => !l.startsWith('✅'))].join('\n'));
         return;
       }
       const name = interaction.options.getString('name')?.trim();
@@ -342,6 +355,14 @@ export const settingsCommand = defineCommand({
         await needs('name');
         return;
       }
+      const hex2Raw = interaction.options.getString('hex2')?.trim();
+      const clearHex2 = hex2Raw?.toLowerCase() === 'none';
+      const hex2Parsed = hex2Raw && !clearHex2 ? parseHexColour(hex2Raw) : undefined;
+      if (hex2Parsed === null) {
+        await interaction.editReply(`❌ "${hex2Raw}" is not a hex colour like #9B8CFF.`);
+        return;
+      }
+      const hex2Text = hex2Parsed === undefined ? undefined : formatHexColour(hex2Parsed);
       const hexRaw = interaction.options.getString('hex');
       const hex = hexRaw === null ? undefined : parseHexColour(hexRaw);
       if (hex === null) {
@@ -355,10 +376,14 @@ export const settingsCommand = defineCommand({
           await needs('hex');
           return;
         }
-        reply = await ctx.colours.addOption(name, hexText, actorId);
+        reply = await ctx.colours.addOption(name, hexText, actorId, hex2Text);
       } else if (act === 'edit') {
         const newName = interaction.options.getString('new_name')?.trim();
-        reply = await ctx.colours.editOption(name, { ...(newName ? { name: newName } : {}), ...(hexText ? { hex: hexText } : {}) }, actorId);
+        reply = await ctx.colours.editOption(
+          name,
+          { ...(newName ? { name: newName } : {}), ...(hexText ? { hex: hexText } : {}), ...(hex2Text ? { hex2: hex2Text } : clearHex2 ? { hex2: null } : {}) },
+          actorId,
+        );
       } else reply = await ctx.colours.removeOption(name, actorId);
       const report = reply.startsWith('✅') ? [...(await ctx.colours.syncRoles()), ...(await ctx.panels.ensureAll())] : [];
       await interaction.editReply([reply, ...report.filter((l) => !l.startsWith('✅'))].join('\n'));

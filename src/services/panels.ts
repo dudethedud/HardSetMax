@@ -82,7 +82,7 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
                 .setCustomId(COLOUR_PICKER_ID)
                 .setPlaceholder('🎨 Pick your VIP colour')
                 .addOptions(
-                  ...options.map((o) => new StringSelectMenuOptionBuilder().setLabel(o.name).setValue(String(o.id)).setDescription(o.hex)),
+                  ...options.map((o) => new StringSelectMenuOptionBuilder().setLabel(o.name).setValue(String(o.id)).setDescription(o.hex2 ? `${o.hex} → ${o.hex2} gradient` : o.hex)),
                   new StringSelectMenuOptionBuilder().setLabel('Remove colour').setValue(COLOUR_NONE).setEmoji('✖️'),
                 ),
             ),

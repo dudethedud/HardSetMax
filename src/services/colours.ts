@@ -1,7 +1,7 @@
 // VIP colours (SPEC §5): one role per colour option, placed above the VIP role. A
 // VIP picks one from the lounge dropdown. The pick is saved, removed with VIP and
 // restored when VIP comes back.
-import type { Client, Guild, Role } from 'discord.js';
+import { GuildFeature, type Client, type Guild, type Role } from 'discord.js';
 import type { ConfigStore } from '../config/configStore.js';
 import { DEFAULT_COLOURS, MAX_COLOURS } from '../core/polls.js';
 import { parseHexColour } from '../core/vipRules.js';
@@ -59,24 +59,32 @@ export class ColourService {
     if (drift) report.push(`🔧 Colour roles fixed for ${drift} member(s)`);
   }
 
+  /** The role colours for an option: a gradient where the server supports gradient roles. */
+  #colors(guild: Guild, option: Pick<ColourOption, 'hex' | 'hex2'>): { primaryColor: number; secondaryColor?: number } {
+    const primaryColor = parseHexColour(option.hex) ?? 0;
+    const second = option.hex2 ? parseHexColour(option.hex2) : null;
+    return second !== null && guild.features.includes(GuildFeature.EnhancedRoleColors) ? { primaryColor, secondaryColor: second } : { primaryColor };
+  }
+
   async #ensureRole(guild: Guild, option: ColourOption): Promise<Role> {
-    const colour = parseHexColour(option.hex) ?? 0;
+    const colors = this.#colors(guild, option);
     const existing = option.roleId ? guild.roles.cache.get(option.roleId) : undefined;
     if (existing) {
-      if (existing.name !== option.name || existing.colors.primaryColor !== colour) {
-        await existing.edit({ name: option.name, colors: { primaryColor: colour }, reason: 'VIP colour' });
+      if (existing.name !== option.name || existing.colors.primaryColor !== colors.primaryColor || (existing.colors.secondaryColor ?? undefined) !== colors.secondaryColor) {
+        await existing.edit({ name: option.name, colors, reason: 'VIP colour' });
       }
       return existing;
     }
-    const reuse = await findExistingRole(guild, this.db, this.config.current.guild, [option.name]);
+    // Only an unused, permission-free role with the same name is taken over: never one people already wear.
+    const reuse = await findExistingRole(guild, this.db, this.config.current.guild, [option.name], { unusedOnly: true });
     if (reuse) {
-      await reuse.edit({ colors: { primaryColor: colour }, reason: 'VIP colour' });
+      await reuse.edit({ colors, reason: 'VIP colour' });
       await this.db.colourOption.update({ where: { id: option.id }, data: { roleId: reuse.id } });
       return reuse;
     }
     const role = await guild.roles.create({
       name: option.name,
-      colors: { primaryColor: colour },
+      colors,
       hoist: false,
       mentionable: false,
       permissions: [],
@@ -142,16 +150,16 @@ export class ColourService {
     return fixed;
   }
 
-  async addOption(name: string, hex: string, actorId: string): Promise<string> {
+  async addOption(name: string, hex: string, actorId: string, hex2?: string): Promise<string> {
     if ((await this.db.colourOption.count()) >= MAX_COLOURS) return `❌ There can be at most ${MAX_COLOURS} colours.`;
     if (await this.db.colourOption.findUnique({ where: { name } })) return `❌ A colour called ${name} already exists.`;
     const last = await this.db.colourOption.findFirst({ orderBy: { position: 'desc' } });
-    await this.db.colourOption.create({ data: { name, hex, position: (last?.position ?? -1) + 1 } });
-    await this.db.auditLog.create({ data: { action: 'colour.add', actorId, data: { name, hex } } });
-    return `✅ Added **${name}** (${hex}).`;
+    await this.db.colourOption.create({ data: { name, hex, hex2: hex2 ?? null, position: (last?.position ?? -1) + 1 } });
+    await this.db.auditLog.create({ data: { action: 'colour.add', actorId, data: { name, hex, hex2: hex2 ?? null } } });
+    return `✅ Added **${name}** (${hex2 ? `${hex} → ${hex2}` : hex}).`;
   }
 
-  async editOption(name: string, changes: { name?: string; hex?: string }, actorId: string): Promise<string> {
+  async editOption(name: string, changes: { name?: string; hex?: string; hex2?: string | null }, actorId: string): Promise<string> {
     const option = await this.db.colourOption.findUnique({ where: { name } });
     if (!option) return `❌ No colour called ${name}.`;
     if (changes.name && changes.name !== name && (await this.db.colourOption.findUnique({ where: { name: changes.name } }))) {
@@ -177,6 +185,15 @@ export class ColourService {
   }
 
   /** After add/edit: create or repair roles without a full /bot setup. */
+  /** Replaces every colour with the default VIP gradients. Old colour roles are deleted; VIPs pick again. */
+  async resetToDefaults(actorId: string): Promise<string> {
+    for (const option of await this.options()) await this.removeOption(option.name, actorId);
+    await this.db.colourOption.createMany({ data: DEFAULT_COLOURS.map((c, i) => ({ name: c.name, hex: c.hex, hex2: c.hex2 ?? null, position: i })) });
+    await this.db.auditLog.create({ data: { action: 'colour.reset', actorId } });
+    await this.modLog.post(`🎨 <@${actorId}> replaced the VIP colours with the default gradients`);
+    return `✅ VIP colours are now: ${DEFAULT_COLOURS.map((c) => c.name).join(', ')}. VIPs need to pick a colour again.`;
+  }
+
   async syncRoles(): Promise<string[]> {
     const report: string[] = [];
     const guild = this.client.guilds.cache.get(this.guildId);
