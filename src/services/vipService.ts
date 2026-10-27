@@ -18,6 +18,7 @@ import {
   type ReshuffleResult,
   warmupDaysLeft,
 } from '../core/reshuffle.js';
+import type { Perk } from '../core/perks.js';
 import { serverDayAt, serverDaysBetween } from '../core/serverDay.js';
 import { eligibilityOf, roleDrift } from '../core/vipRules.js';
 import { loadStandings, namesFor } from '../db/activityRepo.js';
@@ -30,6 +31,8 @@ import type { Clock } from './clock.js';
 import { claimJob, completeJob, failJob } from './jobs.js';
 import type { ModLog } from './modLog.js';
 import type { RoleQueue } from './roleQueue.js';
+
+const NO_PERKS: ReadonlySet<Perk> = new Set();
 
 type Tx = Prisma.TransactionClient;
 
@@ -93,6 +96,14 @@ export class VipService {
 
   get vips(): ReadonlyMap<string, VipState> {
     return this.#vips;
+  }
+
+  /** Perks a non-VIP has from a Crown title (set by crownPowers.ts). */
+  guestPerks: (userId: string) => ReadonlySet<Perk> = () => NO_PERKS;
+
+  /** VIPs have every perk; title holders have their title's. */
+  hasPerk(userId: string, perk: Perk): boolean {
+    return this.#vips.has(userId) || this.guestPerks(userId).has(perk);
   }
 
   #guild(): Guild {

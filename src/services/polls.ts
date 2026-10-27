@@ -16,6 +16,7 @@ import {
   type TextChannel,
 } from 'discord.js';
 import type { ConfigStore } from '../config/configStore.js';
+import { isTitleSlot, titlePerks } from '../core/perks.js';
 import { decidePoll, POLL_REJECT_TEXT, pollThreadName } from '../core/polls.js';
 import { serverDayAt, serverDayByKey } from '../core/serverDay.js';
 import type { Db } from '../db/prisma.js';
@@ -52,6 +53,12 @@ export class PollService {
     return channel?.isTextBased() && 'permissionOverwrites' in channel ? (channel as TextChannel) : null;
   }
 
+  /** Title roles that can post VIP polls (Advisor, Champion). They follow the VIP role's lock. */
+  async #titlePosterRoles(): Promise<string[]> {
+    const titles = await this.db.crownTitle.findMany({ where: { roleId: { not: null } } });
+    return titles.filter((t) => isTitleSlot(t.slot) && titlePerks(t.slot).has('poll')).map((t) => t.roleId!);
+  }
+
   async #isStaffOrAdmin(message: Message<true>): Promise<boolean> {
     const member = message.member ?? (await message.guild.members.fetch(message.author.id).catch(() => null));
     if (!member) return false;
@@ -83,7 +90,7 @@ export class PollService {
     const day = serverDayAt(message.createdAt, this.config.current.boundary).key;
     const until = serverDayByKey(day, this.config.current.boundary).end;
     const cap = this.config.current.guild.pollsDailyCap;
-    const isVip = this.vip.vips.has(userId);
+    const isVip = this.vip.hasPerk(userId, 'poll');
 
     const decision = await this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`polls:${day}`}))`;
@@ -118,7 +125,7 @@ export class PollService {
     if (decision.lockUser) await this.#overwrite(channel, userId, OverwriteType.Member, LOCKED, 'Poll posted: locked until the daily reset');
     const vipRoleId = this.config.current.guild.vipRoleId;
     if (decision.lockRole && vipRoleId) {
-      await this.#overwrite(channel, vipRoleId, OverwriteType.Role, LOCKED, "Today's VIP poll limit reached");
+      for (const id of [vipRoleId, ...(await this.#titlePosterRoles())]) await this.#overwrite(channel, id, OverwriteType.Role, LOCKED, "Today's VIP poll limit reached");
     }
 
     if (!decision.accept) {
@@ -185,7 +192,10 @@ export class PollService {
     const channel = await this.#channel();
     for (const lock of expired) {
       if (channel) {
-        if (lock.scope === 'role') await this.#overwrite(channel, lock.targetId, OverwriteType.Role, ALLOWED, 'Daily poll reset');
+        if (lock.scope === 'role') {
+          const titles = lock.targetId === this.config.current.guild.vipRoleId ? await this.#titlePosterRoles() : [];
+          for (const id of [lock.targetId, ...titles]) await this.#overwrite(channel, id, OverwriteType.Role, ALLOWED, 'Daily poll reset');
+        }
         else await this.#overwrite(channel, lock.targetId, OverwriteType.Member, null, 'Daily poll reset');
       }
       await this.db.pollLock.delete({ where: { id: lock.id } });
@@ -230,7 +240,7 @@ export class PollService {
     }
     if (vipRoleId) {
       const roleLocked = locks.some((l) => l.scope === 'role' && l.targetId === vipRoleId);
-      await this.#overwrite(channel, vipRoleId, OverwriteType.Role, roleLocked ? LOCKED : ALLOWED, 'Poll lock check');
+      for (const id of [vipRoleId, ...(await this.#titlePosterRoles())]) await this.#overwrite(channel, id, OverwriteType.Role, roleLocked ? LOCKED : ALLOWED, 'Poll lock check');
     }
   }
 

@@ -35,7 +35,7 @@ export class ShoutoutService {
 
   /** Who may open the shoutout form right now. */
   async access(userId: string): Promise<{ ok: true } | { ok: false; message: string }> {
-    if (!this.vip.vips.has(userId)) return { ok: false, message: '📣 Shoutouts are a VIP perk.' };
+    if (!this.vip.hasPerk(userId, 'shoutout')) return { ok: false, message: '📣 Shoutouts are a VIP perk.' };
     if (!this.#channelId()) return { ok: false, message: '❌ There’s no main chat channel set yet. Ask an admin.' };
     const day = this.#day();
     if (await this.db.shoutout.findUnique({ where: { userId_serverDay: { userId, serverDay: day.key } } })) {
@@ -59,7 +59,8 @@ export class ShoutoutService {
     try {
       const channel = await this.client.channels.fetch(this.#channelId()!);
       if (!channel?.isSendable()) throw new Error('the channel is missing');
-      message = await channel.send({ content: `📣 **VIP shoutout from <@${userId}>:** ${clean.text}`, allowedMentions: { parse: [] } });
+      const label = this.vip.vips.has(userId) ? 'VIP shoutout' : 'Shoutout'; // title holders (Advisor, Champion) aren't VIPs
+      message = await channel.send({ content: `📣 **${label} from <@${userId}>:** ${clean.text}`, allowedMentions: { parse: [] } });
     } catch (err) {
       await this.db.shoutout.delete({ where: { userId_serverDay: { userId, serverDay } } }).catch(() => undefined);
       this.log.warn({ err }, "couldn't post a shoutout");

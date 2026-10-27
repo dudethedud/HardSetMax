@@ -32,6 +32,7 @@ describe.skipIf(!url)('VIP polls and colours', () => {
     await db.$transaction([
       db.pollPost.deleteMany(),
       db.pollLock.deleteMany(),
+      db.crownTitle.deleteMany(),
       db.userColourChoice.deleteMany(),
       db.colourOption.deleteMany(),
       db.vipMember.deleteMany(),
@@ -188,6 +189,25 @@ describe.skipIf(!url)('VIP polls and colours', () => {
     expect(t.overwrites.get(id(1))).toEqual({ SendMessages: false, SendPolls: false });
     expect(await db.pollPost.count({ where: { kind: 'extra' } })).toBe(1);
     expect(t.modLines.some((l) => l.includes('extra poll'))).toBe(true);
+  });
+
+  it('the Advisor (a title) can post VIP polls, shares the VIP limit, and its role follows the VIP lock', async () => {
+    const t = await setup([1]);
+    const ADVISOR_ROLE = '900000000000000071';
+    await db.crownTitle.create({ data: { slot: 'advisor', name: '📜 Advisor', roleId: ADVISOR_ROLE, holderId: id(5) } });
+    t.vip.guestPerks = (u) => new Set(u === id(5) ? (['poll', 'shoutout'] as const) : []);
+    const [a, b] = [t.message(id(5), true), t.message(id(1), true)];
+    await post(t, [a, b]);
+    expect(t.deleted).toEqual([]);
+    expect(t.overwrites.get(VIP_ROLE)).toEqual({ SendMessages: false, SendPolls: false });
+    expect(t.overwrites.get(ADVISOR_ROLE)).toEqual({ SendMessages: false, SendPolls: false });
+    clockNow = new Date('2026-10-24T06:00:05Z');
+    await t.polls.runUnlockJob('2026-10-23');
+    expect(t.overwrites.get(ADVISOR_ROLE)).toEqual({ SendMessages: true, SendPolls: true });
+    // Someone without the title is still turned away.
+    const stranger = t.message(id(6), true);
+    await post(t, [stranger]);
+    expect(t.deleted).toContain(stranger.id);
   });
 
   it('deleting your own poll does not give it back', async () => {

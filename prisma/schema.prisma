@@ -412,3 +412,22 @@ model AiStrike {
 
   @@index([userId, at])
 }
+
+// Perks limited to once per period (e.g. the Jester's daily status and trick).
+// Only that it was used is saved, never any text.
+model PerkUse {
+  userId    String
+  perk      String
+  period    String // server-day key
+  createdAt DateTime @default(now())
+
+  @@id([userId, perk, period])
+}
+
+// The bot's status, set by the Jester. Removed when they lose the title.
+model BotStatus {
+  id      String   @id // "jester"
+  text    String
+  setById String
+  setAt   DateTime @default(now())
+}

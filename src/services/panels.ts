@@ -58,7 +58,7 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             '',
             '**👑 Crown of the week** (the #1 VIP each week)',
             '• Your own custom role and a 👑 in front of your name',
-            '• Hand out three titles: Champion, Advisor and Jester',
+            '• Hand out three titles: 🛡️ Champion (guest VIP pass), 📜 Advisor (polls + shoutout), 🃏 Jester (bot status + tricks)',
             '• One 📜 decree a week in announcements',
             '• Your own hall: a voice channel with Priority Speaker',
             '',

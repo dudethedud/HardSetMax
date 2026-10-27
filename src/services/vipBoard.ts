@@ -2,7 +2,8 @@
 // VIP with days held and their top badge, the most active members, and when the
 // next reshuffle is. A panel, so it's re-posted if deleted and edited in place
 // after VIP and Crown changes (and hourly, to keep the numbers fresh).
-import { EmbedBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import { TITLE_SLOTS } from '../core/perks.js';
 import type { ConfigStore } from '../config/configStore.js';
 import { formatScore } from '../core/reshuffle.js';
 import { serverDayAt, serverDaysBetween } from '../core/serverDay.js';
@@ -14,6 +15,8 @@ import type { PanelDef } from './panels.js';
 import type { VipService } from './vipService.js';
 
 export const VIP_BOARD = 'vip-board';
+/** "What titles do" button on the board: anyone can press it; title holders get their buttons. */
+export const TITLE_PERKS_ID = 'title:perks';
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 export function vipBoardPanel(deps: { db: Db; config: ConfigStore; vip: VipService; crown: CrownService; clock: Clock }): PanelDef {
@@ -42,7 +45,9 @@ export function vipBoardPanel(deps: { db: Db; config: ConfigStore; vip: VipServi
         return `${id === cur?.userId ? '👑' : '⭐'} <@${id}> · ${days} day${days === 1 ? '' : 's'}${badge ? ` · 🏅 ${badge.name}` : ''}${v.pinned ? ' · 📌' : ''}`;
       });
       const order = ['champion', 'advisor', 'jester'];
-      const titleLines = titles.sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot)).map((t) => `${t.name}: <@${t.holderId}>`);
+      const titleLines = titles
+        .sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot))
+        .map((t) => `${t.name}: <@${t.holderId}> · ${TITLE_SLOTS.find((s) => s.slot === t.slot)?.job ?? ''}`);
       const top = ranked.slice(0, 3).map((s, i) => `${MEDALS[i]} <@${s.userId}> · ${formatScore(s.score)} pts`);
 
       const embed = new EmbedBuilder()
@@ -59,7 +64,10 @@ export function vipBoardPanel(deps: { db: Db; config: ConfigStore; vip: VipServi
         )
         .setFooter({ text: 'Updated' })
         .setTimestamp(now);
-      return { embeds: [embed], components: [] };
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(TITLE_PERKS_ID).setLabel('Titles & perks').setEmoji('🎖️').setStyle(ButtonStyle.Secondary),
+      );
+      return { embeds: [embed], components: [row] };
     },
   };
 }

@@ -54,7 +54,7 @@ export class TempVoiceService {
 
   /** The lounge button. Returns the private reply. */
   async create(userId: string): Promise<string> {
-    if (!this.vip.vips.has(userId)) return '🔊 VIP voice channels are for VIPs only.';
+    if (!this.vip.hasPerk(userId, 'voice')) return '🔊 VIP voice channels are for VIPs only.';
     const guild = this.#guild();
     const categoryId = this.config.current.guild.loungeCategoryId;
     if (!guild || !categoryId) return '❌ The VIP Lounge isn’t set up. Ask an admin to run /bot setup.';
@@ -151,7 +151,7 @@ export class TempVoiceService {
         continue;
       }
       const humans = channel.members.filter((m) => !m.user.bot).size;
-      const action = roomAction({ humans, emptySince: row.emptySince, ownerIsVip: this.vip.vips.has(row.ownerId) }, now);
+      const action = roomAction({ humans, emptySince: row.emptySince, ownerIsVip: this.vip.hasPerk(row.ownerId, 'voice') }, now);
       if (action.delete) {
         await channel.delete('VIP voice channel empty').catch((err: unknown) => this.log.warn({ err }, "couldn't delete temp voice channel"));
         await this.db.tempVoiceChannel.delete({ where: { channelId: row.channelId } });

@@ -3,11 +3,13 @@
 //   and when the Crown is lost
 // - post one decree to the announcements channel, with no pings
 // - wear a 👑 nickname prefix, restored when the Crown ends
-// Titles are roles with no permissions. The database is the source of truth and
-// reconcile makes the roles match it.
-import { GuildPremiumTier, PermissionFlagsBits, type Client, type Guild, type GuildMember, type Role } from 'discord.js';
+// Each title has a job (core/perks.ts): the Champion's guest VIP pass works through
+// VipService.hasPerk, the Advisor's polls through PollService, the Jester's
+// buttons through jester.ts. The database is the source of truth and reconcile
+// makes the roles match it.
+import { GuildPremiumTier, OverwriteType, PermissionFlagsBits, type Client, type Guild, type GuildMember, type Role } from 'discord.js';
 import type { ConfigStore } from '../config/configStore.js';
-import { cleanPublicText, CROWN_NICK_PREFIX, crownNickname, isTitleSlot, TITLE_SLOTS, titleTargetError } from '../core/perks.js';
+import { cleanPublicText, CROWN_NICK_PREFIX, crownNickname, isTitleSlot, TITLE_SLOTS, titlePerks, titleTargetError, type Perk, type TitleSlot } from '../core/perks.js';
 import type { Db } from '../db/prisma.js';
 import type { CrownHolder, CrownTitle } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
@@ -19,9 +21,16 @@ import { findExistingRole } from './reuse.js';
 
 export const DECREE_MAX = 500;
 
+/** Runs after someone gains or loses a title (to give or take its guest perks). */
+export type TitleChangeHook = (userId: string, slot: TitleSlot, gained: boolean) => Promise<void>;
+const NO_PERKS: ReadonlySet<Perk> = new Set();
+
 export class CrownPowers {
   /** Called after anything the VIP board shows changes. */
   onChange: () => void = () => undefined;
+  readonly onTitleChange: TitleChangeHook[] = [];
+  /** Who holds which title, kept in step with the database for fast perk checks. */
+  #holders = new Map<string, TitleSlot>();
 
   constructor(
     private readonly client: Client,
@@ -33,7 +42,32 @@ export class CrownPowers {
     private readonly modLog: ModLog,
     private readonly clock: Clock,
     private readonly log: Logger,
+    /** What the VIP role allows (setup.ts), given to the Champion too. */
+    private readonly vipPermissions: readonly bigint[] = [],
   ) {}
+
+  /** Title roles with the lounge perk (the Champion) can see and use the VIP Lounge like VIPs. */
+  async #loungeAccess(guild: Guild, report: string[]): Promise<void> {
+    const cfg = this.config.current.guild;
+    const roles = (await this.titles()).filter((t) => t.roleId && isTitleSlot(t.slot) && titlePerks(t.slot).has('lounge')).map((t) => t.roleId!);
+    const full = { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, Connect: true, Speak: true };
+    const readOnly = { ViewChannel: true, ReadMessageHistory: true, SendMessages: false, SendMessagesInThreads: false, CreatePublicThreads: false, CreatePrivateThreads: false, AddReactions: false };
+    const channels: [string | null, typeof full | typeof readOnly][] = [
+      [cfg.loungeCategoryId, full],
+      [cfg.loungeTextId, full],
+      [cfg.loungeVoiceId, full],
+      [cfg.loungePerksId, readOnly],
+    ];
+    try {
+      for (const [id, perms] of channels) {
+        const channel = id ? guild.channels.cache.get(id) : undefined;
+        if (!channel || !('permissionOverwrites' in channel)) continue;
+        for (const roleId of roles) await channel.permissionOverwrites.edit(roleId, perms, { type: OverwriteType.Role, reason: '/bot setup: the Champion can use the VIP Lounge' });
+      }
+    } catch (err) {
+      report.push(`⚠️ Couldn't open the VIP Lounge to the Champion: ${explainRoleError(err)}`);
+    }
+  }
 
   #guild(): Guild | undefined {
     return this.client.guilds.cache.get(this.guildId);
@@ -52,7 +86,24 @@ export class CrownPowers {
       await this.db.crownTitle.createMany({ data: missing.map((t) => ({ slot: t.slot, name: t.name })), skipDuplicates: true });
       return this.titles();
     }
-    return TITLE_SLOTS.map((t) => rows.find((r) => r.slot === t.slot)!);
+    const sorted = TITLE_SLOTS.map((t) => rows.find((r) => r.slot === t.slot)!);
+    this.#holders = new Map(sorted.filter((t) => t.holderId && isTitleSlot(t.slot)).map((t) => [t.holderId!, t.slot as TitleSlot]));
+    return sorted;
+  }
+
+  /** The title someone holds, if any (from the last database read). */
+  titleOf(userId: string): TitleSlot | null {
+    return this.#holders.get(userId) ?? null;
+  }
+
+  /** The guest perks someone has from their title. */
+  perksOf(userId: string): ReadonlySet<Perk> {
+    const slot = this.#holders.get(userId);
+    return slot ? titlePerks(slot) : NO_PERKS;
+  }
+
+  async #runTitleHooks(userId: string, slot: TitleSlot, gained: boolean): Promise<void> {
+    for (const hook of this.onTitleChange) await hook(userId, slot, gained).catch((err: unknown) => this.log.error({ err }, 'title hook failed'));
   }
 
   async #isStaff(member: GuildMember): Promise<boolean> {
@@ -102,6 +153,14 @@ export class CrownPowers {
       ),
     ]);
     for (const c of changes) {
+      if (c.title.holderId) this.#holders.delete(c.title.holderId);
+      if (c.holderId && isTitleSlot(c.title.slot)) this.#holders.set(c.holderId, c.title.slot);
+    }
+    for (const c of changes) {
+      const slot = c.title.slot as TitleSlot;
+      // Perks follow the database even if the role change fails.
+      if (c.title.holderId) await this.#runTitleHooks(c.title.holderId, slot, false);
+      if (c.holderId) await this.#runTitleHooks(c.holderId, slot, true);
       if (!c.title.roleId) continue;
       if (c.title.holderId) {
         await this.roles.run({ userId: c.title.holderId, roleId: c.title.roleId, action: 'remove', reason: `Title ${c.title.name}: ${why}` });
@@ -245,10 +304,12 @@ export class CrownPowers {
         // keeps its own colour and icon if it already has them.
         const style = TITLE_SLOTS.find((t) => t.slot === title.slot)!;
         const icons = guild.premiumTier >= GuildPremiumTier.Tier2;
+        // The Champion's guest pass includes VIP's chat perks (files, links, emojis). No moderation.
+        const permissions = (style.perks as readonly Perk[]).includes('lounge') ? this.vipPermissions : [];
         if (role) {
           await role.edit({
             name: role.id === title.roleId ? title.name : role.name,
-            permissions: [],
+            permissions,
             mentionable: false,
             hoist: true,
             ...(role.colors.primaryColor === 0 ? { colors: { primaryColor: style.colour } } : {}),
@@ -258,7 +319,7 @@ export class CrownPowers {
         } else {
           role = await guild.roles.create({
             name: title.name,
-            permissions: [],
+            permissions,
             mentionable: false,
             hoist: true,
             colors: { primaryColor: style.colour },
@@ -271,6 +332,7 @@ export class CrownPowers {
         report.push(`❌ Title ${title.name}: ${explainRoleError(err)}`);
       }
     }
+    await this.#loungeAccess(guild, report);
     report.push(`✅ Crown titles ready: ${(await this.titles()).map((t) => (t.roleId ? `<@&${t.roleId}>` : t.name)).join(', ')}`);
     await this.reconcile();
   }

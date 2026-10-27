@@ -364,7 +364,12 @@ All through buttons on the lounge panel. Member-written text the bot posts (shou
 
 **The Crown** (in addition to the custom role, §6)
 - **👑 nickname:** "👑 Name" while they hold the Crown; their old nickname comes back when it ends (unless they renamed themselves since). Skipped for the server owner and anyone above the bot.
-- **🎖️ Titles:** the Crown appoints **Champion, Advisor and Jester** with member pickers. Each is a role with no permissions, but it stands out: its own group in the member list, its own name colour (orange, teal, purple) and a role icon (🛡️ 📜 🃏) at Boost Level 2. The 👑 Crown role gets a 👑 icon too. Not for bots, staff or themselves; one title per person. All titles end with the Crown week, or when the Crown is lost.
+- **🎖️ Titles:** the Crown appoints **Champion, Advisor and Jester** with member pickers. Each has a job (owner-approved), which ends with the title:
+  - **🛡️ Champion:** a guest VIP pass: colours, the daily shoutout, VIP polls, VIP voice, the VIP Lounge (same channel access as VIP) and VIP's chat permissions. Checked through `VipService.hasPerk`, so losing the title takes the colour and closes their VIP voice channel like losing VIP does (unless they're a VIP).
+  - **📜 Advisor:** can post VIP polls in #polls (sharing the VIPs' daily limit; the Advisor role follows the VIP role's lock) and gets the daily shoutout.
+  - **🃏 Jester:** once per server-day, sets the bot's status (checked like shoutouts, at most 100 characters, saved so it survives a restart, removed when the title ends), and once per server-day makes the bot do a trick in main chat (a fixed line, no AI, no pings).
+  - Holders without the lounge use the **🎖️ Titles & perks** button on #vip-board, which also tells anyone what titles, VIP and the Crown do.
+  - The roles give no moderation permissions, but they stand out: its own group in the member list, its own name colour (orange, teal, purple) and a role icon (🛡️ 📜 🃏) at Boost Level 2. The 👑 Crown role gets a 👑 icon too. Not for bots, staff or themselves; one title per person. All titles end with the Crown week, or when the Crown is lost.
 - **📜 Decree:** one announcement per Crown week (500 characters) in the announcements channel, with no pings.
 - **👑 Hall:** their temporary voice channel is called "👑 Name's Hall" and gives them Priority Speaker and Move Members in it.
 
