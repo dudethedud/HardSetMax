@@ -11,7 +11,7 @@ import {
   type Role,
 } from 'discord.js';
 import type { ConfigStore } from '../config/configStore.js';
-import { blockedVipPerks, isLowValueChannel, pickChannel, pickLevelTop, type ChannelPurpose } from '../core/autoSetup.js';
+import { blockedVipPerks, isLowValueChannel, pickCategory, pickChannel, pickLevelTop, type ChannelHome, type ChannelPurpose } from '../core/autoSetup.js';
 import type { Db } from '../db/prisma.js';
 import { rolesInUse } from './reuse.js';
 
@@ -135,11 +135,32 @@ export async function unblockVipPerks(guild: Guild, vipRole: Role, vipPerms: rea
   if (fixed.length) report.push(`✅ VIP perks unblocked in ${fixed.length} place(s) that denied them to everyone: ${fixed.join(', ')}`.slice(0, 1900));
 }
 
-/** The category new bot channels go in: next to announcements (or main chat), if those are in one. */
-export function homeCategoryId(guild: Guild, cfg: ConfigStore['current']['guild']): string | undefined {
-  for (const id of [cfg.announceChannelId, cfg.mainChatChannelId]) {
-    const parent = id ? guild.channels.cache.get(id)?.parentId : null;
-    if (parent) return parent;
-  }
-  return undefined;
+/**
+ * The category a bot channel belongs in: #vip-board with your info/announcements,
+ * #polls with your main chat. Never the VIP Lounge category.
+ */
+export function categoryFor(guild: Guild, cfg: ConfigStore['current']['guild'], home: ChannelHome): string | undefined {
+  const parentOf = (id: string | null) => (id ? (guild.channels.cache.get(id)?.parentId ?? null) : null);
+  const categories = guild.channels.cache.filter((c) => c.type === ChannelType.GuildCategory).map((c) => ({ id: c.id, name: c.name }));
+  return pickCategory(categories, home, { info: parentOf(cfg.announceChannelId), chat: parentOf(cfg.mainChatChannelId) }, new Set([cfg.loungeCategoryId].filter((id): id is string => !!id)));
+}
+
+/**
+ * Puts a bot channel into its category if it isn't in one yet. A channel an admin
+ * already put in a category stays there. Its own permissions are kept.
+ */
+export async function placeInCategory(guild: Guild, channelId: string | null, categoryId: string | undefined, report: string[]): Promise<void> {
+  const channel = channelId ? guild.channels.cache.get(channelId) : undefined;
+  if (!channel || !categoryId || channel.parentId || !('setParent' in channel)) return;
+  await channel.setParent(categoryId, { lockPermissions: false, reason: '/bot setup: channel tidy-up' });
+  report.push(`📁 Moved <#${channel.id}> into ${guild.channels.cache.get(categoryId)?.name ?? 'its category'}`);
+}
+
+/** A new VIP Lounge category goes right after your chat category instead of at the bottom. */
+export async function placeLoungeCategory(guild: Guild, cfg: ConfigStore['current']['guild'], loungeId: string): Promise<void> {
+  const chat = categoryFor(guild, cfg, 'chat');
+  const target = chat ? guild.channels.cache.get(chat) : undefined;
+  const lounge = guild.channels.cache.get(loungeId);
+  if (!target || !lounge || !('position' in target) || !('setPosition' in lounge)) return;
+  await lounge.setPosition(target.position + 1, { reason: '/bot setup: next to the chat channels' }).catch(() => undefined);
 }

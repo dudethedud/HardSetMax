@@ -53,3 +53,39 @@ export function blockedVipPerks(c: { everyoneDeny: bigint; vipAllow: bigint; vip
   if (c.everyoneDeny & c.viewBit || c.everyoneDeny & c.sendBit) return 0n;
   return c.everyoneDeny & c.vipPerms & ~c.vipAllow;
 }
+
+/** What a bot channel is for, which decides its category. */
+export type ChannelHome = 'info' | 'chat';
+
+const CATEGORY_NAMES: Record<ChannelHome, RegExp[]> = {
+  info: [/\b(info|information|important|announce\w*|news|start|welcome|server)\b/i],
+  chat: [/\b(chat|chats|community|general|social|main|text|hangout|lounge)\b/i],
+};
+
+/**
+ * The category for a bot channel: where the matching server channel lives
+ * (announcements for info, main chat for chat), otherwise a category named like
+ * one, otherwise the other kind as a fallback. Never the VIP Lounge category.
+ */
+export function pickCategory(
+  categories: readonly { id: string; name: string }[],
+  home: ChannelHome,
+  anchors: { info: string | null; chat: string | null },
+  exclude: ReadonlySet<string> = new Set(),
+): string | undefined {
+  const allowed = categories.filter((c) => !exclude.has(c.id));
+  const byAnchor = (h: ChannelHome) => {
+    const id = anchors[h];
+    return id && allowed.some((c) => c.id === id) ? id : undefined;
+  };
+  const byName = (h: ChannelHome) => {
+    const clean = (n: string) => n.normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, ' ');
+    for (const re of CATEGORY_NAMES[h]) {
+      const hit = allowed.find((c) => re.test(clean(c.name)));
+      if (hit) return hit.id;
+    }
+    return undefined;
+  };
+  const other: ChannelHome = home === 'info' ? 'chat' : 'info';
+  return byAnchor(home) ?? byName(home) ?? byAnchor(other) ?? byName(other);
+}

@@ -24,7 +24,7 @@ import type { Clock } from './clock.js';
 import { claimJob, completeJob, failJob } from './jobs.js';
 import type { ModLog } from './modLog.js';
 import { findExistingChannel, findExistingRole } from './reuse.js';
-import { homeCategoryId } from './autoSetup.js';
+import { categoryFor, placeInCategory } from './autoSetup.js';
 import type { VipService } from './vipService.js';
 
 export const POLL_UNLOCK_JOB = 'poll-unlock';
@@ -307,9 +307,10 @@ export class PollService {
         await existing.permissionOverwrites.set(overwrites, '/bot setup');
         channelId = existing.id;
       } else {
-        channelId = (await guild.channels.create({ name: 'polls', parent: homeCategoryId(guild, cfg), permissionOverwrites: overwrites, reason: '/bot setup' })).id;
+        channelId = (await guild.channels.create({ name: 'polls', parent: categoryFor(guild, cfg, 'chat'), permissionOverwrites: overwrites, reason: '/bot setup' })).id;
       }
       report.push(`✅ Polls channel <#${channelId}> ready`);
+      await placeInCategory(guild, channelId, categoryFor(guild, cfg, 'chat'), report);
     } catch (err) {
       report.push(`❌ Polls channel: ${err instanceof Error ? err.message : String(err)}`);
     }

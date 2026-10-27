@@ -80,7 +80,7 @@ Five commands, all guild-only and replying privately unless they post on purpose
 - bleed's top level role (the highest role named like "Level 50"), staff roles (roles with moderator permissions), and the main chat, announcements and mod-log channels (by name)
 - the first time only: bot-command, spam and counting channels stop counting toward VIP
 - where a channel denies image/embed/emoji perks to everyone, VIP gets them back there (on the category for synced channels)
-- new bot channels go in the same category as your announcements
+- channels go in the right category: #vip-board with your info/announcements, #polls with your main chat, and a new VIP Lounge category right after your chat category. Bot channels that aren't in any category get moved in; anything you placed yourself stays put
 
 **Fair from day one:** commands for other bots (`!rank`, `.work`, `-play`) don't count as chat, and the nightly reshuffle waits until there's a full week of activity before changing VIP (`/bot health` shows the warm-up). An admin can still run `/vip reshuffle` by hand.
 
