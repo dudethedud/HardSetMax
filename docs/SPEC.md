@@ -358,7 +358,7 @@ Five commands, all registered to the guild only and replying privately (ephemera
 All through buttons on the lounge panel. Member-written text the bot posts (shoutouts, decrees) has mentions removed, `@everyone`/`@here` broken up, is sent with no allowed mentions, and is checked against the blocked words. The text itself is never saved; only that it happened (and the message ID) is.
 
 **Every VIP**
-- **Public VIP board** (`#vip-board`, read-only, created by `/bot setup`): the Crown and its titles, every VIP with days held and their top badge, the 3 most active members and when the next reshuffle is. Edited in place after VIP and Crown changes, and hourly.
+- **Public VIP board** (`#vip-board`, read-only, created by `/bot setup`): the Crown and its titles, every VIP with days held and their top badge, **📈 this week's top 10** (points counted from 0 every Monday, same scoring rules as VIP) and **🏁 last week's final top 10**, and when the next reshuffle is. Weekly points are for show only: VIP and the Crown still use the rolling window. The profile card shows your points and rank this week. Edited in place after VIP and Crown changes, and hourly.
 - **🪪 My profile:** a private card with rank, score, active days, where they stand (points ahead of the first rank past the buffer, or points to reach the last VIP slot), VIP days, weeks held, badges, polls today, shoutout used or not, and their title.
 - **📣 Shoutout:** once per server-day, a short message (200 characters) posted by the bot in main chat (or announcements if main chat isn't set). No pings.
 - **⭐ VIP role icon** when the server is Boost Level 2 or higher.

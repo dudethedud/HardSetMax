@@ -4,7 +4,7 @@ import { standingLine } from '../core/perks.js';
 import { isVeteran, VETERAN_DAYS } from '../core/vipExtras.js';
 import { formatScore } from '../core/reshuffle.js';
 import { serverDayAt, serverDaysBetween } from '../core/serverDay.js';
-import { loadStandings } from '../db/activityRepo.js';
+import { loadStandings, loadWeeklyStandings } from '../db/activityRepo.js';
 import type { AppContext } from './commands/types.js';
 
 export async function profileEmbed(ctx: AppContext, userId: string, displayName: string): Promise<EmbedBuilder> {
@@ -26,6 +26,8 @@ export async function profileEmbed(ctx: AppContext, userId: string, displayName:
     ctx.db.shoutout.findUnique({ where: { userId_serverDay: { userId, serverDay: today.key } } }),
   ]);
   const treats = await ctx.treats.received(userId, new Date(now.getTime() - 7 * 24 * 3600_000));
+  const weekly = await loadWeeklyStandings(ctx.db, cfg, now);
+  const weekIndex = weekly.thisWeek.ranked.findIndex((s) => s.userId === userId);
   const held = vip ? serverDaysBetween(vip.since, today.key) : 0;
   const scores = ranked.map((s) => s.score);
 
@@ -36,6 +38,7 @@ export async function profileEmbed(ctx: AppContext, userId: string, displayName:
       { name: 'Rank', value: me ? `#${index + 1} of ${ranked.length}` : 'unranked', inline: true },
       { name: 'Score', value: formatScore(me?.score ?? 0), inline: true },
       { name: 'Active days', value: `${me?.activeDays ?? 0}/${window.length}`, inline: true },
+      { name: '📈 This week', value: weekIndex >= 0 ? `${formatScore(weekly.thisWeek.ranked[weekIndex]!.score)} pts (#${weekIndex + 1})` : '0 pts so far', inline: true },
       { name: 'Standing', value: standingLine(scores, index, !!vip, cfg.reshuffle.slots, cfg.reshuffle.buffer) },
       {
         name: 'VIP',

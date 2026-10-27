@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pino } from 'pino';
 import type { Client } from 'discord.js';
 import { ConfigStore } from '../config/configStore.js';
-import { loadStandings } from '../db/activityRepo.js';
+import { loadStandings, loadWeeklyStandings } from '../db/activityRepo.js';
 import { createDb, type Db } from '../db/prisma.js';
 import { ActivityBuffer } from './activityBuffer.js';
 import { TimeoutTracker, timedOutWithin } from './timeoutTracker.js';
@@ -215,5 +215,26 @@ describe.skipIf(!url)('activity storage', () => {
         ['2026-10-21T14:00:00.000Z', '2026-10-21T12:30:00.000Z'],
       ]);
     });
+  });
+
+  it('weekly points count from 0 each Monday, and last week’s final totals stay', async () => {
+    await db.guildConfig.create({ data: { guildId: GUILD } });
+    const config = new ConfigStore(db, GUILD);
+    await config.load();
+    await db.activityDay.createMany({
+      data: [
+        { userId: A, serverDay: '2026-10-19', weightedMessages: 5 }, // last Monday
+        { userId: A, serverDay: '2026-10-25', weightedMessages: 3 }, // last Sunday
+        { userId: B, serverDay: '2026-10-24', weightedMessages: 20 },
+        { userId: B, serverDay: '2026-10-18', weightedMessages: 100 }, // two weeks ago: in neither
+        { userId: C, serverDay: '2026-10-26', weightedMessages: 2 }, // this Monday
+        { userId: A, serverDay: '2026-10-27', weightedMessages: 1 }, // today
+      ],
+    });
+    const w = await loadWeeklyStandings(db, config.current, new Date('2026-10-27T18:00:00Z')); // Tuesday
+    expect(w.thisWeek.from).toBe('2026-10-26');
+    expect(w.thisWeek.ranked.map((s) => [s.userId, s.score])).toEqual([[C, 2], [A, 1]]);
+    expect(w.lastWeek).toMatchObject({ from: '2026-10-19', to: '2026-10-25' });
+    expect(w.lastWeek.ranked.map((s) => [s.userId, s.score])).toEqual([[B, 20], [A, 8]]);
   });
 });

@@ -8,7 +8,7 @@ import { isVeteran } from '../core/vipExtras.js';
 import type { ConfigStore } from '../config/configStore.js';
 import { formatScore } from '../core/reshuffle.js';
 import { serverDayAt, serverDaysBetween } from '../core/serverDay.js';
-import { loadStandings } from '../db/activityRepo.js';
+import { loadStandings, loadWeeklyStandings } from '../db/activityRepo.js';
 import type { Db } from '../db/prisma.js';
 import type { Clock } from './clock.js';
 import type { CrownService } from './crown.js';
@@ -19,6 +19,7 @@ export const VIP_BOARD = 'vip-board';
 /** "What titles do" button on the board: anyone can press it; title holders get their buttons. */
 export const TITLE_PERKS_ID = 'title:perks';
 const MEDALS = ['🥇', '🥈', '🥉'];
+const BOARD_TOP = 10;
 
 export function vipBoardPanel(deps: { db: Db; config: ConfigStore; vip: VipService; crown: CrownService; clock: Clock }): PanelDef {
   const { db, config, vip, crown, clock } = deps;
@@ -49,7 +50,9 @@ export function vipBoardPanel(deps: { db: Db; config: ConfigStore; vip: VipServi
       const titleLines = titles
         .sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot))
         .map((t) => `${t.name}: <@${t.holderId}> · ${TITLE_SLOTS.find((s) => s.slot === t.slot)?.job ?? ''}`);
-      const top = ranked.slice(0, 3).map((s, i) => `${MEDALS[i]} <@${s.userId}> · ${formatScore(s.score)} pts`);
+      // Weekly points (display only): count from 0 each Monday; last week's final stays on show.
+      const weekly = await loadWeeklyStandings(db, cfg, now);
+      const list = (r: typeof ranked) => r.slice(0, BOARD_TOP).map((s, i) => `${MEDALS[i] ?? `**${i + 1}.**`} <@${s.userId}> · ${formatScore(s.score)} pts`).join('\n');
 
       const embed = new EmbedBuilder()
         .setTitle('⭐ VIP Board')
@@ -63,7 +66,8 @@ export function vipBoardPanel(deps: { db: Db; config: ConfigStore; vip: VipServi
           ...(cur?.spotlightId ? [{ name: '📌 Spotlight', value: `<@${cur.spotlightId}>${cur.spotlightReason ? `: ${cur.spotlightReason}` : ''}` }] : []),
           ...(titleLines.length ? [{ name: '🎖️ Appointed by the Crown', value: titleLines.join('\n') }] : []),
           { name: `VIPs (${vips.length}/${cfg.reshuffle.slots})`, value: vipLines.join('\n').slice(0, 1024) || 'No VIPs right now.' },
-          { name: '🔥 Most active', value: top.join('\n') || 'No activity yet.' },
+          { name: `📈 This week (since Mon ${weekly.thisWeek.from})`, value: list(weekly.thisWeek.ranked) || 'Nobody yet: a fresh week, everyone starts at 0!' },
+          { name: `🏁 Last week's final (${weekly.lastWeek.from} to ${weekly.lastWeek.to})`, value: list(weekly.lastWeek.ranked) || 'No activity last week.' },
         )
         .setFooter({ text: 'Updated' })
         .setTimestamp(now);
