@@ -2,7 +2,8 @@
 // messages are reposted with rainbow flair (core/crownExtras.ts) under their name
 // and avatar, with a 🌈 on the name so it's clear it's the filter, and the
 // original is deleted. The Crown can use it once per Crown week, staff any time.
-// Never on staff, the owner or bots. Every use is logged with a Stop button.
+// Never on staff, the owner, bots or anyone who opted out. The member is told in
+// main chat (with how to opt out). Every use is logged with a Stop button.
 // Message text is only changed in memory; nothing is saved but who and until when.
 import {
   ActionRowBuilder,
@@ -31,6 +32,8 @@ export class SpeechFilterService {
   #webhooks = new Map<string, Webhook>();
   /** Channels it never reposts in (#polls, where the bot deletes plain messages anyway). Set in index.ts. */
   skipChannel: (channelId: string) => boolean = () => false;
+  /** Where the member is told it started (main chat). Set in index.ts. */
+  noticeChannel: () => string | null = () => null;
 
   constructor(
     private readonly client: Client,
@@ -78,6 +81,7 @@ export class SpeechFilterService {
       isBot: member?.user.bot ?? false,
       isOwner: targetId === guild.ownerId,
       isStaff: member ? await this.#isStaff(member) : false,
+      optedOut: !!(await this.db.speechOptOut.findUnique({ where: { userId: targetId } })),
     });
     if (error) return `❌ ${error}`;
     const now = this.clock.now();
@@ -95,7 +99,38 @@ export class SpeechFilterService {
     this.#active.set(targetId, until.getTime());
     const stop = new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(SPEECH_STOP_ID).setLabel('Stop').setEmoji('🛑').setStyle(ButtonStyle.Danger));
     await this.modLog.post(`🌈 <@${actorId}>${byCrown ? ' (Crown)' : ''} turned on the speech filter for <@${targetId}> until <t:${Math.floor(until.getTime() / 1000)}:t>`, undefined, { components: [stop] });
+    await this.#notice(targetId, byCrown, until);
     return `🌈 <@${targetId}>'s messages get rainbow flair for ${RAINBOW_MINUTES} minutes.`;
+  }
+
+  /** Tells the member (with a ping, so they know why their messages look different) and how to opt out. */
+  async #notice(targetId: string, byCrown: boolean, until: Date): Promise<void> {
+    const channelId = this.noticeChannel();
+    if (!channelId) return;
+    try {
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel?.isSendable()) return;
+      await channel.send({
+        content: `🌈 <@${targetId}> got rainbow speech from ${byCrown ? 'the 👑 Crown' : 'staff'} until <t:${Math.floor(until.getTime() / 1000)}:t>! Not your thing? Opt out with **🎖️ Titles & perks** on the VIP board.`,
+        allowedMentions: { users: [targetId] },
+      });
+    } catch (err) {
+      this.log.warn({ err }, "couldn't post the rainbow speech notice");
+    }
+  }
+
+  /** The member turns rainbow speech off (or back on) for themselves. Returns the private reply. */
+  async toggleOptOut(userId: string): Promise<string> {
+    const { count } = await this.db.speechOptOut.deleteMany({ where: { userId } });
+    if (count) return '🌈 Rainbow speech can be used on you again.';
+    await this.db.speechOptOut.create({ data: { userId, at: this.clock.now() } });
+    const wasOn = (this.#active.get(userId) ?? 0) > this.clock.now().getTime();
+    if (wasOn) await this.stop(userId, userId);
+    return `🌈 You've opted out: nobody can use rainbow speech on you.${wasOn ? ' The one on you now has stopped.' : ''}`;
+  }
+
+  async isOptedOut(userId: string): Promise<boolean> {
+    return !!(await this.db.speechOptOut.findUnique({ where: { userId } }));
   }
 
   /** Ends it early (staff). Returns the private reply. */

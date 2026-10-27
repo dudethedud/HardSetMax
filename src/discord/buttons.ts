@@ -23,7 +23,7 @@ import { SHOUTOUT_MAX } from '../services/shoutouts.js';
 import { ANNOUNCE_CANCEL_ID, ANNOUNCE_MODAL_ID, ANNOUNCE_SEND_ID, cancelAnnouncement, previewAnnouncement, sendAnnouncement } from './announce.js';
 import { profileEmbed } from './profile.js';
 import { rerunSetup, SETUP_RERUN_ID } from './setupPicks.js';
-import { jesterStatus, jesterStatusModal, jesterTrick, titlePerks } from './titlePerks.js';
+import { jesterStatus, jesterStatusModal, jesterTrick, speechOptOut, titlePerks } from './titlePerks.js';
 import { crownExtraButtons, crownExtraModals } from './crownExtras.js';
 import { colourRequestApprove, colourRequestButton, colourRequestDecline, colourRequestModal, treatButton, treatPick } from './vipExtras.js';
 import type { FormPrefill } from '../services/crown.js';
@@ -219,6 +219,7 @@ export const BUTTONS = new Map(
     profile,
     shoutout,
     titlePerks,
+    speechOptOut,
     ...crownExtraButtons,
     treatButton,
     colourRequestButton,

@@ -9,6 +9,7 @@ import type { ButtonHandler, ModalHandler } from './buttons.js';
 
 export const JESTER_STATUS_ID = 'jester:status';
 export const JESTER_TRICK_ID = 'jester:trick';
+export const SPEECH_OPT_OUT_ID = 'speech:opt-out';
 const JESTER_STATUS_MODAL_ID = 'jester:status-modal';
 
 const button = (id: string, label: string, emoji: string, style = ButtonStyle.Primary) => new ButtonBuilder().setCustomId(id).setLabel(label).setEmoji(emoji).setStyle(style);
@@ -34,7 +35,20 @@ export const titlePerks: ButtonHandler = {
       if (cfg.pollsChannelId) lines.push(`Post your polls in <#${cfg.pollsChannelId}> (they share the VIPs' daily limit).`);
     }
     if (slot === 'champion' && cfg.loungePerksId) lines.push(`Your guest pass is active: head to <#${cfg.loungePerksId}>.`);
-    await interaction.editReply({ content: lines.join('\n'), components: row.components.length ? [row] : [] });
+    // Everyone can turn rainbow speech off (or back on) for themselves.
+    const optedOut = await ctx.speech.isOptedOut(interaction.user.id);
+    const optRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      button(SPEECH_OPT_OUT_ID, optedOut ? 'Allow rainbow speech on me' : 'Opt out of rainbow speech', '🌈', ButtonStyle.Secondary),
+    );
+    await interaction.editReply({ content: lines.join('\n'), components: [...(row.components.length ? [row] : []), optRow] });
+  },
+};
+
+export const speechOptOut: ButtonHandler = {
+  id: SPEECH_OPT_OUT_ID,
+  async run(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.editReply(await ctx.speech.toggleOptOut(interaction.user.id));
   },
 };
 

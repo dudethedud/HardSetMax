@@ -156,6 +156,7 @@ crown.onAwarded.push(() => jester.refreshPresence());
 crown.onEnded.push(() => jester.refreshPresence());
 const speech = new SpeechFilterService(client, env.GUILD_ID, db, crown, modLog, clock, log);
 speech.skipChannel = (channelId) => channelId === config.current.guild.pollsChannelId;
+speech.noticeChannel = () => config.current.guild.mainChatChannelId ?? config.current.guild.announceChannelId;
 const scheduler = new DailyScheduler(config, clock, log, () => leader!.isHeld());
 scheduler.register(RESHUFFLE_JOB, (period) => vip.runReshuffle(RESHUFFLE_JOB, period));
 scheduler.register(POLL_UNLOCK_JOB, (period) => polls.runUnlockJob(period));

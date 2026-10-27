@@ -96,7 +96,8 @@ export class CrownExtras {
     const mood = moodByKey(key);
     if (!mood) return '❌ Pick one of the moods.';
     await this.db.crownHolder.update({ where: { id: access.crown.id }, data: { mood: mood.key } });
-    await this.modLog.post(`🎭 <@${actorId}> (Crown) set Carter's mood: ${mood.emoji} ${mood.label}`);
+    // A fixed choice with nothing for staff to check, so it's kept out of the mod-log.
+    await this.db.auditLog.create({ data: { action: 'crown.mood', actorId, data: { mood: mood.key } } });
     return `${mood.emoji} Carter's mood this week: **${mood.label}**. You can change it any time.`;
   }
 

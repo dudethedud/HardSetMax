@@ -41,6 +41,20 @@ export function treatLine(random: number): string {
   return TREAT_LINES[Math.min(TREAT_LINES.length - 1, Math.floor(random * TREAT_LINES.length))]!;
 }
 
+/** Today's treats as one main-chat post, edited as more come in (so 10 VIPs don't mean 10 posts). */
+export function formatTreatPost(treats: readonly { giverId: string; receiverId: string }[], line: string): string {
+  const rows = treats.map((t) => `• <@${t.giverId}> → <@${t.receiverId}>`);
+  const head = `🦴 **Today's treats** (${treats.length})`;
+  const tail = `Carter: ${line}`;
+  const build = (shown: string[]) => [head, ...shown, tail].join('\n');
+  // Stay under Discord's 2000 characters on a very busy day: the earliest ones, "…", and the newest.
+  let keep = rows.length;
+  const trimmed = () => [...rows.slice(0, keep - 1), '• …', rows.at(-1)!];
+  if (build(rows).length <= 1900) return build(rows);
+  while (keep > 1 && build(trimmed()).length > 1900) keep--;
+  return build(trimmed());
+}
+
 export interface ColourRequestInput {
   name: string;
   hex: string;

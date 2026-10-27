@@ -482,3 +482,16 @@ model SpeechFilter {
   startedAt DateTime
   until     DateTime
 }
+
+// Members who opted out of the 🌈 speech filter (nobody can use it on them).
+model SpeechOptOut {
+  userId String   @id
+  at     DateTime @default(now())
+}
+
+// Today's treats post in main chat, edited as more treats come in (one message a day).
+model TreatPost {
+  serverDay String @id
+  channelId String
+  messageId String
+}

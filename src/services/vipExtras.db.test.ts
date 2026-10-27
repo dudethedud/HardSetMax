@@ -28,6 +28,7 @@ describe.skipIf(!url)('VIP extras', () => {
     clockNow = NOW;
     await db.$transaction([
       db.treat.deleteMany(),
+      db.treatPost.deleteMany(),
       db.colourRequest.deleteMany(),
       db.colourOption.deleteMany({ where: { name: { in: ['Peach Fizz', 'Ocean Glow'] } } }),
       db.shoutout.deleteMany(),
@@ -42,6 +43,7 @@ describe.skipIf(!url)('VIP extras', () => {
 
   async function setup(vips: Record<string, string>, opts: { failSend?: boolean; members?: number[] } = {}) {
     const sent: { channelId: string; content: string; allowedMentions: unknown }[] = [];
+    const posts = new Map<string, { id: string; content: string; url: string; edit: (o: { content: string }) => Promise<unknown> }>();
     const members = new Map((opts.members ?? [1, 2, 3]).map((n) => [id(n), { id: id(n), user: { bot: n === 9 } }]));
     const guild = { members: { cache: members, fetch: (u: string) => Promise.resolve(members.get(u) ?? null) } };
     const client = {
@@ -50,7 +52,14 @@ describe.skipIf(!url)('VIP extras', () => {
         fetch: (channelId: string) =>
           Promise.resolve({
             isSendable: () => true,
-            send: (o: { content: string; allowedMentions: unknown }) => (opts.failSend ? Promise.reject(new Error('Missing Access')) : (sent.push({ channelId, ...o }), Promise.resolve({ id: `m${sent.length}`, url: `https://discord.com/m${sent.length}` }))),
+            messages: { fetch: (mid: string) => (posts.has(mid) ? Promise.resolve(posts.get(mid)) : Promise.reject(new Error('Unknown Message'))) },
+            send: (o: { content: string; allowedMentions: unknown }) => {
+              if (opts.failSend) return Promise.reject(new Error('Missing Access'));
+              sent.push({ channelId, ...o });
+              const post = { id: `m${sent.length}`, content: o.content, url: `https://discord.com/m${sent.length}`, edit: (e: { content: string }) => ((post.content = e.content), Promise.resolve(post)) };
+              posts.set(post.id, post);
+              return Promise.resolve(post);
+            },
           }),
       },
     } as unknown as Client;
@@ -70,7 +79,7 @@ describe.skipIf(!url)('VIP extras', () => {
     const treats = new TreatService(client, GUILD, db, config, vip, modLog, clock, log, () => 0);
     const requests = new ColourRequestService(db, config, vip, colours, modLog, clock, () => Promise.resolve(['✅ roles', '⚠️ something to check']));
     const shoutouts = new ShoutoutService(client, db, config, vip, modLog, clock, log);
-    return { treats, requests, shoutouts, sent, modLines, added };
+    return { treats, requests, shoutouts, sent, posts, modLines, added };
   }
 
   it('a VIP gives one treat a day to someone else; it shows in the counts and the weekly top', async () => {
@@ -80,9 +89,19 @@ describe.skipIf(!url)('VIP extras', () => {
     expect(await t.treats.give(id(1), id(77))).toMatch(/not in the server/);
     expect(await t.treats.give(id(1), id(3))).toMatch(/Treat given/);
     expect(t.sent[0]).toMatchObject({ channelId: MAIN_CHAT, allowedMentions: { parse: [] } });
-    expect(t.sent[0]!.content).toContain(`<@${id(1)}> gave <@${id(3)}> a treat!`);
+    expect(t.sent[0]!.content).toContain(`• <@${id(1)}> → <@${id(3)}>`);
     expect(await t.treats.give(id(1), id(2))).toMatch(/today's treat/);
     expect(await t.treats.give(id(2), id(3))).toMatch(/Treat given/);
+    // One post a day, edited: the second treat didn't make a new message.
+    expect(t.sent).toHaveLength(1);
+    expect(t.posts.get('m1')!.content).toMatch(/Today's treats\*\* \(2\)[\s\S]*→ <@100000000000000003>[\s\S]*→ <@100000000000000003>/);
+    // If the post was deleted, the next treat makes a new one.
+    t.posts.clear();
+    await db.treat.deleteMany({ where: { giverId: id(2) } });
+    expect(await t.treats.give(id(2), id(1))).toMatch(/Treat given/);
+    expect(t.sent).toHaveLength(2);
+    await db.treat.deleteMany({ where: { giverId: id(2) } });
+    await t.treats.give(id(2), id(3));
     expect(await t.treats.received(id(3), new Date(NOW.getTime() - 1000))).toEqual({ total: 2, recent: 2 });
     expect(await t.treats.top(new Date(NOW.getTime() - 3600_000), new Date(NOW.getTime() + 3600_000))).toEqual({ userId: id(3), count: 2 });
     // Tomorrow it's back.

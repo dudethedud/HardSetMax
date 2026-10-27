@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { usableProviders, type ProviderState } from './ai/chain.js';
-import { checkColourRequest, isVeteran, treatLine, treatTargetError, TREAT_LINES, VIP_AI_RESERVE } from './vipExtras.js';
+import { checkColourRequest, formatTreatPost, isVeteran, treatLine, treatTargetError, TREAT_LINES, VIP_AI_RESERVE } from './vipExtras.js';
 
 describe('VIP extras', () => {
   it('veteran after 14 days in a row', () => {
@@ -33,5 +33,13 @@ describe('VIP extras', () => {
     expect(usableProviders([p], (x) => x.used, now, VIP_AI_RESERVE)).toEqual([]);
     expect(usableProviders([p], (x) => x.used, now)).toEqual([p]);
     expect(usableProviders([{ ...p, used: 79 }], (x) => x.used, now, VIP_AI_RESERVE)).toHaveLength(1);
+  });
+
+  it('the daily treats post lists every treat and stays under 2000 characters', () => {
+    expect(formatTreatPost([{ giverId: '1', receiverId: '2' }], 'arf!')).toBe("🦴 **Today's treats** (1)\n• <@1> → <@2>\nCarter: arf!");
+    const many = Array.from({ length: 200 }, (_, i) => ({ giverId: `10000000000000000${i}`, receiverId: `20000000000000000${i}` }));
+    const post = formatTreatPost(many, 'arf!');
+    expect(post.length).toBeLessThanOrEqual(2000);
+    expect(post).toMatch(/• …\n• <@10000000000000000199>/);
   });
 });
