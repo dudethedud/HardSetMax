@@ -95,7 +95,7 @@ Five commands, all guild-only and replying privately unless they post on purpose
 ## Member perks (buttons in the VIP lounge)
 | Who | Perk |
 |---|---|
-| VIPs | Colour picker, VIP polls, own temporary voice channel, **🪪 My profile** (rank, score, where you stand, badges, weeks held), **📣 Shoutout** (once a day, posted in main chat by the bot, no pings), a spot on the public **#vip-board**, and a ⭐ role icon at Boost Level 2 |
+| VIPs | Colour picker, VIP polls, own temporary voice channel, **🪪 My profile** (rank, score, where you stand, badges, weeks held), **📣 Shoutout** (once a day, posted in main chat by the bot, no pings), a spot on the public **#vip-board**, a ⭐ role icon at Boost Level 2, **🦴 a daily treat** to give anyone, **🎨 colour suggestions** (staff approve), **💎 Veteran** after 14 days in a row (second daily shoutout), and AI replies first when Carter is busy |
 | The Crown | Everything above, plus: a custom role, a **👑 nickname** for the week, **🎖️ Titles** for anyone but staff and bots, reset weekly, each with a job: 🛡️ Champion gets a guest VIP pass (colours, shoutout, polls, VIP voice, the lounge), 📜 Advisor posts VIP polls and gets the daily shoutout, 🃏 Jester sets the bot's status and makes it do a trick in main chat (once a day each). Title holders find their buttons under **🎖️ Titles & perks** on #vip-board, one **📜 Decree** a week in announcements (no pings), and a **👑 Hall** voice channel with Priority Speaker and Move Members |
 
 ## Development

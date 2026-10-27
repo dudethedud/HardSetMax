@@ -12,11 +12,14 @@ export interface ProviderState {
   hasKey: boolean;
 }
 
-/** Providers to try for this request, in order: enabled, keyed, under cap, not cooling down. */
-export function usableProviders<P extends ProviderState>(providers: readonly P[], usedToday: (p: P) => number, now: Date): P[] {
+/**
+ * Providers to try for this request, in order: enabled, keyed, under cap, not cooling down.
+ * `reserve` (0–1) is the share of each cap kept back for others (VIPs): this request can't use it.
+ */
+export function usableProviders<P extends ProviderState>(providers: readonly P[], usedToday: (p: P) => number, now: Date, reserve = 0): P[] {
   return [...providers]
     .sort((a, b) => a.order - b.order)
-    .filter((p) => p.enabled && p.hasKey && usedToday(p) < p.dailyCap && (!p.cooldownUntil || p.cooldownUntil <= now));
+    .filter((p) => p.enabled && p.hasKey && usedToday(p) < Math.ceil(p.dailyCap * (1 - reserve)) && (!p.cooldownUntil || p.cooldownUntil <= now));
 }
 
 /** The provider's own day, for counting usage against its daily cap. */

@@ -4,6 +4,7 @@
 // after VIP and Crown changes (and hourly, to keep the numbers fresh).
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { TITLE_SLOTS } from '../core/perks.js';
+import { isVeteran } from '../core/vipExtras.js';
 import type { ConfigStore } from '../config/configStore.js';
 import { formatScore } from '../core/reshuffle.js';
 import { serverDayAt, serverDaysBetween } from '../core/serverDay.js';
@@ -42,7 +43,7 @@ export function vipBoardPanel(deps: { db: Db; config: ConfigStore; vip: VipServi
       const vipLines = vips.map(([id, v]) => {
         const days = serverDaysBetween(v.since, today.key);
         const badge = topBadge.get(id);
-        return `${id === cur?.userId ? '👑' : '⭐'} <@${id}> · ${days} day${days === 1 ? '' : 's'}${badge ? ` · 🏅 ${badge.name}` : ''}${v.pinned ? ' · 📌' : ''}`;
+        return `${id === cur?.userId ? '👑' : '⭐'} <@${id}> · ${days} day${days === 1 ? '' : 's'}${isVeteran(days) ? ' · 💎 Veteran' : ''}${badge ? ` · 🏅 ${badge.name}` : ''}${v.pinned ? ' · 📌' : ''}`;
       });
       const order = ['champion', 'advisor', 'jester'];
       const titleLines = titles

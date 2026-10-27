@@ -361,6 +361,10 @@ All through buttons on the lounge panel. Member-written text the bot posts (shou
 - **🪪 My profile:** a private card with rank, score, active days, where they stand (points ahead of the first rank past the buffer, or points to reach the last VIP slot), VIP days, weeks held, badges, polls today, shoutout used or not, and their title.
 - **📣 Shoutout:** once per server-day, a short message (200 characters) posted by the bot in main chat (or announcements if main chat isn't set). No pings.
 - **⭐ VIP role icon** when the server is Boost Level 2 or higher.
+- **🦴 Treat:** once per server-day, give a treat to any member (not yourself or a bot) from a member picker. The bot announces it in main chat (no pings). Treats received show on the profile card (this week and all time) and the weekly recap names who got the most. Cosmetic: never changes scores.
+- **💎 Veteran:** VIP for 14+ server-days in a row: marked on the VIP board and profile, and a second shoutout each server-day.
+- **🎨 Suggest a colour:** a form (name, two hex colours, checked like the others: readable, a new name, no blocked words) posts to the mod-log with **Approve** / **Decline** buttons (staff, fixed IDs). Approving adds it like `/settings colour add` and makes its role. One open request per VIP and one per 7 days; only the first staff click counts.
+- **🐶 Carter favours VIPs:** VIPs get twice the per-person AI reply limit, and the last 20% of each provider's daily cap is kept for VIPs (others get the pre-written replies once it's reached).
 
 **The Crown** (in addition to the custom role, §6)
 - **👑 nickname:** "👑 Name" while they hold the Crown; their old nickname comes back when it ends (unless they renamed themselves since). Skipped for the server owner and anyone above the bot.

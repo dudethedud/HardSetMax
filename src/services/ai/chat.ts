@@ -13,6 +13,7 @@ import { buildChatMessages, buildHypeMessages, buildWelcomeMessages, type AskerS
 import { extractStrike, reachedStrikeLimit, STRIKE_WINDOW_MS } from '../../core/ai/strikes.js';
 import { allowReply, containsBlockedWord, hypeLineOrNull, sanitizeAiText } from '../../core/ai/text.js';
 import { isFiltered, type MessageOutcome } from '../../core/messageRules.js';
+import { VIP_AI_LIMIT_FACTOR } from '../../core/vipExtras.js';
 import { serverDayAt, serverDaysBetween } from '../../core/serverDay.js';
 import { loadStandings, namesFor } from '../../db/activityRepo.js';
 import type { Db } from '../../db/prisma.js';
@@ -75,7 +76,9 @@ export class ChatService {
     if (!isOwner && (await this.db.aiBlock.findUnique({ where: { userId } }))) return skipped('blacklisted (/bot ai-blacklist)');
     const now = Date.now();
     const recent = (this.#recent.get(userId) ?? []).filter((t) => t > now - 60_000);
-    if (!allowReply(recent, now, this.config.current.guild.aiPerUserLimit)) {
+    // Carter favours VIPs (owner-approved): a higher per-person limit, and a share of the daily AI cap kept for them.
+    const isVip = this.vip.vips.has(userId);
+    if (!allowReply(recent, now, this.config.current.guild.aiPerUserLimit * (isVip ? VIP_AI_LIMIT_FACTOR : 1))) {
       await message.react('👀').catch(() => undefined);
       return;
     }
@@ -132,7 +135,7 @@ export class ChatService {
       return { text: null, strike: false };
     }
     const messages = buildChatMessages({ ...this.prompts, stats, info: await this.#publicInfo(), history });
-    const res = await this.ai.complete(messages, { count });
+    const res = await this.ai.complete(messages, { count, priority: stats.isVip || !count });
     if (!res) {
       if (count) await this.ai.recordFallback();
       return { text: null, strike: false };
