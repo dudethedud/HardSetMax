@@ -37,6 +37,8 @@ export interface ReshuffleInput {
   candidates: readonly Candidate[];
   currentVips: readonly CurrentVip[];
   pinned: ReadonlySet<string>;
+  /** VIPs who can't be dropped this time for rank or inactivity (the Crown's pardon). Still removed if ineligible. */
+  protectedIds?: ReadonlySet<string>;
   config: ReshuffleConfig;
 }
 
@@ -88,7 +90,7 @@ export function isInactive(c: Pick<Candidate, 'lastActiveDay'>, today: string, d
   return c.lastActiveDay === null || c.lastActiveDay < addServerDays(today, -days);
 }
 
-export function computeReshuffle({ today, candidates, currentVips, pinned, config }: ReshuffleInput): ReshuffleResult {
+export function computeReshuffle({ today, candidates, currentVips, pinned, protectedIds = new Set(), config }: ReshuffleInput): ReshuffleResult {
   const vipIds = new Set(currentVips.map((v) => v.userId));
   const byId = new Map(candidates.map((c) => [c.userId, c]));
   const ranked = rankCandidates(candidates, vipIds);
@@ -107,6 +109,7 @@ export function computeReshuffle({ today, candidates, currentVips, pinned, confi
     else if (pinned.has(vip.userId)) kept.push(vip.userId);
     // Step 2: forced removals.
     else if (eligibility !== 'eligible') remove(vip.userId, { kind: 'ineligible', eligibility });
+    else if (protectedIds.has(vip.userId)) kept.push(vip.userId);
     else if (isInactive(c!, today, config.inactivityDays)) remove(vip.userId, { kind: 'inactive', days: config.inactivityDays });
     // Step 3: rank removals, only below the buffer and after the minimum hold.
     else if ((rankOf.get(vip.userId) ?? Infinity) > config.slots + config.buffer && serverDaysBetween(vip.since, today) >= config.minHoldDays) {

@@ -31,6 +31,11 @@ export const CROWN_CREATE_ID = 'crown:create-role';
 export const CROWN_EDIT_ID = 'crown:edit-role';
 export const CROWN_TITLES_ID = 'crown:titles';
 export const CROWN_DECREE_ID = 'crown:decree';
+export const CROWN_PARDON_ID = 'crown:pardon';
+export const CROWN_MOOD_ID = 'crown:mood';
+export const CROWN_SPOTLIGHT_ID = 'crown:spotlight';
+export const CROWN_THEME_ID = 'crown:theme';
+export const CROWN_RAINBOW_ID = 'crown:rainbow';
 export const VIP_PROFILE_ID = 'vip:profile';
 export const VIP_SHOUTOUT_ID = 'vip:shoutout';
 export const VIP_TREAT_ID = 'vip:treat';
@@ -65,6 +70,8 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             '• Your own custom role and a 👑 in front of your name',
             '• Hand out three titles: 🛡️ Champion (guest VIP pass), 📜 Advisor (polls + shoutout), 🃏 Jester (bot status + tricks)',
             '• One 📜 decree a week in announcements',
+            '• 🛡️ Pardon one VIP a week (safe at the next reshuffle), 🎭 pick Carter’s mood, 📌 spotlight someone on the board (daily), 🎵 set the theme of the week',
+            '• 🌈 Rainbow speech once a week: someone’s messages get rainbow flair for 10 minutes (not staff)',
             '• Your own hall: a voice channel with Priority Speaker',
             '',
             'Use the buttons below for your perks. Chat with the other VIPs in the lounge chat channel.',
@@ -98,7 +105,14 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             ),
           ]
         : [];
-      return { embeds: [embed], components: [...colourRows, vipRow, crownRow] };
+      const crownRow2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(CROWN_PARDON_ID).setLabel('Pardon').setEmoji('🛡️').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(CROWN_MOOD_ID).setLabel("Carter's mood").setEmoji('🎭').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(CROWN_SPOTLIGHT_ID).setLabel('Spotlight').setEmoji('📌').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(CROWN_THEME_ID).setLabel('Theme').setEmoji('🎵').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(CROWN_RAINBOW_ID).setLabel('Rainbow speech').setEmoji('🌈').setStyle(ButtonStyle.Secondary),
+      );
+      return { embeds: [embed], components: [...colourRows, vipRow, crownRow, crownRow2] };
     },
   };
 }

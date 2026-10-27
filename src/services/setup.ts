@@ -50,6 +50,8 @@ export const BOT_PERMISSIONS = [
   PermissionFlagsBits.ManageNicknames,
   PermissionFlagsBits.PrioritySpeaker,
   PermissionFlagsBits.MoveMembers,
+  // The 🌈 speech filter reposts through a webhook.
+  PermissionFlagsBits.ManageWebhooks,
   // Discord only lets the bot give the VIP role permissions it has itself.
   ...VIP_PERMISSIONS,
 ];

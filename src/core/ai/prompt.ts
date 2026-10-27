@@ -51,9 +51,12 @@ export function buildChatMessages(opts: {
   stats: AskerStats;
   info: PublicInfo;
   history: readonly ChatTurn[];
+  /** The Crown's pick for the week: one of the fixed mood instructions (core/crownExtras.ts). */
+  mood?: string | null;
 }): ChatMessage[] {
   const system = [
     opts.personality.trim(),
+    ...(opts.mood ? ['', `## Your mood this week (picked by the Crown)`, opts.mood] : []),
     '',
     '## How the server works',
     opts.guide.trim(),

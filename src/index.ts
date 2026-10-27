@@ -32,6 +32,8 @@ import { DailyScheduler } from './services/scheduler.js';
 import { runSetup, VIP_PERMISSIONS } from './services/setup.js';
 import { JesterService } from './services/jester.js';
 import { TreatService } from './services/treats.js';
+import { CrownExtras } from './services/crownExtras.js';
+import { SpeechFilterService } from './services/speechFilter.js';
 import { ColourRequestService } from './services/colourRequests.js';
 import { createShutdown } from './services/shutdown.js';
 import { RESHUFFLE_JOB, VipService } from './services/vipService.js';
@@ -141,6 +143,19 @@ vip.onAdded.push(refreshBoardHook);
 vip.onRemoved.push(refreshBoardHook);
 vip.onReshuffled.push(refreshBoardHook);
 powers.onChange = refreshBoard;
+// Crown extras: the pardon protects a VIP at one reshuffle; the theme shows on the board and in the status.
+const crownExtras = new CrownExtras(client, env.GUILD_ID, db, config, crown, vip, modLog, clock);
+vip.protectedIds = () => crownExtras.protectedIds();
+vip.onReshuffled.push(() => crownExtras.afterReshuffle());
+jester.theme = () => crownExtras.theme();
+crownExtras.onChange = () => {
+  refreshBoard();
+  void jester.refreshPresence().catch(logErrors('bot status'));
+};
+crown.onAwarded.push(() => jester.refreshPresence());
+crown.onEnded.push(() => jester.refreshPresence());
+const speech = new SpeechFilterService(client, env.GUILD_ID, db, crown, modLog, clock, log);
+speech.skipChannel = (channelId) => channelId === config.current.guild.pollsChannelId;
 const scheduler = new DailyScheduler(config, clock, log, () => leader!.isHeld());
 scheduler.register(RESHUFFLE_JOB, (period) => vip.runReshuffle(RESHUFFLE_JOB, period));
 scheduler.register(POLL_UNLOCK_JOB, (period) => polls.runUnlockJob(period));
@@ -208,6 +223,8 @@ const ctx: AppContext = {
   jester,
   treats,
   colourRequests,
+  crownExtras,
+  speech,
   shoutouts,
   badges,
   polls,
@@ -258,6 +275,7 @@ client.once(Events.ClientReady, (c) => {
     await crown.reconcile();
     await powers.reconcile();
     await jester.restore();
+    await speech.load();
     await badges.reconcile();
     await tempVoice.start();
     await polls.reconcileLocks();
@@ -286,6 +304,7 @@ client.on(Events.MessageCreate, (message) => {
     const outcome = messages.handle(message);
     polls.handleMessage(message);
     chat.handle(message, outcome).catch(logErrors('AI chat'));
+    speech.handleMessage(message).catch(logErrors('speech filter'));
   } catch (err) {
     logErrors('message tracking')(err);
   }

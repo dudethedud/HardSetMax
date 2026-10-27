@@ -337,6 +337,7 @@ Five commands, all registered to the guild only and replying privately (ephemera
 | `/vip poll-unlock @user` | admin | Give someone their poll back for today (logged) |
 | `/vip crown-give @user` | admin | Give this week's Crown to a VIP now; the current holder loses it the usual way. Lasts until next week's award |
 | `/vip crown-reset @user` · `/vip crown-lock @user <locked>` | admin | Delete a custom role · block or allow custom roles |
+| `/vip rainbow @user` · `/vip rainbow-stop @user` | staff | 🌈 speech filter on for 10 minutes · stop it early |
 | `/settings view` · `/settings set <key> <value>` | admin | Slots, window, buffer, min hold, inactivity days, min score, day boundary, timezone, voice weight, daily voice cap, spam filter thresholds, polls daily cap, colours, AI per-user limit |
 | `/settings channel <purpose> <channel>` | admin | Announcements, mod-log, polls, main chat (AI and shoutouts), VIP board |
 | `/settings channel-weight <channel> <weight>` | admin | Set weight; `0` ignores the channel |
@@ -375,6 +376,12 @@ All through buttons on the lounge panel. Member-written text the bot posts (shou
   - Holders without the lounge use the **🎖️ Titles & perks** button on #vip-board, which also tells anyone what titles, VIP and the Crown do.
   - The roles give no moderation permissions, but they stand out: its own group in the member list, its own name colour (orange, teal, purple) and a role icon (🛡️ 📜 🃏) at Boost Level 2. The 👑 Crown role gets a 👑 icon too. Not for bots, staff or themselves; one title per person. All titles end with the Crown week, or when the Crown is lost.
 - **📜 Decree:** one announcement per Crown week (500 characters) in the announcements channel, with no pings.
+- **🛡️ Royal pardon:** once per Crown week, one current VIP (not themselves) can't be dropped for rank or inactivity at the next reshuffle (`protectedIds` in the reshuffle). They're still removed if they leave, become staff, are timed out or blocked. The pardon covers one reshuffle.
+- **🎭 Carter's mood:** pick one of a fixed list of moods (hyper, sleepy, dramatic, royal butler, pirate pup, poet) for his AI replies that week. Only the fixed instruction reaches the AI, never member text.
+- **📌 Spotlight:** once per server-day, feature one member (not a bot) on the VIP board with a short reason (80 characters, checked like shoutouts).
+- **🎵 Theme of the week:** a short theme (60 characters, checked like shoutouts, changeable once a day) shown on the VIP board and as the bot's status when the Jester hasn't set one. Not given to the AI.
+- **🌈 Rainbow speech:** once per Crown week (staff: any time with `/vip rainbow`), for 10 minutes one member's plain-text messages are reposted through a webhook under their name and avatar with a 🌈 added to the name, with rainbow flair (a few word swaps and sparkles; mentions, links and meaning stay; nothing pings), and the original deleted. Never on staff, the owner or bots; not in #polls; skips attachments, stickers, polls and messages to the bot. Every use goes to the mod-log with a staff Stop button. Message text is only changed in memory; only who and until when is saved. Needs Manage Webhooks.
+- Spotlight, theme, mood and the pardon live on the Crown's row, so they end with the Crown.
 - **👑 Hall:** their temporary voice channel is called "👑 Name's Hall" and gives them Priority Speaker and Move Members in it.
 
 ---
