@@ -19,7 +19,7 @@ import type { Logger } from '../logger.js';
 import type { Panels } from './panels.js';
 import { explainRoleError, placeNextTo } from './roleQueue.js';
 import { findExistingChannel, findExistingRole } from './reuse.js';
-import { arrangeRoles } from './roleLayout.js';
+import { arrangeRoles, rolesCoveringVip } from './roleLayout.js';
 import { autoConfigure, homeCategoryId, unblockVipPerks } from './autoSetup.js';
 import type { VipService } from './vipService.js';
 
@@ -266,6 +266,12 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
   // Every bot role together, in order, around VIP.
   const order = await arrangeRoles(guild, db, config.current.guild);
   report.push(order ? `⚠️ Couldn't put the bot's roles in order: ${order}` : '✅ Bot roles in order: colours, Crown and titles above VIP; Polls and badges below');
+  const covering = await rolesCoveringVip(guild, db, config.current.guild).catch(() => []);
+  if (covering.length) {
+    report.push(
+      `⚠️ ${covering.length} coloured role(s) sit above VIP (${covering.slice(0, 5).join(', ')}${covering.length > 5 ? ', …' : ''}), so VIPs with them won't show their VIP colour. Set \`/settings role action:level-top\` to the highest of them (**${covering[0]}**) and run /bot setup again.`,
+    );
+  }
   report.push(...(await panels.ensureAll()));
   const drift = await vip.reconcile();
   if (drift.added || drift.removed) report.push(`🔧 VIP roles fixed: ${drift.added} restored, ${drift.removed} removed`);

@@ -1,7 +1,13 @@
 // Finding roles and channels that already exist (so /bot setup reuses them instead
 // of making duplicates), and checking a role can be bound to a bot function. Pure.
 
-const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+/** Ignores case, spacing and decorations: "Polls ⸝⸝" and "👑 Crown" match "Polls" and "Crown". */
+const norm = (s: string) =>
+  s
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .toLowerCase();
 
 /** The first item whose name matches one of `names` (ignoring case and spacing), skipping `skip`. */
 export function pickByName<T extends { name: string }>(items: Iterable<T>, names: readonly string[], skip: (item: T) => boolean = () => false): T | undefined {

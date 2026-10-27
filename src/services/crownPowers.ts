@@ -238,7 +238,7 @@ export class CrownPowers {
         let role = title.roleId ? guild.roles.cache.get(title.roleId) : undefined;
         if (!role) {
           const plain = title.name.replace(/^\S+\s+/, ''); // "Champion" for "🛡️ Champion"
-          role = await findExistingRole(guild, this.db, this.config.current.guild, [title.name, plain]);
+          role = await findExistingRole(guild, this.db, this.config.current.guild, [title.name, plain], { unusedOnly: true });
           if (role) await this.db.crownTitle.update({ where: { slot: title.slot }, data: { roleId: role.id, name: role.name } });
         }
         if (role) await role.edit({ name: role.id === title.roleId ? title.name : role.name, permissions: [], mentionable: false, reason: '/bot setup' });

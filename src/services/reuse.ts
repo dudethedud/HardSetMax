@@ -34,20 +34,28 @@ export async function rolesInUse(db: Db, cfg: GuildConfig): Promise<Set<string>>
  * An existing role with one of these names the bot can take over, if any. By
  * default only roles with no permissions qualify (every role the bot makes has
  * none), so a same-named role that does something else is never taken over.
+ * `unusedOnly` also skips roles anyone has.
  */
 export async function findExistingRole(
   guild: Guild,
   db: Db,
   cfg: GuildConfig,
   names: readonly string[],
-  { allowPermissions = false } = {},
+  { allowPermissions = false, unusedOnly = false } = {},
 ): Promise<Role | undefined> {
   const used = await rolesInUse(db, cfg);
   const botTop = (guild.members.me ?? (await guild.members.fetchMe())).roles.highest;
   return pickByName(
     guild.roles.cache.values(),
     names,
-    (r) => r.managed || r.id === guild.id || used.has(r.id) || r.position >= botTop.position || (!allowPermissions && r.permissions.bitfield !== 0n),
+    (r) =>
+      r.managed ||
+      r.id === guild.id ||
+      used.has(r.id) ||
+      r.position >= botTop.position ||
+      (!allowPermissions && r.permissions.bitfield !== 0n) ||
+      // Colour, badge and title roles are given and taken by the bot: never take over one people already have.
+      (unusedOnly && r.members.size > 0),
   );
 }
 
