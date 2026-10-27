@@ -51,6 +51,11 @@ export class ActivityBuffer {
   }
 
   /** Writes everything pending. Concurrent calls share one write. */
+  /** Drops counts not saved yet (for /bot fresh-start, which wipes activity). */
+  discard(): void {
+    this.#pending.clear();
+  }
+
   flush(db: Db): Promise<void> {
     this.#flushing ??= this.#flush(db).finally(() => {
       this.#flushing = null;

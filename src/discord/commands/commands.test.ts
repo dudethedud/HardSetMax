@@ -27,6 +27,8 @@ describe('registered commands', () => {
       expect(command('vip').levelFor(sub, null)).toBe('admin');
     }
     expect(command('bot').levelFor('health', null)).toBe('staff');
+    expect(command('bot').levelFor('fresh-start', null)).toBe('owner');
+    expect(command('vip').levelFor('board-reset', null)).toBe('admin');
     expect(command('bot').levelFor('help', null)).toBe('staff');
     for (const sub of ['setup', 'ai', 'ai-blacklist', 'ai-provider']) expect(command('bot').levelFor(sub, null)).toBe('admin');
     expect(command('settings').levelFor('role', null)).toBe('admin');
@@ -35,8 +37,8 @@ describe('registered commands', () => {
 
   it('every subcommand is registered', () => {
     const subs = (name: string) => (command(name).data.options ?? []).map((o) => o.name).sort();
-    expect(subs('vip')).toEqual(['adjust', 'crown', 'crown-give', 'crown-lock', 'crown-reset', 'list', 'pin', 'poll-unlock', 'polls', 'preview', 'rainbow', 'rainbow-stop', 'remove', 'reshuffle', 'unblock', 'unpin']);
+    expect(subs('vip')).toEqual(['adjust', 'board-reset', 'crown', 'crown-give', 'crown-lock', 'crown-reset', 'list', 'pin', 'poll-unlock', 'polls', 'preview', 'rainbow', 'rainbow-stop', 'remove', 'reshuffle', 'unblock', 'unpin']);
     expect(subs('settings')).toEqual(['badge', 'blocked-word', 'channel', 'channel-weight', 'colour', 'role', 'set', 'view']);
-    expect(subs('bot')).toEqual(['ai', 'ai-blacklist', 'ai-provider', 'health', 'help', 'setup']);
+    expect(subs('bot')).toEqual(['ai', 'ai-blacklist', 'ai-provider', 'fresh-start', 'health', 'help', 'setup']);
   });
 });

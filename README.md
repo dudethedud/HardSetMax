@@ -59,6 +59,8 @@ Five commands, all guild-only and replying privately unless they post on purpose
 | `/vip poll-unlock user` | admin | One more poll for a VIP today |
 | `/vip crown-give user` | admin | Give this week's Crown to a VIP now (for testing or fixing a mistake); the current holder loses it |
 | `/vip crown-reset user` · `/vip crown-lock user locked` | admin | Delete a custom role · block or allow custom roles for someone |
+| `/vip board-reset` | admin | Restart this week's points on #vip-board from 0 now (VIP scores and last week's final don't change; normal again next Monday) |
+| `/bot fresh-start server-name` | owner | Wipe activity and VIP history and start over, e.g. after moving the bot to another server. Keeps settings, roles, channels, colours and AI setup. Type the server's name, then confirm within 5 minutes. Can't be undone |
 | `/vip rainbow user` · `/vip rainbow-stop user` | staff | Turn the 🌈 speech filter on for someone for 10 minutes (not staff or the owner) · stop it early (the mod-log entry also has a Stop button) |
 | `/settings view` · `/settings set key value` | admin | Every setting · change one: timezone, day-boundary, window, cooldowns, voice, spam filter, slots, buffer, min-hold, inactivity-days, min-score, timeout-days, colours, polls-daily-cap, ai-per-user-limit |
 | `/settings channel purpose channel` | admin | Announcements, mod-log, polls, main-chat (AI and shoutouts) or vip-board channel |

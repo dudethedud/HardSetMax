@@ -2,7 +2,8 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, userMention, type SlashCo
 import { moodByKey } from '../../core/crownExtras.js';
 import { describeAdd, describeRemove, formatScore } from '../../core/reshuffle.js';
 import { serverDayAt, serverDaysBetween } from '../../core/serverDay.js';
-import { todayKey } from '../../db/activityRepo.js';
+import { resetWeeklyBoard, todayKey } from '../../db/activityRepo.js';
+import { VIP_BOARD } from '../../services/vipBoard.js';
 import { RESHUFFLE_CANCEL_ID, RESHUFFLE_CONFIRM_ID } from '../buttons.js';
 import { defineCommand } from './types.js';
 
@@ -52,6 +53,7 @@ export const vipCommand = defineCommand({
           .setDescription('Admin: give a VIP one more poll today (works even past the daily limit)')
           .addUserOption((o) => o.setName('user').setDescription('VIP').setRequired(true)),
       )
+      .addSubcommand((s) => s.setName('board-reset').setDescription("Admin: restart this week's points on #vip-board from 0 now (VIP scores don't change)"))
       .addSubcommand((s) => s.setName('rainbow').setDescription('🌈 Rainbow flair on someone’s messages for 10 minutes (not staff)').addUserOption(member))
       .addSubcommand((s) => s.setName('rainbow-stop').setDescription('Stop the 🌈 speech filter for someone').addUserOption(member))
       .addSubcommand((s) => s.setName('crown-give').setDescription('Admin: give this week’s Crown to a VIP now (e.g. for testing)').addUserOption(member))
@@ -110,6 +112,17 @@ export const vipCommand = defineCommand({
         content: 'This applies VIP changes and posts the VIP update now. The daily reshuffle still runs at the boundary as usual. Use `/vip preview` to see what would change.',
         components: [row],
       });
+      return;
+    }
+
+    if (sub === 'board-reset') {
+      // Count everything so far first, so it lands in the baseline and not in the new week.
+      await ctx.activity.flush(ctx.db);
+      await resetWeeklyBoard(ctx.db, ctx.config.current, interaction.guildId, actor, now);
+      await ctx.config.load();
+      await ctx.panels.refresh(VIP_BOARD);
+      await ctx.modLog.post(`📈 <@${actor}> restarted this week's points on the VIP board`);
+      await interaction.editReply("✅ This week's points restart from 0 now. Last week's final and VIP scores are unchanged. It goes back to normal next Monday.");
       return;
     }
 

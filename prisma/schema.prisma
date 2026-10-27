@@ -15,6 +15,8 @@ datasource db {
 // One row per Discord server. Later phases add their settings here.
 model GuildConfig {
   guildId     String   @id
+  // /vip board-reset: this week's board counts from this server-day (minus WeeklyBaseline).
+  weeklyFrom  String?
   // IANA timezone for the server-day boundary (SPEC §2).
   timezone    String   @default("America/Edmonton")
   // Local time of day ("HH:mm") when a server-day starts.
@@ -494,4 +496,11 @@ model TreatPost {
   serverDay String @id
   channelId String
   messageId String
+}
+
+// Points each member already had on the day of a /vip board-reset, so this week's
+// board starts everyone at 0 mid-day. Only used while weeklyFrom is this week.
+model WeeklyBaseline {
+  userId String @id
+  score  Float
 }
