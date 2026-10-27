@@ -27,6 +27,9 @@ export class JesterService {
     private readonly random: () => number = Math.random,
   ) {}
 
+  /** The Crown's theme of the week, shown when no Jester status is set (crownExtras.ts). */
+  theme: () => Promise<string | null> = () => Promise.resolve(null);
+
   #day() {
     return serverDayAt(this.clock.now(), this.config.current.boundary);
   }
@@ -64,7 +67,7 @@ export class JesterService {
     if (!clean.ok) return `❌ ${clean.error}`;
     if (!(await this.#claim(userId, 'status'))) return "🃏 You've already set the status today.";
     await this.db.botStatus.upsert({ where: { id: STATUS_ID }, create: { id: STATUS_ID, text: clean.text, setById: userId }, update: { text: clean.text, setById: userId, setAt: this.clock.now() } });
-    this.#show(clean.text);
+    await this.refreshPresence();
     await this.modLog.post(`🃏 <@${userId}> (Jester) set the bot's status: "${clean.text}"`);
     return `✅ Puppyboy Carter's status is now: **${clean.text}**`;
   }
@@ -93,18 +96,27 @@ export class JesterService {
     this.client.user?.setPresence({ activities: text ? [{ name: 'Custom Status', state: text, type: ActivityType.Custom }] : [] });
   }
 
+  /** The bot's status: the Jester's if set, else the Crown's theme of the week, else none. */
+  async refreshPresence(): Promise<void> {
+    const status = await this.db.botStatus.findUnique({ where: { id: STATUS_ID } });
+    if (status) return this.#show(status.text);
+    const theme = await this.theme().catch(() => null);
+    this.#show(theme ? `🎵 Theme of the week: ${theme}` : null);
+  }
+
   /** Title hook: the status goes when the Jester who set it loses the title. */
   async onTitleLost(userId: string): Promise<void> {
     const { count } = await this.db.botStatus.deleteMany({ where: { id: STATUS_ID, setById: userId } });
-    if (count) this.#show(null);
+    if (count) await this.refreshPresence();
   }
 
   /** Startup: show the saved status if its Jester still holds the title. */
   async restore(): Promise<void> {
     const status = await this.db.botStatus.findUnique({ where: { id: STATUS_ID } });
-    if (!status) return;
-    await this.powers.titles();
-    if (this.powers.titleOf(status.setById) === 'jester') this.#show(status.text);
-    else await this.onTitleLost(status.setById);
+    if (status) {
+      await this.powers.titles();
+      if (this.powers.titleOf(status.setById) !== 'jester') return this.onTitleLost(status.setById);
+    }
+    await this.refreshPresence();
   }
 }

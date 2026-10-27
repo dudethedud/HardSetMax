@@ -59,6 +59,7 @@ Five commands, all guild-only and replying privately unless they post on purpose
 | `/vip poll-unlock user` | admin | One more poll for a VIP today |
 | `/vip crown-give user` | admin | Give this week's Crown to a VIP now (for testing or fixing a mistake); the current holder loses it |
 | `/vip crown-reset user` · `/vip crown-lock user locked` | admin | Delete a custom role · block or allow custom roles for someone |
+| `/vip rainbow user` · `/vip rainbow-stop user` | staff | Turn the 🌈 speech filter on for someone for 10 minutes (not staff or the owner) · stop it early (the mod-log entry also has a Stop button) |
 | `/settings view` · `/settings set key value` | admin | Every setting · change one: timezone, day-boundary, window, cooldowns, voice, spam filter, slots, buffer, min-hold, inactivity-days, min-score, timeout-days, colours, polls-daily-cap, ai-per-user-limit |
 | `/settings channel purpose channel` | admin | Announcements, mod-log, polls, main-chat (AI and shoutouts) or vip-board channel |
 | `/settings channel-weight channel weight` | admin | How much a channel's messages count (0 ignores it) |
@@ -96,7 +97,7 @@ Five commands, all guild-only and replying privately unless they post on purpose
 | Who | Perk |
 |---|---|
 | VIPs | Colour picker, VIP polls, own temporary voice channel, **🪪 My profile** (rank, score, where you stand, badges, weeks held), **📣 Shoutout** (once a day, posted in main chat by the bot, no pings), a spot on the public **#vip-board**, a ⭐ role icon at Boost Level 2, **🦴 a daily treat** to give anyone, **🎨 colour suggestions** (staff approve), **💎 Veteran** after 14 days in a row (second daily shoutout), and AI replies first when Carter is busy |
-| The Crown | Everything above, plus: a custom role, a **👑 nickname** for the week, **🎖️ Titles** for anyone but staff and bots, reset weekly, each with a job: 🛡️ Champion gets a guest VIP pass (colours, shoutout, polls, VIP voice, the lounge), 📜 Advisor posts VIP polls and gets the daily shoutout, 🃏 Jester sets the bot's status and makes it do a trick in main chat (once a day each). Title holders find their buttons under **🎖️ Titles & perks** on #vip-board, one **📜 Decree** a week in announcements (no pings), and a **👑 Hall** voice channel with Priority Speaker and Move Members |
+| The Crown | Everything above, plus: a custom role, a **👑 nickname** for the week, **🎖️ Titles** for anyone but staff and bots, reset weekly, each with a job: 🛡️ Champion gets a guest VIP pass (colours, shoutout, polls, VIP voice, the lounge), 📜 Advisor posts VIP polls and gets the daily shoutout, 🃏 Jester sets the bot's status and makes it do a trick in main chat (once a day each). Title holders find their buttons under **🎖️ Titles & perks** on #vip-board, one **📜 Decree** a week in announcements (no pings), a weekly **🛡️ Pardon** (one VIP can't be dropped at the next reshuffle), **🎭 Carter's mood** for the week, a daily **📌 Spotlight** on the VIP board, a **🎵 Theme of the week** (board and bot status), one **🌈 Rainbow speech** a week (someone's messages get rainbow flair for 10 minutes; not staff), and a **👑 Hall** voice channel with Priority Speaker and Move Members |
 
 ## Development
 - **Stack:** TypeScript (strict), Node 22, discord.js 14, Prisma 7 + PostgreSQL, Vitest, pino, zod.

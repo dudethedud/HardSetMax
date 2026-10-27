@@ -98,6 +98,9 @@ export class VipService {
     return this.#vips;
   }
 
+  /** VIPs the next reshuffle can't drop (the Crown's pardon, set by crownExtras.ts). */
+  protectedIds: () => Promise<ReadonlySet<string>> = () => Promise.resolve(new Set<string>());
+
   /** Perks a non-VIP has from a Crown title (set by crownPowers.ts). */
   guestPerks: (userId: string) => ReadonlySet<Perk> = () => NO_PERKS;
 
@@ -170,6 +173,7 @@ export class VipService {
         candidates,
         currentVips: [...this.#vips].map(([userId, v]) => ({ userId, since: v.since })),
         pinned: new Set([...this.#vips].filter(([, v]) => v.pinned).map(([id]) => id)),
+        protectedIds: await this.protectedIds(),
         config: cfg.reshuffle,
       },
     };

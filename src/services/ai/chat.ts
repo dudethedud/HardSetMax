@@ -14,6 +14,7 @@ import { extractStrike, reachedStrikeLimit, STRIKE_WINDOW_MS } from '../../core/
 import { allowReply, containsBlockedWord, hypeLineOrNull, sanitizeAiText } from '../../core/ai/text.js';
 import { isFiltered, type MessageOutcome } from '../../core/messageRules.js';
 import { VIP_AI_LIMIT_FACTOR } from '../../core/vipExtras.js';
+import { moodByKey } from '../../core/crownExtras.js';
 import { serverDayAt, serverDaysBetween } from '../../core/serverDay.js';
 import { loadStandings, namesFor } from '../../db/activityRepo.js';
 import type { Db } from '../../db/prisma.js';
@@ -134,7 +135,8 @@ export class ChatService {
       if (count) await this.ai.recordFallback();
       return { text: null, strike: false };
     }
-    const messages = buildChatMessages({ ...this.prompts, stats, info: await this.#publicInfo(), history });
+    const mood = moodByKey((await this.crown.current())?.mood)?.prompt ?? null;
+    const messages = buildChatMessages({ ...this.prompts, stats, info: await this.#publicInfo(), history, mood });
     const res = await this.ai.complete(messages, { count, priority: stats.isVip || !count });
     if (!res) {
       if (count) await this.ai.recordFallback();

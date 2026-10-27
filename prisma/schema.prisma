@@ -290,6 +290,19 @@ model CrownHolder {
   // The 👑 nickname prefix: their nickname before it, restored when the Crown ends.
   nickApplied Boolean @default(false)
   nickBefore  String?
+  // Crown extras (owner-approved). Pardon: one VIP protected at the next reshuffle, once a week.
+  pardonUserId String?
+  pardonAt     DateTime?
+  pardonUsed   Boolean   @default(false)
+  // Carter's mood for the week (a key from a fixed list) and the theme of the week.
+  mood         String?
+  theme        String?
+  // Spotlight: one member on the VIP board with a short reason, once a day.
+  spotlightId     String?
+  spotlightReason String?
+  spotlightAt     DateTime?
+  // The Crown's one 🌈 speech filter of the week.
+  rainbowAt    DateTime?
 }
 
 // The three titles the Crown holder can hand out for their week. Cosmetic only:
@@ -457,4 +470,15 @@ model ColourRequest {
   decidedAt DateTime?
 
   @@index([userId, createdAt])
+}
+
+// 🌈 speech filter: while active, the member's plain-text messages are reposted
+// with rainbow flair under their name (with a 🌈) and the original deleted.
+// Message text is only changed in memory, never saved.
+model SpeechFilter {
+  targetId  String   @id
+  byId      String
+  byCrown   Boolean
+  startedAt DateTime
+  until     DateTime
 }

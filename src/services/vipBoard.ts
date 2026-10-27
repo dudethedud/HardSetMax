@@ -59,6 +59,8 @@ export function vipBoardPanel(deps: { db: Db; config: ConfigStore; vip: VipServi
         )
         .addFields(
           { name: '👑 Crown of the week', value: cur ? `<@${cur.userId}> (since ${cur.weekStart})` : 'Nobody yet' },
+          ...(cur?.theme ? [{ name: '🎵 Theme of the week', value: cur.theme }] : []),
+          ...(cur?.spotlightId ? [{ name: '📌 Spotlight', value: `<@${cur.spotlightId}>${cur.spotlightReason ? `: ${cur.spotlightReason}` : ''}` }] : []),
           ...(titleLines.length ? [{ name: '🎖️ Appointed by the Crown', value: titleLines.join('\n') }] : []),
           { name: `VIPs (${vips.length}/${cfg.reshuffle.slots})`, value: vipLines.join('\n').slice(0, 1024) || 'No VIPs right now.' },
           { name: '🔥 Most active', value: top.join('\n') || 'No activity yet.' },

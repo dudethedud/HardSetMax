@@ -1,4 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, userMention, type SlashCommandUserOption } from 'discord.js';
+import { moodByKey } from '../../core/crownExtras.js';
 import { describeAdd, describeRemove, formatScore } from '../../core/reshuffle.js';
 import { serverDayAt, serverDaysBetween } from '../../core/serverDay.js';
 import { todayKey } from '../../db/activityRepo.js';
@@ -17,6 +18,8 @@ export const vipCommand = defineCommand({
     preview: 'staff',
     polls: 'staff',
     crown: 'staff',
+    rainbow: 'staff',
+    'rainbow-stop': 'staff',
   },
   build: (b) =>
     b
@@ -49,6 +52,8 @@ export const vipCommand = defineCommand({
           .setDescription('Admin: give a VIP one more poll today (works even past the daily limit)')
           .addUserOption((o) => o.setName('user').setDescription('VIP').setRequired(true)),
       )
+      .addSubcommand((s) => s.setName('rainbow').setDescription('🌈 Rainbow flair on someone’s messages for 10 minutes (not staff)').addUserOption(member))
+      .addSubcommand((s) => s.setName('rainbow-stop').setDescription('Stop the 🌈 speech filter for someone').addUserOption(member))
       .addSubcommand((s) => s.setName('crown-give').setDescription('Admin: give this week’s Crown to a VIP now (e.g. for testing)').addUserOption(member))
       .addSubcommand((s) => s.setName('crown-reset').setDescription('Admin: delete a custom role and its saved settings').addUserOption(member))
       .addSubcommand((s) =>
@@ -108,6 +113,12 @@ export const vipCommand = defineCommand({
       return;
     }
 
+    if (sub === 'rainbow' || sub === 'rainbow-stop') {
+      const user = interaction.options.getUser('user', true);
+      await interaction.editReply(sub === 'rainbow' ? await ctx.speech.start(actor, user.id, false) : await ctx.speech.stop(user.id, actor));
+      return;
+    }
+
     if (sub === 'polls') {
       await interaction.editReply(await ctx.polls.status());
       return;
@@ -126,6 +137,11 @@ export const vipCommand = defineCommand({
           custom?.roleId ? `Custom role: <@&${custom.roleId}> (${custom.hex}${custom.emoji ? ` ${custom.emoji}` : ''}), edits used this week: ${custom.editsWeek === cur.weekStart ? custom.editsCount : 0}/3` : 'No custom role yet.',
           custom?.locked ? '🔒 Custom roles are locked for them.' : '',
           cur.decreeAt ? `📜 Decree used <t:${Math.floor(cur.decreeAt.getTime() / 1000)}:R>` : '📜 Decree not used yet',
+          cur.pardonUserId ? `🛡️ Pardoned ${userMention(cur.pardonUserId)}${cur.pardonUsed ? ' (used)' : ' (for the next reshuffle)'}` : '🛡️ Pardon not used yet',
+          cur.mood ? `🎭 Carter's mood: ${moodByKey(cur.mood)?.label ?? cur.mood}` : '',
+          cur.theme ? `🎵 Theme: ${cur.theme}` : '',
+          cur.spotlightId ? `📌 Spotlight: ${userMention(cur.spotlightId)}` : '',
+          cur.rainbowAt ? `🌈 Speech filter used <t:${Math.floor(cur.rainbowAt.getTime() / 1000)}:R>` : '',
           ...(await ctx.powers.titles()).map((t) => `🎖️ ${t.name}: ${t.holderId ? userMention(t.holderId) : 'nobody'}`),
         ]
           .filter(Boolean)
