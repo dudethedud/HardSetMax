@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pino } from 'pino';
 import { Collection, PermissionFlagsBits, type Client } from 'discord.js';
 import { ConfigStore } from '../config/configStore.js';
+import type { Perk } from '../core/perks.js';
 import type { Candidate, ReshuffleResult } from '../core/reshuffle.js';
 import { createDb, type Db } from '../db/prisma.js';
 import type { Clock } from './clock.js';
@@ -10,6 +11,7 @@ import { CrownService } from './crown.js';
 import { CrownPowers } from './crownPowers.js';
 import type { ModLog } from './modLog.js';
 import type { RoleOp, RoleQueue } from './roleQueue.js';
+import { JesterService } from './jester.js';
 import { ShoutoutService } from './shoutouts.js';
 import type { VipService } from './vipService.js';
 
@@ -39,6 +41,8 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
       db.crownTitle.deleteMany(),
       db.customRole.deleteMany(),
       db.shoutout.deleteMany(),
+      db.perkUse.deleteMany(),
+      db.botStatus.deleteMany(),
       db.blockedWord.deleteMany(),
       db.staffRole.deleteMany(),
       db.jobRun.deleteMany(),
@@ -76,7 +80,7 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
         setNickname: (nick: string | null) => (nicks.set(uid, nick), Promise.resolve()),
       };
     };
-    type FakeRole = { id: string; name: string; managed: boolean; permissions: { bitfield: bigint }; position: number; members: Collection<string, unknown>; edit: () => Promise<unknown>; setPosition: () => Promise<unknown> };
+    type FakeRole = { id: string; name: string; managed: boolean; permissions: { bitfield: bigint }; given?: readonly bigint[]; position: number; members: Collection<string, unknown>; edit: (o?: { permissions?: readonly bigint[] }) => Promise<unknown>; setPosition: () => Promise<unknown> };
     const roles = new Collection<string, FakeRole>();
     let nextRole = 0;
     const addRole = (rid: string, position: number, name = `role ${rid}`) => {
@@ -89,7 +93,7 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
         get members() {
           return new Collection([...memberRoles].filter(([, s]) => s.has(rid)).map(([uid]) => [uid, {}]));
         },
-        edit: () => Promise.resolve(role),
+        edit: (o) => ((role.given = o?.permissions ?? role.given), Promise.resolve(role)),
         setPosition: () => Promise.resolve(role),
       };
       roles.set(rid, role);
@@ -103,7 +107,7 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
       ownerId: OWNER,
       premiumTier: 0,
       members: { me: { roles: { highest: botRole } }, cache: { get: member, has: (uid: string) => memberRoles.has(uid) }, fetch: (uid: string) => Promise.resolve(member(uid) ?? null) },
-      roles: { cache: roles, create: () => Promise.resolve(addRole(`90000000000000200${nextRole++}`, 10)) },
+      roles: { cache: roles, create: (o: { permissions?: readonly bigint[] }) => Promise.resolve(Object.assign(addRole(`90000000000000200${nextRole++}`, 10), { given: o.permissions })) },
     };
     const sent: { channelId: string; content: string; allowedMentions: unknown }[] = [];
     const channel = (channelId: string) => ({
@@ -114,7 +118,12 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
         return Promise.resolve({ id: `m${sent.length}`, url: `https://discord.com/m${sent.length}` });
       },
     });
-    const client = { guilds: { cache: new Map([[GUILD, guild]]) }, channels: { fetch: (cid: string) => Promise.resolve(channel(cid)) } } as unknown as Client;
+    const presence: unknown[] = [];
+    const client = {
+      guilds: { cache: new Map([[GUILD, guild]]) },
+      channels: { fetch: (cid: string) => Promise.resolve(channel(cid)) },
+      user: { setPresence: (p: unknown) => presence.push(p) },
+    } as unknown as Client;
     const queue = {
       run: (op: RoleOp) => {
         const set = memberRoles.get(op.userId);
@@ -127,14 +136,18 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
     const config = new ConfigStore(db, GUILD);
     await config.load();
     const crown = new CrownService(client, GUILD, db, config, queue, modLog, clock, log);
-    const powers = new CrownPowers(client, GUILD, db, config, crown, queue, modLog, clock, log);
+    const powers = new CrownPowers(client, GUILD, db, config, crown, queue, modLog, clock, log, [PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks]);
     crown.onAwarded.push((h, p) => powers.onAwarded(h, p));
     crown.onEnded.push((h, why, c) => powers.onEnded(h, why, c));
-    const vip = { vips: new Map((opts.vips ?? []).map((n) => [id(n), { since: '2026-10-20', pinned: false }])) } as unknown as VipService;
+    const vipMap = new Map((opts.vips ?? []).map((n) => [id(n), { since: '2026-10-20', pinned: false }]));
+    const vip = { vips: vipMap, hasPerk: (u: string, p: Perk) => vipMap.has(u) || powers.perksOf(u).has(p) } as unknown as VipService;
     const shoutouts = new ShoutoutService(client, db, config, vip, modLog, clock, log);
+    const jester = new JesterService(client, db, config, powers, modLog, clock, log, () => 0);
+    const titleChanges: string[] = [];
+    powers.onTitleChange.push((u, slot, gained) => (titleChanges.push(`${gained ? '+' : '-'}${slot}:${u}`), slot === 'jester' && !gained ? jester.onTitleLost(u) : Promise.resolve()));
     const report: string[] = [];
     await powers.setup(guild as never, {} as never, report);
-    return { crown, powers, shoutouts, memberRoles, nicks, sent, report };
+    return { crown, powers, shoutouts, jester, vip, roles, memberRoles, nicks, sent, presence, titleChanges, report };
   }
 
   const titleRole = async (slot: string) => (await db.crownTitle.findUnique({ where: { slot } }))!.roleId!;
@@ -279,5 +292,70 @@ describe.skipIf(!url)('VIP and Crown perks', () => {
     const t = await setup({ members: [1], vips: [1], failSend: true });
     expect(await t.shoutouts.post(id(1), 'hello')).toMatch(/Couldn't post/);
     expect((await t.shoutouts.access(id(1))).ok).toBe(true);
+  });
+
+  it('title jobs: the Champion gets a guest VIP pass, the Advisor polls and a shoutout, and they go with the title', async () => {
+    const t = await setup({ members: [1, 2, 3] });
+    await t.crown.afterReshuffle('2026-10-26', result([cand(1, 90)], [1]));
+    await t.powers.appoint(id(1), 'champion', id(2));
+    await t.powers.appoint(id(1), 'advisor', id(3));
+    expect((['colour', 'shoutout', 'voice', 'poll', 'lounge'] as const).every((p) => t.vip.hasPerk(id(2), p))).toBe(true);
+    expect(t.vip.hasPerk(id(3), 'poll') && t.vip.hasPerk(id(3), 'shoutout')).toBe(true);
+    expect(t.vip.hasPerk(id(3), 'colour') || t.vip.hasPerk(id(3), 'voice')).toBe(false);
+    expect(t.titleChanges).toEqual([`+champion:${id(2)}`, `+advisor:${id(3)}`]);
+    // The Advisor's shoutout isn't labelled as a VIP one.
+    expect(await t.shoutouts.post(id(3), 'hello')).toMatch(/posted/);
+    expect(t.sent.at(-1)!.content).toMatch(/^📣 \*\*Shoutout from/);
+
+    await t.powers.appoint(id(1), 'champion', null);
+    expect(t.vip.hasPerk(id(2), 'colour')).toBe(false);
+    expect(t.titleChanges.at(-1)).toBe(`-champion:${id(2)}`);
+    await t.crown.onVipRemoved(id(1), 'removed by an admin');
+    expect(t.vip.hasPerk(id(3), 'poll')).toBe(false);
+  });
+
+  it('the Champion role gets VIP’s chat perks (no moderation); other titles get none', async () => {
+    const t = await setup({ members: [1] });
+    expect(t.roles.get(await titleRole('champion'))!.given).toEqual([PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks]);
+    expect(t.roles.get(await titleRole('advisor'))!.given).toEqual([]);
+    expect(t.roles.get(await titleRole('jester'))!.given).toEqual([]);
+  });
+
+  it('the Jester sets the bot status and asks for a trick, once a day each; the status goes with the title', async () => {
+    const t = await setup({ members: [1, 2, 3] });
+    await t.crown.afterReshuffle('2026-10-26', result([cand(1, 90)], [1]));
+    expect(await t.jester.setStatus(id(2), 'hi')).toMatch(/Only the Jester/);
+    await t.powers.appoint(id(1), 'jester', id(2));
+    await db.blockedWord.create({ data: { word: 'badword' } });
+    expect(await t.jester.setStatus(id(2), 'b4dword town')).toMatch(/isn't allowed/);
+    expect(await t.jester.setStatus(id(2), 'chewing on   the <@100000000000000001> shoe')).toMatch(/status is now/);
+    expect(t.presence.at(-1)).toMatchObject({ activities: [{ state: 'chewing on the shoe' }] });
+    expect(await t.jester.setStatus(id(2), 'again')).toMatch(/already done that today/);
+
+    expect(await t.jester.trick(id(2))).toMatch(/Trick done/);
+    expect(t.sent.at(-1)).toMatchObject({ channelId: MAIN_CHAT, allowedMentions: { parse: [] } });
+    expect(t.sent.at(-1)!.content).toMatch(/backflip/);
+    expect(await t.jester.trick(id(2))).toMatch(/already done that today/);
+    // Next server-day both are back.
+    clockNow = new Date('2026-10-27T06:00:30Z');
+    expect((await t.jester.statusAccess(id(2))).ok).toBe(true);
+
+    // Losing the title clears the status; restore() doesn't bring it back.
+    await t.powers.appoint(id(1), 'jester', id(3));
+    expect(t.presence.at(-1)).toEqual({ activities: [] });
+    expect(await db.botStatus.count()).toBe(0);
+  });
+
+  it('a saved Jester status comes back after a restart, only while they hold the title', async () => {
+    const t = await setup({ members: [1, 2] });
+    await t.crown.afterReshuffle('2026-10-26', result([cand(1, 90)], [1]));
+    await t.powers.appoint(id(1), 'jester', id(2));
+    await t.jester.setStatus(id(2), 'zoomies');
+    t.presence.length = 0;
+    await t.jester.restore();
+    expect(t.presence).toEqual([{ activities: [{ name: 'Custom Status', state: 'zoomies', type: 4 }] }]);
+    await db.crownTitle.updateMany({ data: { holderId: null } });
+    await t.jester.restore();
+    expect(t.presence.at(-1)).toEqual({ activities: [] });
   });
 });

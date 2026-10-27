@@ -96,7 +96,7 @@ Five commands, all guild-only and replying privately unless they post on purpose
 | Who | Perk |
 |---|---|
 | VIPs | Colour picker, VIP polls, own temporary voice channel, **🪪 My profile** (rank, score, where you stand, badges, weeks held), **📣 Shoutout** (once a day, posted in main chat by the bot, no pings), a spot on the public **#vip-board**, and a ⭐ role icon at Boost Level 2 |
-| The Crown | Everything above, plus: a custom role, a **👑 nickname** for the week, **🎖️ Titles** (Champion, Advisor and Jester; cosmetic roles for anyone but staff and bots, reset weekly), one **📜 Decree** a week in announcements (no pings), and a **👑 Hall** voice channel with Priority Speaker and Move Members |
+| The Crown | Everything above, plus: a custom role, a **👑 nickname** for the week, **🎖️ Titles** for anyone but staff and bots, reset weekly, each with a job: 🛡️ Champion gets a guest VIP pass (colours, shoutout, polls, VIP voice, the lounge), 📜 Advisor posts VIP polls and gets the daily shoutout, 🃏 Jester sets the bot's status and makes it do a trick in main chat (once a day each). Title holders find their buttons under **🎖️ Titles & perks** on #vip-board, one **📜 Decree** a week in announcements (no pings), and a **👑 Hall** voice channel with Priority Speaker and Move Members |
 
 ## Development
 - **Stack:** TypeScript (strict), Node 22, discord.js 14, Prisma 7 + PostgreSQL, Vitest, pino, zod.

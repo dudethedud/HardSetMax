@@ -157,7 +157,7 @@ describe.skipIf(!url)('AI chat', () => {
     async function makeChat(queues: Record<string, Reply[]> = {}) {
       const t = await makeAi(queues);
       const vipSet = new Map<string, { since: string; pinned: boolean }>();
-      const vip = { vips: vipSet } as unknown as VipService;
+      const vip = { vips: vipSet, hasPerk: (u: string) => vipSet.has(u) } as unknown as VipService;
       const crown = { current: () => Promise.resolve(null) } as unknown as CrownService;
       const client = { user: { id: BOT } } as unknown as Client;
       const chat = new ChatService(client, GUILD, db, t.config, t.ai, vip, crown, { personality: 'You are Puppyboy Carter.', guide: 'VIP guide.' }, clock, log);

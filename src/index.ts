@@ -29,7 +29,8 @@ import { ModLog } from './services/modLog.js';
 import { loungePanel, Panels } from './services/panels.js';
 import { RoleQueue } from './services/roleQueue.js';
 import { DailyScheduler } from './services/scheduler.js';
-import { runSetup } from './services/setup.js';
+import { runSetup, VIP_PERMISSIONS } from './services/setup.js';
+import { JesterService } from './services/jester.js';
 import { createShutdown } from './services/shutdown.js';
 import { RESHUFFLE_JOB, VipService } from './services/vipService.js';
 import { TimeoutTracker } from './services/timeoutTracker.js';
@@ -92,13 +93,26 @@ const polls = new PollService(client, env.GUILD_ID, db, config, vip, modLog, clo
 const crown = new CrownService(client, env.GUILD_ID, db, config, roleQueue, modLog, clock, log);
 vip.onRemoved.push((userId) => colours.onVipRemoved(userId));
 vip.onRemoved.push((userId, reason) => crown.onVipRemoved(userId, reason));
-const powers = new CrownPowers(client, env.GUILD_ID, db, config, crown, roleQueue, modLog, clock, log);
+const powers = new CrownPowers(client, env.GUILD_ID, db, config, crown, roleQueue, modLog, clock, log, VIP_PERMISSIONS);
+// Title jobs: the Champion's guest VIP pass and the Advisor's polls and shoutout.
+vip.guestPerks = (userId) => powers.perksOf(userId);
+const jester = new JesterService(client, db, config, powers, modLog, clock, log);
 crown.onAwarded.push((holder, previous) => powers.onAwarded(holder, previous));
 crown.onEnded.push((holder, why, continuing) => powers.onEnded(holder, why, continuing));
 const shoutouts = new ShoutoutService(client, db, config, vip, modLog, clock, log);
 const tempVoice = new TempVoiceService(client, env.GUILD_ID, db, config, vip, modLog, clock, log);
 tempVoice.isCrown = async (userId) => (await crown.current())?.userId === userId;
 vip.onRemoved.push((userId) => tempVoice.onVipRemoved(userId));
+powers.onTitleChange.push(async (userId, slot, gained) => {
+  if (gained) {
+    if (!vip.vips.has(userId)) await colours.onVipAdded(userId); // a returning Champion gets their colour back
+    return;
+  }
+  // Each skips anyone who still has the perk (a VIP, or a new title that includes it).
+  await colours.onVipRemoved(userId);
+  await tempVoice.onVipRemoved(userId);
+  if (slot === 'jester') await jester.onTitleLost(userId);
+});
 const ai = new AiService(db, config, process.env, clock, log);
 const chat = new ChatService(client, env.GUILD_ID, db, config, ai, vip, crown, loadPrompts(), clock, log);
 vip.hype = (summary) => chat.hypeLine('vip-update', summary);
@@ -186,6 +200,7 @@ const ctx: AppContext = {
   colours,
   crown,
   powers,
+  jester,
   shoutouts,
   badges,
   polls,
@@ -231,9 +246,11 @@ client.once(Events.ClientReady, (c) => {
     // VIP: roles match the database, panels exist, missed announcements go out, then
     // the scheduler runs any reshuffle that was due while the bot was offline.
     await vip.reconcile();
+    await powers.titles(); // load title holders first, so the Champion keeps their colour
     await colours.reconcile();
     await crown.reconcile();
     await powers.reconcile();
+    await jester.restore();
     await badges.reconcile();
     await tempVoice.start();
     await polls.reconcileLocks();

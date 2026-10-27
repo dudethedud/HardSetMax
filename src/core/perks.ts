@@ -1,20 +1,61 @@
 // VIP and Crown perks: shoutouts, the Crown's decree, titles and nickname. Pure.
 import { normalizeRoleName } from './crown.js';
 
-/** The Crown holder's titles, handed out for their week. Cosmetic roles only. */
+/** VIP perks that a title can also give (a "guest pass"). */
+export type Perk = 'colour' | 'shoutout' | 'voice' | 'poll' | 'lounge';
+
 /**
- * The Crown holder's titles, handed out for their week. They give no permissions,
- * but they stand out: their own group in the member list, a name colour, and a
- * role icon on servers at Boost Level 2.
+ * The Crown holder's titles, handed out for their week. Each has a job (owner-approved):
+ * - Champion: a guest VIP pass (colours, shoutout, VIP voice, polls, the lounge, VIP's chat perks)
+ * - Advisor: posts VIP polls in #polls and gets the daily shoutout
+ * - Jester: sets the bot's status once a day and makes it do a trick in main chat once a day
+ * They stand out too: their own group in the member list, a name colour, and a
+ * role icon on servers at Boost Level 2. No moderation permissions.
  */
 export const TITLE_SLOTS = [
-  { slot: 'champion', name: '🛡️ Champion', colour: 0xff8c1a, icon: '🛡️' },
-  { slot: 'advisor', name: '📜 Advisor', colour: 0x3fc1c9, icon: '📜' },
-  { slot: 'jester', name: '🃏 Jester', colour: 0x9b5de5, icon: '🃏' },
-] as const;
+  {
+    slot: 'champion',
+    name: '🛡️ Champion',
+    colour: 0xff8c1a,
+    icon: '🛡️',
+    perks: ['colour', 'shoutout', 'voice', 'poll', 'lounge'],
+    job: 'Guest VIP pass: colours, shoutout, VIP voice, polls and the VIP Lounge',
+  },
+  { slot: 'advisor', name: '📜 Advisor', colour: 0x3fc1c9, icon: '📜', perks: ['poll', 'shoutout'], job: 'Posts VIP polls in #polls and gets the daily shoutout' },
+  { slot: 'jester', name: '🃏 Jester', colour: 0x9b5de5, icon: '🃏', perks: [], job: "Sets Puppyboy Carter's status and makes him do a trick, once a day each" },
+] as const satisfies readonly { slot: string; name: string; colour: number; icon: string; perks: readonly Perk[]; job: string }[];
 export type TitleSlot = (typeof TITLE_SLOTS)[number]['slot'];
 
 export const isTitleSlot = (s: string): s is TitleSlot => TITLE_SLOTS.some((t) => t.slot === s);
+
+/** The perks a title gives. */
+export function titlePerks(slot: TitleSlot): ReadonlySet<Perk> {
+  return new Set<Perk>(TITLE_SLOTS.find((t) => t.slot === slot)!.perks);
+}
+
+/** The Jester's status for the bot, in characters (Discord allows 128). */
+export const JESTER_STATUS_MAX = 100;
+
+/** What the bot does when the Jester asks for a trick. Fixed lines, no AI. */
+export const JESTER_TRICKS = [
+  'does a backflip, lands on his face, gets up like nothing happened. arf!',
+  'rolls over three times and gets dizzy :3',
+  'plays dead. very dramatically. for way too long',
+  'chases his own tail and actually catches it this time',
+  'balances a treat on his nose… and eats it immediately',
+  'does a little spin and a happy bark!! arf arf',
+  'sits. stays. gets distracted by a butterfly',
+  'shakes paws with everyone in chat (whether they like it or not)',
+  'howls the first line of a song and forgets the rest',
+  'fetches a stick that is way too big for him',
+  'tries to moonwalk. it is mostly just walking backwards',
+  'does zoomies around the whole server',
+] as const;
+
+/** A trick line, picked by `random` (0 ≤ random < 1). */
+export function pickTrick(random: number): string {
+  return JESTER_TRICKS[Math.min(JESTER_TRICKS.length - 1, Math.floor(random * JESTER_TRICKS.length))]!;
+}
 
 export const CROWN_NICK_PREFIX = '👑 ';
 /** Discord's nickname limit, in characters. */

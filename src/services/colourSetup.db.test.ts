@@ -65,7 +65,7 @@ describe.skipIf(!url)('VIP colour roles', () => {
     const client = { guilds: { cache: new Map([[GUILD, guild]]) } } as unknown as Client;
     const config = new ConfigStore(db, GUILD);
     await config.load();
-    const vip = { vips: new Map() } as unknown as VipService;
+    const vip = { vips: new Map(), hasPerk: () => false } as unknown as VipService;
     const modLog = { post: () => Promise.resolve() } as unknown as ModLog;
     const colours = new ColourService(client, GUILD, db, config, { run: () => Promise.resolve({ ok: true }) } as unknown as RoleQueue, vip, modLog, pino({ level: 'silent' }));
     const report: string[] = [];

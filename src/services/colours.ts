@@ -96,7 +96,7 @@ export class ColourService {
 
   /** Dropdown pick. `optionId` null = remove colour. Returns the reply text. */
   async pick(userId: string, optionId: number | null): Promise<string> {
-    if (!this.vip.vips.has(userId)) return '⭐ Colours are for VIPs only. Stay active to earn a VIP slot!';
+    if (!this.vip.hasPerk(userId, 'colour')) return '⭐ Colours are for VIPs only. Stay active to earn a VIP slot!';
     const option = optionId === null ? null : await this.db.colourOption.findUnique({ where: { id: optionId } });
     if (optionId !== null && !option?.roleId) return 'That colour no longer exists. Pick another one.';
 
@@ -124,6 +124,7 @@ export class ColourService {
 
   /** VIP removal hook: the colour role goes, the choice stays saved. */
   async onVipRemoved(userId: string): Promise<void> {
+    if (this.vip.hasPerk(userId, 'colour')) return; // still has colours (VIP, or the Champion's guest pass)
     await this.#apply(userId, null, 'VIP lost');
   }
 
@@ -142,7 +143,7 @@ export class ColourService {
     let fixed = 0;
     for (const member of guild.members.cache.values()) {
       const has = [...member.roles.cache.keys()].filter((r) => roleIds.has(r));
-      const want = this.vip.vips.has(member.id) ? (choices.get(member.id) ?? null) : null;
+      const want = this.vip.hasPerk(member.id, 'colour') ? (choices.get(member.id) ?? null) : null;
       if (has.length === (want ? 1 : 0) && (!want || has[0] === want)) continue;
       fixed++;
       await this.#apply(member.id, want, 'VIP colour check');

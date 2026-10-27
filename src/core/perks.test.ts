@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanPublicText, crownNickname, crownRoomName, isTitleSlot, standingLine, titleTargetError } from './perks.js';
+import { cleanPublicText, crownNickname, crownRoomName, isTitleSlot, JESTER_TRICKS, pickTrick, standingLine, TITLE_SLOTS, titlePerks, titleTargetError } from './perks.js';
 
 describe('crownNickname', () => {
   it('adds the crown and fits 32 characters', () => {
@@ -67,5 +67,20 @@ describe('standingLine', () => {
     expect(standingLine(scores, -1, false, 10, 3)).toBe('⬆️ 60 points to reach rank #10.');
     expect(standingLine(scores, 4, false, 10, 3)).toMatch(/top 10/);
     expect(standingLine([5], -1, false, 10, 3)).toMatch(/Fewer than 10/);
+  });
+});
+
+describe('title jobs', () => {
+  it('the Champion is a guest VIP, the Advisor polls and shouts out, the Jester has his own buttons', () => {
+    expect([...titlePerks('champion')].sort()).toEqual(['colour', 'lounge', 'poll', 'shoutout', 'voice']);
+    expect([...titlePerks('advisor')].sort()).toEqual(['poll', 'shoutout']);
+    expect(titlePerks('jester').size).toBe(0);
+    expect(TITLE_SLOTS.every((t) => t.job.length > 0)).toBe(true);
+  });
+
+  it('tricks are picked from the fixed list, for any random number', () => {
+    expect(pickTrick(0)).toBe(JESTER_TRICKS[0]);
+    expect(pickTrick(0.9999)).toBe(JESTER_TRICKS.at(-1));
+    expect(pickTrick(1)).toBe(JESTER_TRICKS.at(-1));
   });
 });

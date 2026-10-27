@@ -55,7 +55,7 @@ describe.skipIf(!url)('temporary VIP voice', () => {
     };
     const client = { guilds: { cache: new Map([[GUILD, guild]]) } } as unknown as Client;
     const vips = new Set(vipIds.map(id));
-    const vip = { vips: { has: (u: string) => vips.has(u) } } as unknown as VipService;
+    const vip = { vips: { has: (u: string) => vips.has(u) }, hasPerk: (u: string) => vips.has(u) } as unknown as VipService;
     const config = new ConfigStore(db, GUILD);
     await config.load();
     const modLog = { post: () => Promise.resolve() } as unknown as ModLog;
