@@ -66,7 +66,10 @@ export function vipBoardPanel(deps: { db: Db; config: ConfigStore; vip: VipServi
           ...(cur?.spotlightId ? [{ name: '📌 Spotlight', value: `<@${cur.spotlightId}>${cur.spotlightReason ? `: ${cur.spotlightReason}` : ''}` }] : []),
           ...(titleLines.length ? [{ name: '🎖️ Appointed by the Crown', value: titleLines.join('\n') }] : []),
           { name: `VIPs (${vips.length}/${cfg.reshuffle.slots})`, value: vipLines.join('\n').slice(0, 1024) || 'No VIPs right now.' },
-          { name: `📈 This week (since Mon ${weekly.thisWeek.from})`, value: list(weekly.thisWeek.ranked) || 'Nobody yet: a fresh week, everyone starts at 0!' },
+          {
+            name: weekly.thisWeek.restarted ? `📈 This week (restarted ${weekly.thisWeek.from})` : `📈 This week (since Mon ${weekly.thisWeek.from})`,
+            value: list(weekly.thisWeek.ranked) || 'Nobody yet: everyone starts at 0!',
+          },
           { name: `🏁 Last week's final (${weekly.lastWeek.from} to ${weekly.lastWeek.to})`, value: list(weekly.lastWeek.ranked) || 'No activity last week.' },
         )
         .setFooter({ text: 'Updated' })

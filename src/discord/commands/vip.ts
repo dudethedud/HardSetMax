@@ -117,6 +117,8 @@ export const vipCommand = defineCommand({
 
     if (sub === 'board-reset') {
       // Count everything so far first, so it lands in the baseline and not in the new week.
+      // Twice: the first may only wait for a save that was already running.
+      await ctx.activity.flush(ctx.db);
       await ctx.activity.flush(ctx.db);
       await resetWeeklyBoard(ctx.db, ctx.config.current, interaction.guildId, actor, now);
       await ctx.config.load();
