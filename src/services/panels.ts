@@ -31,6 +31,7 @@ export const CROWN_CREATE_ID = 'crown:create-role';
 export const CROWN_EDIT_ID = 'crown:edit-role';
 export const CROWN_TITLES_ID = 'crown:titles';
 export const CROWN_DECREE_ID = 'crown:decree';
+export const CROWN_POWERS_ID = 'crown:powers';
 export const CROWN_PARDON_ID = 'crown:pardon';
 export const CROWN_MOOD_ID = 'crown:mood';
 export const CROWN_SPOTLIGHT_ID = 'crown:spotlight';
@@ -41,7 +42,27 @@ export const VIP_SHOUTOUT_ID = 'vip:shoutout';
 export const VIP_TREAT_ID = 'vip:treat';
 export const VIP_COLOUR_REQUEST_ID = 'vip:colour-request';
 
-/** The VIP lounge panel: perks, the colour dropdown, and the VIP and Crown buttons. */
+/** The Crown's buttons, shown privately to the Crown holder from the panel's Crown powers button. */
+export function crownPowersRows(): ActionRowBuilder<ButtonBuilder>[] {
+  const b = (id: string, label: string, emoji: string) => new ButtonBuilder().setCustomId(id).setLabel(label).setEmoji(emoji).setStyle(ButtonStyle.Secondary);
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      b(CROWN_CREATE_ID, 'Create your role', '👑').setStyle(ButtonStyle.Primary),
+      b(CROWN_EDIT_ID, 'Edit your role', '✏️'),
+      b(CROWN_TITLES_ID, 'Titles', '🎖️'),
+      b(CROWN_DECREE_ID, 'Decree', '📜'),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      b(CROWN_PARDON_ID, 'Pardon', '🛡️'),
+      b(CROWN_MOOD_ID, "Carter's mood", '🎭'),
+      b(CROWN_SPOTLIGHT_ID, 'Spotlight', '📌'),
+      b(CROWN_THEME_ID, 'Theme', '🎵'),
+      b(CROWN_RAINBOW_ID, 'Rainbow speech', '🌈'),
+    ),
+  ];
+}
+
+/** The VIP lounge panel: perks, the colour dropdown, the VIP buttons and the Crown powers button. */
 export function loungePanel(colourOptions: () => Promise<ColourOption[]>): PanelDef {
   return {
     kind: 'lounge',
@@ -56,25 +77,14 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
           [
             'Welcome! VIP goes to the 10 most active members of the last 7 days, updated every day at midnight.',
             '',
-            '**VIP perks**',
-            '• Image and embed perms everywhere',
-            '• External emojis, stickers and soundboard',
-            '• This private lounge (text and voice), plus your own temporary voice channel (button below)',
-            '• A VIP colour (pick below) and VIP polls in the polls channel',
-            '• ⭐ Your name on the public VIP board, a profile card, and one 📣 shoutout a day in main chat',
-            '• 🦴 One treat a day to give anyone, and 🎨 suggest a new VIP colour (staff approve it)',
-            '• 💎 VIP 14 days in a row: Veteran on the board and a second daily shoutout',
+            '**⭐ VIP perks**',
+            '• Image, embed, emoji, sticker and soundboard perms everywhere',
+            '• This lounge, your own voice channel, a VIP colour (pick below) and VIP polls',
+            '• 📣 A daily shoutout, 🦴 a daily treat to give, 🎨 colour suggestions, a 🪪 profile card',
+            '• 💎 14 days in a row makes you a Veteran: a second daily shoutout',
             '• 🐶 Carter answers VIPs first when he’s busy',
             '',
-            '**👑 Crown of the week** (the #1 VIP each week)',
-            '• Your own custom role and a 👑 in front of your name',
-            '• Hand out three titles: 🛡️ Champion (guest VIP pass), 📜 Advisor (polls + shoutout), 🃏 Jester (bot status + tricks)',
-            '• One 📜 decree a week in announcements',
-            '• 🛡️ Pardon one VIP a week (safe at the next reshuffle), 🎭 pick Carter’s mood, 📌 spotlight someone on the board (daily), 🎵 set the theme of the week',
-            '• 🌈 Rainbow speech once a week: someone’s messages get rainbow flair for 10 minutes (not staff)',
-            '• Your own hall: a voice channel with Priority Speaker',
-            '',
-            'Use the buttons below for your perks. Chat with the other VIPs in the lounge chat channel.',
+            '**👑 Crown of the week** (the #1 VIP): a custom role, a 👑 name, three titles to hand out, a decree, a pardon, Carter’s mood, a spotlight, the theme, rainbow speech and a voice hall. All under **👑 Crown powers**.',
             '',
             'Stay active to keep your slot. VIPs keep it down to rank #13, and nobody loses it in their first 5 days.',
           ].join('\n'),
@@ -86,11 +96,9 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
         new ButtonBuilder().setCustomId(VIP_TREAT_ID).setLabel('Give a treat').setEmoji('🦴').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId(VIP_COLOUR_REQUEST_ID).setLabel('Suggest a colour').setEmoji('🎨').setStyle(ButtonStyle.Secondary),
       );
+      // The Crown's buttons open privately (crownPowersMenu), so the panel stays short for everyone else.
       const crownRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(CROWN_CREATE_ID).setLabel('Create your role').setEmoji('👑').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(CROWN_EDIT_ID).setLabel('Edit your role').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(CROWN_TITLES_ID).setLabel('Titles').setEmoji('🎖️').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(CROWN_DECREE_ID).setLabel('Decree').setEmoji('📜').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(CROWN_POWERS_ID).setLabel('Crown powers').setEmoji('👑').setStyle(ButtonStyle.Primary),
       );
       const colourRows = options.length
         ? [
@@ -105,14 +113,7 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             ),
           ]
         : [];
-      const crownRow2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(CROWN_PARDON_ID).setLabel('Pardon').setEmoji('🛡️').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(CROWN_MOOD_ID).setLabel("Carter's mood").setEmoji('🎭').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(CROWN_SPOTLIGHT_ID).setLabel('Spotlight').setEmoji('📌').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(CROWN_THEME_ID).setLabel('Theme').setEmoji('🎵').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(CROWN_RAINBOW_ID).setLabel('Rainbow speech').setEmoji('🌈').setStyle(ButtonStyle.Secondary),
-      );
-      return { embeds: [embed], components: [...colourRows, vipRow, crownRow, crownRow2] };
+      return { embeds: [embed], components: [...colourRows, vipRow, crownRow] };
     },
   };
 }

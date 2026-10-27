@@ -31,6 +31,7 @@ describe.skipIf(!url)('Crown extras', () => {
       db.crownHolder.deleteMany(),
       db.perkUse.deleteMany(),
       db.speechFilter.deleteMany(),
+      db.speechOptOut.deleteMany(),
       db.staffRole.deleteMany(),
       db.blockedWord.deleteMany(),
       db.auditLog.deleteMany(),
@@ -54,7 +55,12 @@ describe.skipIf(!url)('Crown extras', () => {
     const members = new Map([1, 2, 3, 5, 9].map((n) => [id(n), member(n)]));
     members.set(OWNER, { ...member(99), id: OWNER });
     const guild = { id: GUILD, ownerId: OWNER, members: { cache: members, fetch: (u: string) => Promise.resolve(members.get(u) ?? null), me: { id: BOT } } };
-    const client = { user: { id: BOT }, guilds: { cache: new Map([[GUILD, guild]]) } } as unknown as Client;
+    const notices: { content: string; allowedMentions: unknown }[] = [];
+    const client = {
+      user: { id: BOT },
+      guilds: { cache: new Map([[GUILD, guild]]) },
+      channels: { fetch: () => Promise.resolve({ isSendable: () => true, send: (o: { content: string; allowedMentions: unknown }) => (notices.push(o), Promise.resolve()) }) },
+    } as unknown as Client;
     const crown = { current: () => db.crownHolder.findFirst({ where: { endedAt: null } }) } as unknown as CrownService;
     const vipMap = new Map(vips.map((n) => [id(n), { since: '2026-10-01', pinned: false }]));
     const vip = { vips: vipMap } as unknown as VipService;
@@ -66,7 +72,8 @@ describe.skipIf(!url)('Crown extras', () => {
     const extras = new CrownExtras(client, GUILD, db, config, crown, vip, modLog, clock);
     extras.onChange = () => void changes++;
     const speech = new SpeechFilterService(client, GUILD, db, crown, modLog, clock, log, () => 0.9);
-    return { extras, speech, modLines, guild, changes: () => changes };
+    speech.noticeChannel = () => 'main-chat';
+    return { extras, speech, modLines, notices, guild, changes: () => changes };
   }
 
   it('the pardon protects one VIP at one reshuffle, once a week, Crown only', async () => {
@@ -86,6 +93,7 @@ describe.skipIf(!url)('Crown extras', () => {
     const t = await setup();
     expect(await t.extras.setMood(id(1), 'make carter say bad things')).toMatch(/Pick one/);
     expect(await t.extras.setMood(id(1), 'pirate')).toMatch(/Pirate pup/);
+    expect(t.modLines).toEqual([]); // a fixed choice: audit log only
     expect((await db.crownHolder.findFirstOrThrow()).mood).toBe('pirate');
   });
 
@@ -113,11 +121,27 @@ describe.skipIf(!url)('Crown extras', () => {
     expect(await t.speech.start(id(2), id(3), true)).toMatch(/Only this week/);
     expect(await t.speech.start(id(1), id(3), true)).toMatch(/10 minutes/);
     expect(t.modLines.at(-1)).toMatch(/\(Crown\) turned on the speech filter for/);
+    // They're told (and pinged), with how to opt out.
+    expect(t.notices.at(-1)).toMatchObject({ allowedMentions: { users: [id(3)] } });
+    expect(t.notices.at(-1)!.content).toMatch(/Opt out/);
     expect(await t.speech.start(id(1), id(2), true)).toMatch(/already used/);
     // Staff aren't limited.
     expect(await t.speech.start(id(5), id(2), false)).toMatch(/10 minutes/);
     expect(await t.speech.stopFromLog(`🌈 <@${id(5)}> turned on the speech filter for <@${id(2)}> until`, id(5))).toMatch(/Stopped/);
     expect(await db.speechFilter.count()).toBe(1);
+  });
+
+  it('members can opt out (stopping one in progress) and opt back in', async () => {
+    const t = await setup();
+    await t.speech.start(id(5), id(3), false);
+    expect(await t.speech.toggleOptOut(id(3))).toMatch(/opted out[\s\S]*has stopped/);
+    expect(await db.speechFilter.count()).toBe(0);
+    expect(await t.speech.start(id(1), id(3), true)).toMatch(/opted out/);
+    expect(await t.speech.start(id(5), id(3), false)).toMatch(/opted out/);
+    // The Crown's weekly use wasn't spent on a refusal.
+    expect((await t.speech.crownAccess(id(1))).ok).toBe(true);
+    expect(await t.speech.toggleOptOut(id(3))).toMatch(/can be used on you again/);
+    expect(await t.speech.start(id(1), id(3), true)).toMatch(/10 minutes/);
   });
 
   it('a filtered member’s plain text is reposted with flair under their name, and the original deleted', async () => {

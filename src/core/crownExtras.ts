@@ -35,6 +35,8 @@ export interface SpeechTarget {
   isStaff: boolean;
   isOwner: boolean;
   inServer: boolean;
+  /** They turned it off for themselves (Titles & perks menu). */
+  optedOut?: boolean;
 }
 
 /** Who the 🌈 speech filter can be used on. Returns why not, or null. */
@@ -42,6 +44,7 @@ export function speechTargetError(t: SpeechTarget): string | null {
   if (!t.inServer) return "They're not in the server.";
   if (t.isBot) return "Bots can't be filtered.";
   if (t.isOwner || t.isStaff) return "Staff and the owner can't be filtered.";
+  if (t.optedOut) return "They've opted out of rainbow speech.";
   return null;
 }
 

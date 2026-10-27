@@ -11,8 +11,8 @@ import {
   TextInputStyle,
   UserSelectMenuBuilder,
 } from 'discord.js';
-import { MOODS, SPOTLIGHT_MAX, THEME_MAX } from '../core/crownExtras.js';
-import { CROWN_MOOD_ID, CROWN_PARDON_ID, CROWN_RAINBOW_ID, CROWN_SPOTLIGHT_ID, CROWN_THEME_ID } from '../services/panels.js';
+import { moodByKey, MOODS, SPOTLIGHT_MAX, THEME_MAX } from '../core/crownExtras.js';
+import { CROWN_MOOD_ID, CROWN_PARDON_ID, CROWN_POWERS_ID, CROWN_RAINBOW_ID, CROWN_SPOTLIGHT_ID, CROWN_THEME_ID, crownPowersRows } from '../services/panels.js';
 import { SPEECH_STOP_ID } from '../services/speechFilter.js';
 import type { ButtonHandler, ModalHandler } from './buttons.js';
 import type { AppContext } from './commands/types.js';
@@ -39,7 +39,30 @@ const opener = (id: string, access: Access, modal: () => ModalBuilder): ButtonHa
   },
 });
 
+/** The lounge's Crown powers button: the Crown's buttons and what's used this week, privately. */
+const crownPowers: ButtonHandler = {
+  id: CROWN_POWERS_ID,
+  async run(interaction, ctx) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const cur = await ctx.crown.current();
+    if (cur?.userId !== interaction.user.id) {
+      await interaction.editReply('👑 These are the Crown of the week’s powers. The top VIP gets the Crown each Monday: stay active!');
+      return;
+    }
+    const used = (on: unknown, label: string) => `${on ? '✅' : '⬜'} ${label}`;
+    const lines = [
+      `👑 **Your Crown powers** (week of ${cur.weekStart})`,
+      used(cur.decreeAt, 'Decree (one a week)'),
+      used(cur.pardonUserId, `Pardon (one a week)${cur.pardonUserId ? `: <@${cur.pardonUserId}>` : ''}`),
+      used(cur.rainbowAt, 'Rainbow speech (one a week)'),
+      `🎭 Mood: ${moodByKey(cur.mood)?.label ?? 'not picked'} · 🎵 Theme: ${cur.theme ?? 'not set'} · 📌 Spotlight: ${cur.spotlightId ? `<@${cur.spotlightId}>` : 'nobody'} (daily)`,
+    ];
+    await interaction.editReply({ content: lines.join('\n'), components: crownPowersRows(), allowedMentions: { parse: [] } });
+  },
+};
+
 export const crownExtraButtons: ButtonHandler[] = [
+  crownPowers,
   opener(CROWN_PARDON_ID, (ctx, u) => ctx.crownExtras.access(u, 'pardon'), () =>
     new ModalBuilder().setCustomId(MODAL.pardon).setTitle('🛡️ Royal pardon').addLabelComponents(userField('Which VIP is safe at the next reshuffle?', 'One per Crown week. They can’t be dropped for rank or inactivity.')),
   ),
