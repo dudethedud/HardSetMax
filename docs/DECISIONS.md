@@ -129,3 +129,4 @@
 | 2026-10-24 | Messages starting with a bot-command prefix (`!` `?` `.` `$` `%` `+` `~` `;` `,` `-` followed by a letter) don't count and aren't spam | Owner request. "...", "- item" and "> quote" still count |
 | 2026-10-24 | Warm-up: the scheduled reshuffle changes nothing until the earliest saved activity day is a full window (7 days) ago; manual `/vip reshuffle` still runs | Owner request: the first VIPs shouldn't come from a day of data |
 | 2026-10-24 | Mentioning the bot outside main chat gets a short pointer to main chat (deleted after 15 s, once per person per 10 min) | Owner request: silent ignores looked broken |
+| 2026-10-25 | The lounge panel moves to a read-only #vip-perks channel in the VIP Lounge category (VIPs can see and click, not post or react); #vip-lounge stays the VIP chat. The old panel message is deleted when it moves | Owner: the buttons got buried by chat |
