@@ -117,7 +117,7 @@ Once `/bot health` works, in your test server:
 5. Optional: if you already have a #polls channel or a role for poll pings, use `/settings channel purpose:polls` and `/settings role action:polls`. Otherwise setup creates them.
 6. `/bot setup`. It creates:
    - the VIP role, 10 VIP colour roles (above VIP), the 👑 Crown role (above the colours), and 3 history badge roles (at the bottom)
-   - the private VIP Lounge (text and voice), with a panel where VIPs pick their colour
+   - the private VIP Lounge: #vip-perks (read-only, with the panel of VIP buttons), #vip-lounge (VIP chat) and a voice channel
    - `#polls` with the right permissions, and a **Polls** role. Give it to members who want poll pings (self-roles or another bot). Only the bot can ping it.
    - `#vip-board`, a read-only channel with the public VIP board, and the three Crown title roles (🛡️ Champion, 📜 Advisor, 🃏 Jester), just below the Crown
    - a ⭐ icon on the VIP role, if the server is Boost Level 2 or higher

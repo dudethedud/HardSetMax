@@ -158,7 +158,7 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
       ],
     },
   ];
-  const ids = { loungeCategoryId: cfg.loungeCategoryId, loungeTextId: cfg.loungeTextId, loungeVoiceId: cfg.loungeVoiceId };
+  const ids = { loungeCategoryId: cfg.loungeCategoryId, loungeTextId: cfg.loungeTextId, loungePerksId: cfg.loungePerksId, loungeVoiceId: cfg.loungeVoiceId };
   try {
     const existing = (id: string | null) => (id ? (guild.channels.cache.get(id) ?? null) : null);
     let category = existing(cfg.loungeCategoryId) as CategoryChannel | null;
@@ -177,7 +177,36 @@ export async function runSetup(guild: Guild, { steps, db, config, panels, vip, l
     };
     ids.loungeTextId = (await ensureChild(cfg.loungeTextId, 'vip-lounge', ChannelType.GuildText)).id;
     ids.loungeVoiceId = (await ensureChild(cfg.loungeVoiceId, 'VIP Voice', ChannelType.GuildVoice)).id;
-    report.push(`✅ VIP lounge ready: <#${ids.loungeTextId}>, <#${ids.loungeVoiceId}>`);
+
+    // #vip-perks: the panel's buttons and menus, read-only so chat doesn't bury them.
+    const perksOverwrites: OverwriteResolvable[] = overwrites.map((o) =>
+      o.id === vipRole.id
+        ? {
+            id: vipRole.id,
+            type: OverwriteType.Role,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory],
+            deny: [
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.SendMessagesInThreads,
+              PermissionFlagsBits.CreatePublicThreads,
+              PermissionFlagsBits.CreatePrivateThreads,
+              PermissionFlagsBits.AddReactions,
+            ],
+          }
+        : o,
+    );
+    let perks = existing(cfg.loungePerksId) ?? findExistingChannel(guild, ['vip-perks'], ChannelType.GuildText, category.id) ?? null;
+    if (perks && perks.type === ChannelType.GuildText) {
+      await perks.setParent(category.id, { lockPermissions: false, reason: '/bot setup' });
+      await perks.permissionOverwrites.set(perksOverwrites, '/bot setup');
+    } else {
+      perks = await guild.channels.create({ name: 'vip-perks', type: ChannelType.GuildText, parent: category.id, permissionOverwrites: perksOverwrites, reason: '/bot setup' });
+    }
+    ids.loungePerksId = perks.id;
+    // Above the chat channel, so the buttons are the first thing VIPs see.
+    const chat = guild.channels.cache.get(ids.loungeTextId);
+    if (chat && 'position' in chat && 'setPosition' in perks) await perks.setPosition(chat.position, { reason: '/bot setup' }).catch(() => undefined);
+    report.push(`✅ VIP lounge ready: <#${ids.loungePerksId}> (buttons, read-only), <#${ids.loungeTextId}> (chat), <#${ids.loungeVoiceId}>`);
   } catch (err) {
     log.warn({ err }, 'setup: lounge');
     report.push(`❌ VIP lounge: ${err instanceof Error ? err.message : String(err)}`);

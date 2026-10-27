@@ -38,7 +38,8 @@ export const VIP_SHOUTOUT_ID = 'vip:shoutout';
 export function loungePanel(colourOptions: () => Promise<ColourOption[]>): PanelDef {
   return {
     kind: 'lounge',
-    channelId: (c) => c.loungeTextId,
+    // The read-only #vip-perks; the chat channel on installs set up before it existed.
+    channelId: (c) => c.loungePerksId ?? c.loungeTextId,
     render: async () => {
       const options = (await colourOptions()).filter((o) => o.roleId);
       const embed = new EmbedBuilder()
@@ -60,6 +61,8 @@ export function loungePanel(colourOptions: () => Promise<ColourOption[]>): Panel
             '• Hand out three titles: Champion, Advisor and Jester',
             '• One 📜 decree a week in announcements',
             '• Your own hall: a voice channel with Priority Speaker',
+            '',
+            'Use the buttons below for your perks. Chat with the other VIPs in the lounge chat channel.',
             '',
             'Stay active to keep your slot. VIPs keep it down to rank #13, and nobody loses it in their first 5 days.',
           ].join('\n'),
@@ -162,6 +165,11 @@ export class Panels {
       }
     }
     const message = await channel.send({ ...content, allowedMentions: { parse: [] } });
+    // Moved to another channel: take the old copy down so its buttons don't linger.
+    if (saved && saved.channelId !== channelId) {
+      const old = await this.client.channels.fetch(saved.channelId).catch(() => null);
+      if (old && 'messages' in old) await old.messages.delete(saved.messageId).catch(() => undefined);
+    }
     await this.db.panel.upsert({
       where: { kind: def.kind },
       create: { kind: def.kind, channelId, messageId: message.id },

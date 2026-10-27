@@ -50,7 +50,8 @@ model GuildConfig {
   vipRoleId         String?
   levelRolesTopId   String? // highest bleed level role; VIP goes directly above it
   loungeCategoryId  String?
-  loungeTextId      String?
+  loungeTextId      String? // VIP chat
+  loungePerksId     String? // read-only #vip-perks: the lounge panel's buttons
   loungeVoiceId     String?
   announceChannelId String?
   modLogChannelId   String?
