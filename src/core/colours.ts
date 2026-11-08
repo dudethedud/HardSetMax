@@ -1,0 +1,48 @@
+// The colour rules (pure). Reppers (members with any unlock role) pick one colour
+// role from the menus; picking replaces any other menu colour; someone who isn't
+// a repper any more loses every menu colour.
+
+/** The dropdown value that removes your colour. */
+export const NO_COLOUR = 'none';
+/** A dropdown holds 25 options; one is "Remove colour". */
+export const MAX_COLOURS_PER_MENU = 24;
+
+export function isRepper(memberRoleIds: ReadonlySet<string>, unlockRoleIds: ReadonlySet<string>): boolean {
+  for (const id of unlockRoleIds) if (memberRoleIds.has(id)) return true;
+  return false;
+}
+
+/**
+ * The member's roles after picking `picked` (a colour role ID, or null to remove):
+ * every menu colour comes off, then the picked one goes on. Other roles stay.
+ */
+export function rolesAfterPick(memberRoleIds: readonly string[], colourRoleIds: ReadonlySet<string>, picked: string | null): string[] {
+  const kept = memberRoleIds.filter((id) => !colourRoleIds.has(id));
+  return picked ? [...kept, picked] : kept;
+}
+
+/** Menu colours a member must lose because they don't rep the server any more. */
+export function coloursToStrip(memberRoleIds: ReadonlySet<string>, unlockRoleIds: ReadonlySet<string>, colourRoleIds: ReadonlySet<string>): string[] {
+  // With no unlock roles set up yet, nobody is stripped: that's a setup gap, not a lost repper.
+  if (unlockRoleIds.size === 0 || isRepper(memberRoleIds, unlockRoleIds)) return [];
+  return [...memberRoleIds].filter((id) => colourRoleIds.has(id));
+}
+
+export interface RoleFacts {
+  id: string;
+  everyoneId: string;
+  managed: boolean;
+  /** Its position is below the bot's highest role. */
+  belowBot: boolean;
+  /** It has a permission that shouldn't be handed out by a colour menu. */
+  dangerous: boolean;
+}
+
+/** Why a role can't be a menu colour, or null. */
+export function colourRoleError(r: RoleFacts): string | null {
+  if (r.id === r.everyoneId) return "@everyone can't be a colour.";
+  if (r.managed) return "That role belongs to a bot or integration, so it can't be given out.";
+  if (r.dangerous) return 'That role has moderator or admin permissions. Colour roles should have none.';
+  if (!r.belowBot) return "That role is above the bot's highest role. Drag the bot's role above it in Server Settings → Roles.";
+  return null;
+}

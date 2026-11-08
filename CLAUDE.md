@@ -1,43 +1,40 @@
-# CLAUDE.md — VIP Bot
+# CLAUDE.md: colour menu bot
 
-Discord bot that tracks activity and runs a rotating VIP system. Full requirements: `docs/SPEC.md`. Build order: `docs/PHASES.md`. Record choices in `docs/DECISIONS.md`.
+Discord bot for one server: reppers (members with an unlock role, given by other bots for the server tag or `.gg/femboii` in status) pick one colour role from menus; when they lose their last unlock role, the bot takes it off. Full requirements: `docs/SPEC.md`. Record choices in `docs/DECISIONS.md`. Running it: `docs/OPERATIONS.md`.
 
 ## How to work in this repo
-1. **Read `docs/SPEC.md` and `docs/PHASES.md` before anything else.**
-2. **Work one phase at a time.** Start each session by planning the current phase only. **Don't write code until Carson approves the plan.**
-3. **Audit before building.** Before changing anything, look at what already exists in the repo and say what you'll reuse, change or remove.
-4. **Actually run things.** Run typecheck, lint and tests yourself after changes. Don't say something works without running it.
-5. If the spec is unclear or two parts conflict, **ask** rather than guessing. Note the answer in `docs/DECISIONS.md`.
+1. **Read `docs/SPEC.md` before anything else.**
+2. **Plan first; don't write code until the owner approves the plan.**
+3. **Audit before building:** say what you'll reuse, change or remove.
+4. **Actually run things:** typecheck, lint and tests after changes. Don't say something works without running it.
+5. If the spec is unclear, **ask** rather than guessing, and note the answer in `docs/DECISIONS.md`.
 
 ## Non-negotiable rules
-- **No public slash commands.** Every command: guild-only (`dm_permission = false`), defined with `defineCommand`, which sets `default_member_permissions` to Timeout Members (commands with staff subcommands) or Administrator, plus a runtime access check per subcommand (staff / admin / owner, `src/core/access.ts`). Members only use buttons, dropdowns and modals.
-- **Never store message content.** Counts and timestamps only. The spam filter looks at text in memory only and keeps short-lived fingerprints in memory, never in the DB or logs.
-- **Only one copy of the bot connects to Discord at a time** (`gateway-leader` advisory lock, SPEC §11).
-- **All day/date logic goes through the server-day helper** (SPEC §2). No UTC dates, no separate "midnight".
-- **The AI only produces text.** It gets no tools and nothing it outputs is ever turned into an action. One owner-approved exception: the AI may flag the message it's answering as mean or NSFW (`core/ai/strikes.ts`); flags only count against that message's author, enough of them stop AI replies to that person, the owner is exempt, and admins can undo it. AI text is sent with mentions locked down. Numbers in announcements always come from code. Only ever give the AI the asker's own stats.
-- **Buttons, dropdowns and forms use fixed IDs and a global handler**, so they work after restarts. Anything slow gets a deferred reply first.
-- **No state on local disk.** Everything persistent goes in Postgres via Prisma. The bot must survive a restart or reinstall with zero data loss (SPEC §11).
-- **Migrations must not destroy data.** Use `prisma migrate dev` locally and `prisma migrate deploy` in production. Never use `migrate reset`, `db push`, or drop/rename columns holding data without a written data-preserving plan approved by Carson.
-- **DB is the source of truth;** Discord roles are reconciled to match it.
-- **Scheduled jobs are idempotent:** unique `(job, period)` in `job_runs` + Postgres advisory lock + catch-up on startup.
-- **Keep the business logic pure** (scoring, reshuffle, pairing, crown, badges) in `src/core/` with no Discord or DB imports, and unit-test it.
-- **Log every role change** to the mod-log with a reason.
+- **Commands are admin-only:** guild-only (`setContexts(Guild)`), `default_member_permissions` Administrator via `defineCommand`, plus a runtime check (`src/core/access.ts`). Members only use the menu dropdowns.
+- **The bot never creates, edits or deletes roles.** It only gives and takes the colour roles admins put in menus. Roles with moderator/admin permissions can never be colours.
+- **Never store message content.**
+- **Only one copy of the bot connects to Discord at a time** (`gateway-leader` advisory lock).
+- **Dropdowns use fixed IDs and a global handler**, so they work after restarts. Defer before slow work.
+- **No state on local disk.** Everything persistent goes in Postgres via Prisma.
+- **Migrations must not destroy data.** `prisma migrate dev` locally, `prisma migrate deploy` in production. Never `migrate reset` or `db push`, and never drop data without a written plan the owner approved.
+- **Discord's roles are the record of who wears what;** the database holds the menus and settings.
+- **Keep the rules pure** in `src/core/` (no Discord or DB imports) and unit-test them.
 - Never commit secrets. Config comes from environment variables validated with zod.
 
 ## Stack
-TypeScript (strict), Node LTS, discord.js v14, Prisma + PostgreSQL, Vitest, pino, zod. Bot on Wispbyte (restart pulls `main`), database on Supabase.
+TypeScript (strict), Node 22+, discord.js v14, Prisma + PostgreSQL (Supabase), Vitest, pino, zod. Bot on Wispbyte (restart pulls `main`).
 
-## Suggested layout
+## Layout
 ```
 src/
-  core/        pure logic + tests (scoring, reshuffle, pairing, crown, badges)
-  discord/     client, commands/, interactions/ (buttons, selects, modals), panels
-  services/    activity buffer, scheduler, role queue, reconciliation
-  db/          prisma client, repositories
-  config/      env + guild config
+  core/        pure rules + tests (colours, access, banner checks)
+  discord/     client, commands/, interactions
+  services/    colour menus, banner download, gateway-leader, shutdown
+  db/          prisma client, connection
+  config/      env
 prisma/        schema.prisma, migrations/
 docs/          SPEC.md, PHASES.md, DECISIONS.md, OPERATIONS.md
 ```
 
-## Scripts (create in Phase 1)
+## Scripts
 `dev`, `build`, `start` (runs `prisma migrate deploy` then the bot), `typecheck`, `lint`, `test`, `register-commands`.
