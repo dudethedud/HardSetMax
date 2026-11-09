@@ -16,13 +16,13 @@ Discord bot for one server: reppers (members with an unlock role, given by other
 - **Only one copy of the bot connects to Discord at a time** (`gateway-leader` advisory lock).
 - **Dropdowns use fixed IDs and a global handler**, so they work after restarts. Defer before slow work.
 - **No state on local disk.** Everything persistent goes in Postgres via Prisma.
-- **Migrations must not destroy data.** `prisma migrate dev` locally, `prisma migrate deploy` in production. Never `migrate reset` or `db push`, and never drop data without a written plan the owner approved.
+- **Migrations must not destroy data.** `prisma migrate dev` locally; in production the bot applies them itself on start (`src/db/migrate.ts`, same table and checksums as `prisma migrate deploy`). Never `migrate reset` or `db push`, and never drop data without a written plan the owner approved.
 - **Discord's roles are the record of who wears what;** the database holds the menus and settings.
 - **Keep the rules pure** in `src/core/` (no Discord or DB imports) and unit-test them.
 - Never commit secrets. Config comes from environment variables validated with zod.
 
 ## Stack
-TypeScript (strict), Node 22+, discord.js v14, Prisma + PostgreSQL (Supabase), Vitest, pino, zod. Bot on Wispbyte (restart pulls `main`).
+TypeScript (strict), Node 22+, discord.js v14, Prisma + PostgreSQL (Supabase), Vitest, pino, zod, esbuild. Bot on Wispbyte, which runs the **`deploy` branch**: GitHub Actions tests and bundles every push to `main` into it. Never build or `npm install` on the host (its CPU limit blocks the server); never edit the `deploy` branch by hand.
 
 ## Layout
 ```
@@ -30,11 +30,13 @@ src/
   core/        pure rules + tests (colours, access, banner checks)
   discord/     client, commands/, interactions
   services/    colour menus, banner download, gateway-leader, shutdown
-  db/          prisma client, connection
+  db/          prisma client, connection, migrate (applies migrations without the Prisma CLI)
+  deploy.ts    entry of the one-file bundle: migrate, then start
+  cli/         register-commands
   config/      env
 prisma/        schema.prisma, migrations/
 docs/          SPEC.md, PHASES.md, DECISIONS.md, OPERATIONS.md
 ```
 
 ## Scripts
-`dev`, `build`, `start` (runs `prisma migrate deploy` then the bot), `typecheck`, `lint`, `test`, `register-commands`.
+`dev`, `build`, `start` (from source: `prisma migrate deploy` then the bot), `bundle` (builds `deploy/`), `typecheck`, `lint`, `test`, `register-commands`. Local installs need `npm install --include=dev` (the repo `.npmrc` omits dev tools).

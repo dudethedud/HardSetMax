@@ -19,7 +19,7 @@ Keep the connection string secret: it contains the database password. It only go
 Settings are in the server's **Startup** tab. Names may differ slightly in Wispbyte's panel.
 
 1. Create a **Node.js** server and pick **Node 22** (or newer) as the Docker image/version.
-2. Point it at the GitHub repo `https://github.com/dudethedud/HardSetMax` with branch `main`, and turn on **auto update** (pull on start). If the repo is private, create a GitHub fine-grained token with read-only **Contents** access to this repo only, and enter it with your GitHub username.
+2. Point it at the GitHub repo `https://github.com/dudethedud/HardSetMax` with branch **`deploy`** (not `main`), and turn on **auto update** (pull on start). If the repo is private, create a GitHub fine-grained token with read-only **Contents** access to this repo only, and enter it with your GitHub username.
 3. Set the **main file** / startup file to `start.js`.
 4. In the **File Manager**:
    - upload the Supabase certificate as `certs/supabase-ca.crt`
@@ -32,19 +32,21 @@ Settings are in the server's **Startup** tab. Names may differ slightly in Wispb
      DATABASE_CA_CERT=certs/supabase-ca.crt
      ```
    `.env` and `certs/` aren't in Git, so pulling updates keeps them.
-5. Start the server. On each start it pulls `main`, runs `npm install` (which also builds: `prisma generate` and TypeScript), then `start.js` applies migrations with `prisma migrate deploy` and starts the bot.
+5. Start the server. On each start it pulls `deploy` and runs `start.js`, which applies new database migrations and starts the bot. There's **no `npm install` and no build** on the server.
 6. **Log in to Wispbyte at least every 2 weeks**, or the free server stops. After 30 days stopped it's moved to storage, and nothing is deleted. Set a phone reminder.
 
-**Updating the bot:** merge to `main`, then click **Restart** in the panel.
+**Why the `deploy` branch:** the free server stops anything that keeps its CPU busy, and `npm install` plus the TypeScript build did (it was blocked for "using too much CPU"). So GitHub builds the bot instead: on every merge to `main`, `.github/workflows/deploy.yml` runs the checks and tests, bundles the whole bot into one file (`bot.mjs`, about 9 MB) and replaces the `deploy` branch with it, the migration files and a small `start.js`. The `deploy` branch has no `package.json`, so the panel skips `npm install`. Migrations are applied by the bot itself (`src/db/migrate.ts`), the same way `prisma migrate deploy` does, so the Prisma CLI isn't needed on the server.
 
-If the panel doesn't run `npm install` on start, run it once from the panel's install/reinstall option. The bot won't start without `dist/` and the generated Prisma client.
+**Updating the bot:** merge to `main`, wait for the **Build deploy branch** run in the repo's **Actions** tab to go green (about 2 minutes), then click **Restart** in the panel. If the run fails, nothing is published and the server keeps the last good build.
+
+**Switching an existing server from `main` to `deploy`:** in the File Manager, delete **everything except `.env` and `certs/`** (`package.json`, `node_modules`, `dist`, `src`, `.git` and the rest, plus any `core` crash file). Then set the branch to `deploy` in the Startup tab and start. If `package.json` is still there, the panel tries to `npm install` again.
 
 ### Memory
-The free server has 512 MB. Measured locally: the build (`tsc`) peaks around 280 MB and runs before the bot starts. The bot itself was around 175 MB at startup, before connecting to Discord.
+The free server has 512 MB. There's no build on the server any more; the bot itself uses well under that.
 
 ### What the startup log should show
 ```
-No pending migrations to apply.        (or "applied")
+{"msg":"database is up to date"}        (or "applied migration" for each new one)
 {"msg":"starting"}
 {"msg":"acquired gateway-leader"}
 {"msg":"registered guild commands"}
@@ -60,7 +62,8 @@ No pending migrations to apply.        (or "applied")
 | `Discord refused the intents` | Turn on **Server Members Intent** in the Developer Portal (Bot page). |
 | `bot is not in GUILD_ID` | Invite the bot to the server, or fix `GUILD_ID`. |
 | Server keeps restarting with no clear error | It may be out of memory. Check the panel's memory graph. |
-| Server stops by itself during `npm install` (the `\|/-` spinner) | The first install after deleting `node_modules` is the slow one. Start it again: npm keeps what it already downloaded, so each try gets further. The repo's `.npmrc` keeps the install small. |
+| Console shows `npm install` (the `\|/-` spinner), or "stopped for using too much CPU" | The server is still on `main`. Switch it to the `deploy` branch (above). |
+| `Migration … failed earlier and must be resolved` | A migration broke halfway. Don't restart in a loop: send the log to whoever maintains the bot. The failed row is in the `_prisma_migrations` table; `prisma migrate resolve` fixes it from a computer with the repo. |
 
 ## 3. Supabase limits to watch
 - **500 MB** of database storage on the free plan. The bot only stores the menus, their banners and a few role IDs, so it uses very little.
@@ -125,3 +128,5 @@ Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → r
 5. Schema changes: edit `prisma/schema.prisma`, then `npx prisma migrate dev --name <what-changed>` and commit the migration folder. Migrations must not drop data without an approved plan (CLAUDE.md).
 
 Slash commands are registered to `GUILD_ID` every time the bot starts. `npm run register-commands` does the same by hand.
+
+`npm run bundle` builds the same `deploy/` folder the Action publishes, if you want to try it locally: `cd deploy && node start.js` (with the variables set).

@@ -17,7 +17,7 @@ Colour role menus for server reppers. Members who wear the server tag or have `.
 | `/colours post channel [fresh]` | Post or update all menus, in order |
 | `/colours log-channel [channel]` | Log colours the bot takes off |
 
-Setup and running: [`docs/OPERATIONS.md`](docs/OPERATIONS.md). Full rules: [`docs/SPEC.md`](docs/SPEC.md).
+Setup and running: [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The host runs the **`deploy` branch**, which GitHub builds from `main` on every merge (no install or build on the host). Full rules: [`docs/SPEC.md`](docs/SPEC.md).
 
 ## Development
 `npm install --include=dev` (plain `npm install` skips the dev tools, to keep the server install small), then `npm run dev`. Checks: `npm run typecheck`, `npm run lint`, `npm test` (database tests need `TEST_DATABASE_URL`).

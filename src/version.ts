@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 
-// Works from both src/ (tsx) and dist/ (node): package.json is one level up.
-const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+// The one-file bundle (scripts/bundle.mjs) bakes the version in; from source it's
+// read from package.json (one level up from both src/ and dist/).
+declare const __BOT_VERSION__: string | undefined;
 
-export const VERSION = pkg.version;
+export const VERSION: string =
+  typeof __BOT_VERSION__ === 'string'
+    ? __BOT_VERSION__
+    : (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
