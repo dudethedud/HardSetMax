@@ -60,6 +60,7 @@ No pending migrations to apply.        (or "applied")
 | `Discord refused the intents` | Turn on **Server Members Intent** in the Developer Portal (Bot page). |
 | `bot is not in GUILD_ID` | Invite the bot to the server, or fix `GUILD_ID`. |
 | Server keeps restarting with no clear error | It may be out of memory. Check the panel's memory graph. |
+| Server stops by itself during `npm install` (the `\|/-` spinner) | The first install after deleting `node_modules` is the slow one. Start it again: npm keeps what it already downloaded, so each try gets further. The repo's `.npmrc` keeps the install small. |
 
 ## 3. Supabase limits to watch
 - **500 MB** of database storage on the free plan. The bot only stores the menus, their banners and a few role IDs, so it uses very little.
@@ -118,7 +119,7 @@ Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → r
 
 ## Local development
 1. Run Postgres locally, copy `.env.example` to `.env` and fill in a **test** bot's token and IDs. For a local database, `DATABASE_URL=postgresql://user:pass@localhost:5432/colours` needs no certificate.
-2. `npm install`, then `npx prisma migrate dev` to apply migrations.
+2. `npm install --include=dev` (the repo's `.npmrc` leaves dev tools out, for the server), then `npx prisma migrate dev` to apply migrations.
 3. `npm run dev` starts the bot with reload on save.
 4. Checks: `npm run typecheck`, `npm run lint`, `npm test`. To also run the database tests, point `TEST_DATABASE_URL` at a **separate, migrated test database**. They empty its tables, so never point it at real data.
 5. Schema changes: edit `prisma/schema.prisma`, then `npx prisma migrate dev --name <what-changed>` and commit the migration folder. Migrations must not drop data without an approved plan (CLAUDE.md).
