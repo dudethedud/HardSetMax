@@ -11,3 +11,5 @@
 | 2026-11-08 | Roles with moderator/admin permissions, bot-managed roles and roles above the bot can't be colours | A menu would hand those to anyone |
 | 2026-11-08 | Banners are stored in the database, not as links | Discord attachment links expire |
 | 2026-11-08 | Who wears which colour isn't stored; Discord's roles are the record | Nothing to drift out of sync |
+| 2026-11-09 | Build on GitHub, not on the host: `.github/workflows/deploy.yml` tests and bundles the bot into one file (esbuild) and force-pushes it with the migration files to a `deploy` branch; Wispbyte runs the `deploy` branch with no `npm install` or build | Wispbyte's free plan blocked the server for "using too much CPU" during `npm install` and the TypeScript build |
+| 2026-11-09 | The bot applies migrations itself (`src/db/migrate.ts`): Prisma's advisory lock, its `_prisma_migrations` table and sha256 checksums, one transaction per migration, a failed one blocks startup. Checked: Prisma reports the result as up to date with no drift | The Prisma CLI (~150 MB of packages) can't be on the server without `npm install` |

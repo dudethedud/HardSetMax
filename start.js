@@ -1,6 +1,6 @@
-// Production entry point: applies database migrations, then starts the bot.
-// `npm start` runs this; hosts that run a JS file directly (Wispbyte's Node.js
-// server) should point at this file.
+// Running from source (`npm start`): applies database migrations with the Prisma
+// CLI, then starts the bot from dist/. The host doesn't use this: it runs the
+// generated start.js on the `deploy` branch (scripts/bundle.mjs).
 import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
