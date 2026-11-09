@@ -1,124 +1,64 @@
-import { Collection, PermissionFlagsBits } from 'discord.js';
+import { describe, expect, it, vi } from 'vitest';
 import { pino } from 'pino';
-import { describe, expect, it } from 'vitest';
+import type { Interaction } from 'discord.js';
+import { MENU_SELECT_PREFIX } from '../services/colourMenus.js';
 import type { AppContext } from './commands/types.js';
 import { handleInteraction } from './interactions.js';
 
 const GUILD = '900000000000000001';
-const OWNER = '100000000000000099';
-const STAFF_ROLE = '900000000000000098';
+const ctx = (pick = vi.fn(() => Promise.resolve('🎨 ok'))) =>
+  ({ env: { GUILD_ID: GUILD }, log: pino({ level: 'silent' }), colours: { pick, menus: () => Promise.resolve([{ id: 1, title: 'Pinks', emoji: null, colours: [] }]) } }) as unknown as AppContext;
 
-type Who = 'owner' | 'admin' | 'staff' | 'member';
-
-/** A fake slash command interaction: just enough for the handler. */
-function command(name: string, sub: string | null, who: Who) {
-  const replies: string[] = [];
-  let deferred = false;
-  const interaction = {
+const base = (over: Record<string, unknown>) =>
+  ({
     guildId: GUILD,
-    commandName: name,
-    user: { id: who === 'owner' ? OWNER : '100000000000000001' },
-    guild: { ownerId: OWNER },
-    member: { roles: { cache: new Collection(who === 'staff' ? [[STAFF_ROLE, { id: STAFF_ROLE }]] : []) } },
-    memberPermissions: { has: (p: bigint) => p === PermissionFlagsBits.Administrator && who === 'admin' },
-    options: { getSubcommand: () => sub, getSubcommandGroup: () => null, getString: () => null, getChannel: () => null },
-    isButton: () => false,
-    isStringSelectMenu: () => false,
-    isUserSelectMenu: () => false,
-    isChannelSelectMenu: () => false,
-    isRoleSelectMenu: () => false,
-    isModalSubmit: () => false,
-    isAutocomplete: () => false,
-    isChatInputCommand: () => true,
+    guild: { ownerId: 'owner' },
+    user: { id: 'u1' },
     inCachedGuild: () => true,
-    get deferred() {
-      return deferred;
-    },
-    replied: false,
-    reply: (o: { content: string }) => (replies.push(o.content), Promise.resolve()),
-    deferReply: () => ((deferred = true), Promise.resolve()),
-    editReply: (o: string | { content: string }) => (replies.push(typeof o === 'string' ? o : o.content), Promise.resolve()),
-    showModal: () => (replies.push('<modal>'), Promise.resolve()),
-  };
-  return { interaction, replies };
-}
+    isStringSelectMenu: () => false,
+    isAutocomplete: () => false,
+    isChatInputCommand: () => false,
+    ...over,
+  }) as unknown as Interaction;
 
-const ctx = {
-  env: { GUILD_ID: GUILD },
-  log: pino({ level: 'silent' }),
-  db: {
-    staffRole: { findMany: () => Promise.resolve([{ roleId: STAFF_ROLE }]) },
-    modalDraft: { upsert: () => Promise.resolve() },
-  },
-  clock: { now: () => new Date('2026-10-26T12:00:00Z') },
-  config: { current: { guild: { announceChannelId: '900000000000000070' } } },
-  polls: { status: () => Promise.resolve('polls status') },
-} as unknown as AppContext;
-
-async function run(name: string, sub: string | null, who: Who): Promise<string[]> {
-  const { interaction, replies } = command(name, sub, who);
-  await handleInteraction(interaction as never, ctx);
-  return replies;
-}
-
-describe('command access', () => {
-  it('staff can use staff subcommands', async () => {
-    expect(await run('vip', 'polls', 'staff')).toEqual(['polls status']);
-    expect(await run('vip', 'polls', 'admin')).toEqual(['polls status']);
-    expect(await run('vip', 'polls', 'member')).toEqual(['Staff only.']);
+describe('interactions', () => {
+  it('a member without Administrator is refused /colours', async () => {
+    const reply = vi.fn(() => Promise.resolve());
+    const deferReply = vi.fn();
+    await handleInteraction(base({ isChatInputCommand: () => true, commandName: 'colours', memberPermissions: { has: () => false }, reply, deferReply }), ctx());
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'Admins only.' }));
+    expect(deferReply).not.toHaveBeenCalled();
   });
 
-  it('admin subcommands need Administrator (or the owner)', async () => {
-    expect(await run('vip', 'reshuffle', 'staff')).toEqual(['Admins only.']);
-    expect(await run('settings', 'view', 'staff')).toEqual(['Admins only.']);
+  it('autocomplete suggests nothing to non-admins', async () => {
+    const respond = vi.fn(() => Promise.resolve());
+    await handleInteraction(base({ isAutocomplete: () => true, commandName: 'colours', memberPermissions: { has: () => false }, respond }), ctx());
+    expect(respond).toHaveBeenCalledWith([]);
   });
 
-  it('/announce is the owner’s alone, even over admins', async () => {
-    expect(await run('announce', null, 'admin')).toEqual(['Only the server owner can use this.']);
-    expect(await run('announce', null, 'staff')).toEqual(['Only the server owner can use this.']);
-    expect(await run('announce', null, 'owner')).toEqual(['<modal>']);
+  it('routes a menu pick to the service and answers privately', async () => {
+    const pick = vi.fn(() => Promise.resolve('🎨 You’re now Rose!'));
+    const editReply = vi.fn(() => Promise.resolve());
+    const member = { id: 'u1' };
+    await handleInteraction(
+      base({
+        isStringSelectMenu: () => true,
+        customId: `${MENU_SELECT_PREFIX}7`,
+        values: ['900000000000000020'],
+        member,
+        deferReply: vi.fn(() => Promise.resolve()),
+        editReply,
+        message: { components: [], edit: () => Promise.resolve() },
+      }),
+      ctx(pick),
+    );
+    expect(pick).toHaveBeenCalledWith(member, 7, '900000000000000020');
+    expect(editReply).toHaveBeenCalledWith({ content: '🎨 You’re now Rose!', allowedMentions: { parse: [] } });
   });
-});
 
-describe('autocomplete', () => {
-  async function suggest(who: Who): Promise<unknown[]> {
-    const { interaction } = command('bot', 'ai-provider', who);
-    let shown: unknown[] = ['not answered'];
-    const auto = {
-      ...interaction,
-      isChatInputCommand: () => false,
-      isAutocomplete: () => true,
-      options: { ...interaction.options, getFocused: () => '' },
-      respond: (choices: unknown[]) => ((shown = choices), Promise.resolve()),
-    };
-    const withProviders = { ...ctx, ai: { providers: () => Promise.resolve([{ name: 'groq', model: 'm', enabled: true }]) } } as unknown as AppContext;
-    await handleInteraction(auto as never, withProviders);
-    return shown;
-  }
-
-  it('suggests to people who can run the subcommand, and shows nothing to others', async () => {
-    expect(await suggest('admin')).toEqual([{ name: 'groq (m)', value: 'groq' }]);
-    expect(await suggest('staff')).toEqual([]);
-    expect(await suggest('member')).toEqual([]);
-  });
-});
-
-describe('setup menus', () => {
-  it('only admins (or the owner) can use them', async () => {
-    for (const [who, allowed] of [['staff', false], ['member', false], ['admin', true]] as const) {
-      const { interaction, replies } = command('bot', null, who);
-      let ran = false;
-      const pick = {
-        ...interaction,
-        customId: 'setup:pick:announcements',
-        values: [],
-        isChatInputCommand: () => false,
-        isChannelSelectMenu: () => true,
-        deferReply: () => ((ran = true), Promise.resolve()),
-      };
-      await handleInteraction(pick as never, ctx);
-      expect(ran).toBe(allowed);
-      if (!allowed) expect(replies).toEqual(['Admins only.']);
-    }
+  it('an unknown dropdown says it no longer works', async () => {
+    const reply = vi.fn(() => Promise.resolve());
+    await handleInteraction(base({ isStringSelectMenu: () => true, customId: 'old:thing', reply }), ctx());
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'This menu no longer works.' }));
   });
 });

@@ -50,7 +50,7 @@ describe.skipIf(!url)('gateway-leader: database-down mode', () => {
   const killLockHolder = async () => {
     const admin = new pg.Client(conn);
     await admin.connect();
-    await admin.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'vip-bot:gateway-leader'");
+    await admin.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'colour-bot:gateway-leader'");
     await admin.end();
   };
   const until = async (check: () => boolean) => {

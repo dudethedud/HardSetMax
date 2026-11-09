@@ -43,7 +43,7 @@ export async function acquireGatewayLeader(
   { retryMs = 2000, maxRetryMs = 60_000, signal, onLost, onRegained, onTakenOver }: AcquireOptions,
 ): Promise<GatewayLeader> {
   const connect = async () => {
-    const c = new pg.Client({ ...connection, application_name: 'vip-bot:gateway-leader' });
+    const c = new pg.Client({ ...connection, application_name: 'colour-bot:gateway-leader' });
     await c.connect();
     return c;
   };

@@ -1,6 +1,6 @@
 {
-  "name": "vip-bot",
-  "version": "0.1.0",
+  "name": "colour-menu-bot",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -19,12 +19,10 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
-    "@types/luxon": "^3.7.6",
     "@types/node": "^22.20.5",
     "@types/pg": "^8.23.1",
     "discord.js": "^14.27.0",
     "dotenv": "^18.0.8",
-    "luxon": "^3.7.2",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "prisma": "^7.10.1",
