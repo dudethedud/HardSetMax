@@ -85,7 +85,11 @@ export const coloursCommand = defineCommand({
 
   async autocomplete(interaction, ctx) {
     const typed = interaction.options.getFocused().toString().toLowerCase();
-    return (await ctx.colours.menus()).filter((m) => m.title.toLowerCase().includes(typed)).map((m) => ({ name: `${m.emoji ?? ''} ${m.title} (${m.colours.length} colours)`.trim(), value: m.id }));
+    // Custom emojis show as raw <:name:id> text in suggestions, so only plain emojis are shown.
+    const label = (emoji: string | null) => (emoji && !emoji.includes('<') ? `${emoji} ` : '');
+    return (await ctx.colours.summaries())
+      .filter((m) => m.title.toLowerCase().includes(typed))
+      .map((m) => ({ name: `${label(m.emoji)}${m.title} (${m.colours.length} colours)`, value: m.id }));
   },
 
   async execute(interaction, ctx) {
@@ -123,10 +127,10 @@ export const coloursCommand = defineCommand({
       if (sub === 'delete') return void (await reply(await ctx.colours.deleteMenu(interaction.options.getInteger('menu', true))));
       if (sub === 'add-role') return void (await reply(await ctx.colours.addColour(interaction.options.getInteger('menu', true), interaction.options.getRole('role', true))));
       if (sub === 'remove-role') return void (await reply(await ctx.colours.removeColour(interaction.options.getRole('role', true).id)));
-      const menus = await ctx.colours.menus();
+      const menus = await ctx.colours.summaries();
       return void (await reply(
         menus.length
-          ? menus.map((m) => `**${m.position}. ${m.emoji ?? ''} ${m.title}**${m.messageId ? ` (posted in <#${m.channelId}>)` : ' (not posted)'}\n${m.colours.map((c) => `<@&${c.roleId}>`).join(' ') || 'no colours yet'}`).join('\n\n').slice(0, 1900)
+          ? menus.map((m) => `**${m.emoji ?? ''} ${m.title}** (menu #${m.id}, position ${m.position})${m.messageId ? ` (posted in <#${m.channelId}>)` : ' (not posted)'}\n${m.colours.map((c) => `<@&${c.roleId}>`).join(' ') || 'no colours yet'}`).join('\n\n').slice(0, 1900)
           : 'No menus yet. Make one with `/colours menu create`.',
       ));
     }

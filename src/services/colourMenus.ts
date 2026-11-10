@@ -54,6 +54,7 @@ const DANGEROUS = new PermissionsBitField([
 ]).bitfield;
 
 export type MenuWithColours = ColourMenu & { colours: MenuColour[] };
+export type MenuSummary = Pick<ColourMenu, 'id' | 'title' | 'emoji' | 'position' | 'channelId' | 'messageId'> & { colours: { roleId: string }[] };
 export interface Banner {
   name: string;
   data: Buffer;
@@ -87,6 +88,17 @@ export class ColourMenuService {
 
   menus(): Promise<MenuWithColours[]> {
     return this.db.colourMenu.findMany({ orderBy: [{ position: 'asc' }, { id: 'asc' }], include: { colours: { orderBy: { position: 'asc' } } } });
+  }
+
+  /**
+   * Menus without their banners (several MB each), for autocomplete and lists:
+   * Discord gives autocomplete 3 seconds, and loading banners took longer.
+   */
+  summaries(): Promise<MenuSummary[]> {
+    return this.db.colourMenu.findMany({
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
+      select: { id: true, title: true, emoji: true, position: true, channelId: true, messageId: true, colours: { select: { roleId: true }, orderBy: { position: 'asc' } } },
+    });
   }
 
   // ---- Admin: menus ----

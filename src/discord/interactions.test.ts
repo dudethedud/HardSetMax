@@ -7,7 +7,7 @@ import { handleInteraction } from './interactions.js';
 
 const GUILD = '900000000000000001';
 const ctx = (pick = vi.fn(() => Promise.resolve('🎨 ok'))) =>
-  ({ env: { GUILD_ID: GUILD }, log: pino({ level: 'silent' }), colours: { pick, menus: () => Promise.resolve([{ id: 1, title: 'Pinks', emoji: null, colours: [] }]) } }) as unknown as AppContext;
+  ({ env: { GUILD_ID: GUILD }, log: pino({ level: 'silent' }), colours: { pick, summaries: () => Promise.resolve([{ id: 1, title: 'Pinks', emoji: null, colours: [] }]) } }) as unknown as AppContext;
 
 const base = (over: Record<string, unknown>) =>
   ({
