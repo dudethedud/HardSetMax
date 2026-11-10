@@ -27,7 +27,7 @@ Other bots already give reppers a role. This bot never looks at tags or statuses
 - At startup and every hour, the bot checks every member (in case an event was missed, e.g. while offline).
 - Removing an unlock role from the config runs the same check.
 - If no unlock roles are configured, nobody is stripped.
-- Each removal is posted to the log channel, if one is set (no pings).
+- Each removal is posted to the log channel, if one is set, as an embed: member, colour removed, reason, and whether the DM got through (no pings).
 - The member gets a DM: which colour was removed, that it's because they stopped repping the server (server tag or `.gg/femboii` in status), and where to pick again (the channel the menus are posted in). Closed DMs are skipped quietly. In a sweep, removals that send a DM are 3 seconds apart, so a catch-up after downtime isn't a burst of DMs.
 - Taking a role out of a menu, or deleting a menu, does **not** remove it from people wearing it.
 

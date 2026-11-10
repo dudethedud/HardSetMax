@@ -59,7 +59,9 @@ describe.skipIf(!url)('colour menus', () => {
       const m = {
         id,
         guild,
-        user: { bot: false },
+        user: { bot: false, tag: `user${id.slice(-2)}` },
+        displayName: `user${id.slice(-2)}`,
+        displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png',
         send: (o: { content: string }) => (closedDms.has(id) ? Promise.reject(new Error('Cannot send messages to this user')) : (dms.push({ to: id, content: o.content }), Promise.resolve())),
         roles: {
           cache,
@@ -156,7 +158,17 @@ describe.skipIf(!url)('colour menus', () => {
     expect(await t.service.check(both)).toBe(1);
     expect([...both.roles.cache.keys()]).toEqual([]);
     expect(t.sent.at(-1)).toMatchObject({ channelId: LOG, opts: { allowedMentions: { parse: [] } } });
-    expect(String(t.sent.at(-1)!.opts['content'])).toMatch(/no longer rep the server/);
+    const embed = (t.sent.at(-1)!.opts['embeds'] as { toJSON(): Record<string, unknown> }[])[0]!.toJSON();
+    expect(embed).toMatchObject({
+      title: '🎨 Colour removed',
+      description: '<@100000000000000003> no longer reps the server, so their colour was taken off.',
+      fields: [
+        { name: 'Removed', value: `<@&${ROSE}>`, inline: true },
+        { name: 'Reason', value: 'Lost their last unlock role', inline: true },
+        { name: 'DM', value: 'Sent ✅', inline: true },
+      ],
+      footer: { text: 'User ID: 100000000000000003' },
+    });
   });
 
   it('the sweep fixes everyone; removing an unlock role sweeps too', async () => {
@@ -227,8 +239,11 @@ describe.skipIf(!url)('colour menus', () => {
     // Someone with closed DMs still loses the colour; nothing breaks.
     t.closedDms.add('100000000000000007');
     const closed = t.member('100000000000000007', [GOLD]);
+    await t.service.setLogChannel(LOG);
     expect(await t.service.check(closed)).toBe(1);
     expect([...closed.roles.cache.keys()]).toEqual([]);
+    const logged = (t.sent.at(-1)!.opts['embeds'] as { toJSON(): { fields: { name: string; value: string }[] } }[])[0]!.toJSON();
+    expect(logged.fields.find((f) => f.name === 'DM')?.value).toBe("Couldn't send (DMs closed)");
     // A sweep that removes two colours waits between their DMs; nobody else is messaged.
     t.member('100000000000000008', [MOCHA]);
     t.member('100000000000000009', [ROSE]);
