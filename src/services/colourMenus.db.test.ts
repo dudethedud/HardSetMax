@@ -194,4 +194,14 @@ describe.skipIf(!url)('colour menus', () => {
     expect(await t.service.post(t.channel(CHANNEL) as never, true)).toMatch(/2 posted, 0 updated/);
     expect(t.messages.get('m1')!.deleted).toBe(true);
   });
+
+  it('summaries (autocomplete, list) never load banners', async () => {
+    const t = setup();
+    await t.service.createMenu('Pinks', '🍓', { name: 'banner.gif', data: Buffer.alloc(1024 * 1024, 7) });
+    const [menu] = await t.service.menus();
+    await t.service.addColour(menu!.id, t.roles.rose);
+    const [summary] = await t.service.summaries();
+    expect(summary).toEqual({ id: menu!.id, title: 'Pinks', emoji: '🍓', position: 0, channelId: null, messageId: null, colours: [{ roleId: ROSE }] });
+    expect(summary).not.toHaveProperty('banner');
+  });
 });
