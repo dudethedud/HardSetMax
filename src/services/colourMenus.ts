@@ -23,7 +23,7 @@ import {
   type Role,
   type SendableChannels,
 } from 'discord.js';
-import { colourRoleError, coloursToStrip, isRepper, MAX_COLOURS_PER_MENU, NO_COLOUR, rolesAfterPick } from '../core/colours.js';
+import { colourRoleError, coloursToStrip, isRepper, MAX_COLOURS_PER_MENU, NO_COLOUR, removalDm, rolesAfterPick } from '../core/colours.js';
 import type { Db } from '../db/prisma.js';
 import type { ColourMenu, MenuColour } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
@@ -63,6 +63,8 @@ export interface Banner {
 export class ColourMenuService {
   #unlock = new Set<string>();
   #colourRoles = new Set<string>();
+  /** Waits between removal DMs in a sweep, so Discord doesn't see a burst of DMs as spam. Replaceable in tests. */
+  pause: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   constructor(
     private readonly client: Client,
@@ -302,7 +304,19 @@ export class ColourMenuService {
       return 0;
     }
     await this.#log(`🎨 Took ${strip.map((id) => `<@&${id}>`).join(', ')} off <@${member.id}>: they no longer rep the server.`);
+    await this.#tellMember(member, strip);
     return 1;
+  }
+
+  /** DMs the member why their colour went. Members with closed DMs are skipped quietly. */
+  async #tellMember(member: GuildMember, roleIds: string[]): Promise<void> {
+    const names = roleIds.map((id) => member.guild.roles.cache.get(id)?.name ?? 'colour');
+    const posted = await this.db.colourMenu.findFirst({ where: { channelId: { not: null } }, select: { channelId: true }, orderBy: { position: 'asc' } });
+    try {
+      await member.send({ content: removalDm(names, member.guild.name, posted?.channelId ?? null), allowedMentions: { parse: [] } });
+    } catch (err) {
+      this.log.info({ userId: member.id, err: err instanceof Error ? err.message : String(err) }, "couldn't DM a member about their removed colour (DMs closed?)");
+    }
   }
 
   /** Startup and hourly: checks every member, in case Discord missed a role change. Returns how many were fixed. */
@@ -310,7 +324,12 @@ export class ColourMenuService {
     if (this.#unlock.size === 0 || this.#colourRoles.size === 0) return 0;
     const members = await guild.members.fetch();
     let fixed = 0;
-    for (const member of members.values()) fixed += await this.check(member);
+    for (const member of members.values()) {
+      const removed = await this.check(member);
+      fixed += removed;
+      // A few seconds between removal DMs, so a catch-up after downtime doesn't look like spam.
+      if (removed) await this.pause(3000);
+    }
     if (fixed) this.log.info({ fixed }, 'colour sweep removed colours');
     return fixed;
   }

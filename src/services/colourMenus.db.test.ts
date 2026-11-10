@@ -31,6 +31,7 @@ describe.skipIf(!url)('colour menus', () => {
     const roles = new Collection<string, Role>();
     const guild = {
       id: GUILD,
+      name: 'femboii',
       roles: { cache: roles },
       members: { me: { roles: { highest: { position: 50 } } }, fetch: () => Promise.resolve(members) },
     } as unknown as Role['guild'];
@@ -51,12 +52,15 @@ describe.skipIf(!url)('colour menus', () => {
     };
     const members = new Collection<string, GuildMember>();
     const changes: string[] = [];
+    const dms: { to: string; content: string }[] = [];
+    const closedDms = new Set<string>();
     const member = (id: string, start: string[]) => {
       const cache = new Collection<string, Role>(start.map((r) => [r, roles.get(r)!]));
       const m = {
         id,
         guild,
         user: { bot: false },
+        send: (o: { content: string }) => (closedDms.has(id) ? Promise.reject(new Error('Cannot send messages to this user')) : (dms.push({ to: id, content: o.content }), Promise.resolve())),
         roles: {
           cache,
           set: (ids: string[]) => {
@@ -91,7 +95,9 @@ describe.skipIf(!url)('colour menus', () => {
     });
     const client = { guilds: { cache: new Map([[GUILD, guild]]) }, channels: { fetch: (id: string) => Promise.resolve(channel(id)) } } as unknown as Client;
     const service = new ColourMenuService(client, GUILD, db, pino({ level: 'silent' }));
-    return { service, guild, roles: roleObjs, member, changes, sent, messages, channel };
+    const pauses: number[] = [];
+    service.pause = (ms) => (pauses.push(ms), Promise.resolve());
+    return { service, guild, roles: roleObjs, member, changes, sent, messages, channel, dms, closedDms, pauses };
   }
 
   async function withMenus(t: ReturnType<typeof setup>) {
@@ -203,5 +209,33 @@ describe.skipIf(!url)('colour menus', () => {
     const [summary] = await t.service.summaries();
     expect(summary).toEqual({ id: menu!.id, title: 'Pinks', emoji: '🍓', position: 0, channelId: null, messageId: null, colours: [{ roleId: ROSE }] });
     expect(summary).not.toHaveProperty('banner');
+  });
+
+  it('DMs the member why their colour was removed; closed DMs are skipped; the sweep paces DMs', async () => {
+    const t = setup();
+    await withMenus(t);
+    await t.service.post(t.channel(CHANNEL) as never, false);
+    const m = t.member('100000000000000006', [TAG, ROSE]);
+    m.roles.cache.delete(TAG);
+    expect(await t.service.check(m)).toBe(1);
+    expect(t.dms).toEqual([
+      {
+        to: '100000000000000006',
+        content: `🎨 Your **Rose ⸝⸝** colour was removed because you're no longer repping **femboii** (server tag or \`.gg/femboii\` in your status). Rep again and pick a new colour in <#${CHANNEL}>!`,
+      },
+    ]);
+    // Someone with closed DMs still loses the colour; nothing breaks.
+    t.closedDms.add('100000000000000007');
+    const closed = t.member('100000000000000007', [GOLD]);
+    expect(await t.service.check(closed)).toBe(1);
+    expect([...closed.roles.cache.keys()]).toEqual([]);
+    // A sweep that removes two colours waits between their DMs; nobody else is messaged.
+    t.member('100000000000000008', [MOCHA]);
+    t.member('100000000000000009', [ROSE]);
+    t.member('100000000000000010', [TAG, GOLD]);
+    t.dms.length = 0;
+    expect(await t.service.sweep(t.guild)).toBe(2);
+    expect(t.dms.map((d) => d.to)).toEqual(['100000000000000008', '100000000000000009']);
+    expect(t.pauses).toEqual([3000, 3000]);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { colourRoleError, coloursToStrip, isRepper, rolesAfterPick } from './colours.js';
+import { colourRoleError, coloursToStrip, isRepper, removalDm, rolesAfterPick } from './colours.js';
 
 const set = (...ids: string[]) => new Set(ids);
 
@@ -34,5 +34,12 @@ describe('colour rules', () => {
     expect(colourRoleError({ ...ok, managed: true })).toMatch(/bot or integration/);
     expect(colourRoleError({ ...ok, dangerous: true })).toMatch(/moderator or admin/);
     expect(colourRoleError({ ...ok, belowBot: false })).toMatch(/above the bot/);
+  });
+
+  it('the removal DM names the colour, the server, and where to pick again', () => {
+    expect(removalDm(['Rose ⸝⸝'], 'femboii', '123')).toBe(
+      "🎨 Your **Rose ⸝⸝** colour was removed because you're no longer repping **femboii** (server tag or `.gg/femboii` in your status). Rep again and pick a new colour in <#123>!",
+    );
+    expect(removalDm(['Rose ⸝⸝'], 'femboii', null)).toMatch(/in the colour menus!$/);
   });
 });
