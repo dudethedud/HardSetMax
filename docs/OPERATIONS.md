@@ -107,7 +107,7 @@ Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → r
 
 ## 6. How it behaves
 - **Picking:** reppers pick from any dropdown. It removes every other colour from **all** menus and gives the new one (one Discord request, so it can't half-apply). "Remove colour" takes it off. Non-reppers get a private "rep the server to unlock colours" note and nothing changes.
-- **Losing repper:** when a member loses their **last** unlock role, the bot takes their menu colours off straight away. It also checks everyone at startup and every hour, in case Discord missed an event (e.g. the bot was offline).
+- **Losing repper:** when a member loses their **last** unlock role, the bot takes their menu colours off straight away and DMs them why (and where to pick again; skipped if their DMs are closed). It also checks everyone at startup and every hour, in case Discord missed an event (e.g. the bot was offline).
 - Removing an unlock role with `/colours unlock-role remove` takes colours off anyone left without one. With **no** unlock roles set, nobody is stripped (that's a setup gap, not people who stopped repping).
 - Taking a role out of a menu, or deleting a menu, doesn't take it off people already wearing it. They keep it until they pick another colour.
 - Editing a menu or its roles updates the posted message in place.

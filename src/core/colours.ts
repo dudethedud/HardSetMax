@@ -46,3 +46,13 @@ export function colourRoleError(r: RoleFacts): string | null {
   if (!r.belowBot) return "That role is above the bot's highest role. Drag the bot's role above it in Server Settings → Roles.";
   return null;
 }
+
+/**
+ * The DM a member gets when the bot takes their colour off because they stopped
+ * repping. `channelId`: where the menus are posted, if anywhere.
+ */
+export function removalDm(colourNames: readonly string[], serverName: string, channelId: string | null): string {
+  const colours = colourNames.map((n) => `**${n}**`).join(', ');
+  const where = channelId ? `<#${channelId}>` : 'the colour menus';
+  return `🎨 Your ${colours} colour was removed because you're no longer repping **${serverName}** (server tag or \`.gg/femboii\` in your status). Rep again and pick a new colour in ${where}!`;
+}
