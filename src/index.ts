@@ -1,5 +1,6 @@
 // The colour menu bot (docs/SPEC.md): starts after taking the gateway-leader lock,
 // so only one copy is ever connected to Discord.
+import type { Server } from 'node:http';
 import { Events } from 'discord.js';
 import { loadEnv } from './config/env.js';
 import { explainDbError, pgConfig } from './db/connection.js';
@@ -10,6 +11,8 @@ import { handleInteraction } from './discord/interactions.js';
 import { registerCommands } from './discord/registerCommands.js';
 import { createLogger } from './logger.js';
 import { ColourMenuService } from './services/colourMenus.js';
+import { DonationService } from './services/donations.js';
+import { startWebhookServer } from './services/webhookServer.js';
 import { acquireGatewayLeader } from './services/gatewayLeader.js';
 import { createShutdown } from './services/shutdown.js';
 import { VERSION } from './version.js';
@@ -53,8 +56,20 @@ if (!leader) await new Promise(() => undefined);
 const db = createDb(connection, env.DATABASE_POOL_MAX);
 const client = createClient();
 const colours = new ColourMenuService(client, env.GUILD_ID, db, log);
-const ctx: AppContext = { env, log, db, client, colours };
+const donations = new DonationService(client, env.GUILD_ID, db, log);
+const ctx: AppContext = { env, log, db, client, colours, donations };
 
+// Steps run in order: stop taking Ko-fi donations before the database closes.
+let webhook: Server | null = null;
+shutdown.add({
+  name: 'webhook server',
+  run: () =>
+    new Promise<void>((resolve) => {
+      if (!webhook) return resolve();
+      webhook.close(() => resolve());
+      webhook.closeIdleConnections();
+    }),
+});
 shutdown.add({ name: 'discord', run: () => client.destroy() });
 shutdown.add({ name: 'database', run: () => db.$disconnect() });
 shutdown.add({ name: 'gateway-leader', run: () => leader!.release() });
@@ -82,6 +97,14 @@ client.on(Events.Error, (err) => log.error({ err }, 'discord client error'));
 
 try {
   await colours.load();
+  // Ko-fi donations: only when a token is set, on the host's port.
+  const port = env.WEBHOOK_PORT ?? env.SERVER_PORT;
+  if (env.KOFI_VERIFICATION_TOKEN && port) {
+    const token = env.KOFI_VERIFICATION_TOKEN;
+    webhook = await startWebhookServer(port, (body) => donations.handleKofi(body, token), log);
+  } else if (env.KOFI_VERIFICATION_TOKEN) {
+    log.warn('KOFI_VERIFICATION_TOKEN is set but there is no port (WEBHOOK_PORT or SERVER_PORT): Ko-fi donations are off');
+  }
   await registerCommands(env, log);
   await client.login(env.DISCORD_TOKEN);
 } catch (err) {

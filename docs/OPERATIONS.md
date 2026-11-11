@@ -105,6 +105,21 @@ Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → r
 6. Optional: `/colours log-channel channel:#staff-logs` logs each colour the bot takes off.
 7. Delete your old menu messages.
 
+## 5b. Donations (Ko-fi)
+1. Make a **Ko-fi** page (the account must belong to an adult). Set its currency to **USD**.
+2. In Wispbyte, find the server's **port** (the number after the colon in its address, e.g. `78.154.103.8:16604` → `16604`).
+3. In Ko-fi: **More → API** (Webhooks). Set the **Webhook URL** to `http://<your server address>:<port>/kofi`, e.g. `http://78.154.103.8:16604/kofi`. Copy the **Verification Token** shown there.
+4. Add to Wispbyte's `.env`:
+   ```
+   KOFI_VERIFICATION_TOKEN=<the token from Ko-fi>
+   WEBHOOK_PORT=<the port>
+   ```
+   Restart. The console should show `listening for Ko-fi donations on /kofi`.
+5. In Discord: `/donations setup channel:#donations kofi-url:https://ko-fi.com/<you>`, then `/donations donor-role role:@Donor` (drag the bot's role above it).
+6. In Ko-fi's API page, press **Send Single Donation Test**. A test donation should appear on the panel and in the log. Remove it with `/donations list` → `/donations remove number:<n>`.
+
+If Ko-fi won't accept an `http://` address, a small HTTPS relay (e.g. a free Cloudflare Worker) has to sit in front; ask the maintainer.
+
 ## 6. How it behaves
 - **Picking:** reppers pick from any dropdown. It removes every other colour from **all** menus and gives the new one (one Discord request, so it can't half-apply). "Remove colour" takes it off. Non-reppers get a private "rep the server to unlock colours" note and nothing changes.
 - **Losing repper:** when a member loses their **last** unlock role, the bot takes their menu colours off straight away and DMs them why (and where to pick again; skipped if their DMs are closed). It also checks everyone at startup and every hour, in case Discord missed an event (e.g. the bot was offline).
@@ -118,6 +133,7 @@ Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → r
 | "The application did not respond" | The bot isn't running or is still starting. Check the Wispbyte console. If it says it's waiting for `gateway-leader`, an old copy is still running: stop the server fully, wait a minute, start it again. |
 | "Couldn't change your colour" | The bot's role is below a colour role, or lacks Manage Roles. |
 | A menu message was deleted | `/colours post` posts it again. |
+| Donations don't show up | Console says `listening for Ko-fi donations`? If not, `KOFI_VERIFICATION_TOKEN` or `WEBHOOK_PORT` is missing. `Ko-fi webhook refused … wrong verification token` means the token in `.env` doesn't match Ko-fi's. Nothing in the console at all means Ko-fi can't reach the address: check the URL and port. |
 | Colours not removed when someone stops repping | Check `/colours unlock-role list` has the right roles, and the Server Members Intent is on. The hourly sweep catches anything missed. |
 
 ## Local development

@@ -14,6 +14,7 @@ import type { AccessLevel } from '../../core/access.js';
 import type { Db } from '../../db/prisma.js';
 import type { Logger } from '../../logger.js';
 import type { ColourMenuService } from '../../services/colourMenus.js';
+import type { DonationService } from '../../services/donations.js';
 
 export interface AppContext {
   env: Env;
@@ -21,6 +22,7 @@ export interface AppContext {
   db: Db;
   client: Client;
   colours: ColourMenuService;
+  donations: DonationService;
 }
 
 export type Autocomplete = (interaction: AutocompleteInteraction<'cached'>, ctx: AppContext) => Promise<ApplicationCommandOptionChoiceData[]>;

@@ -1,6 +1,8 @@
 # Colour menu bot: spec
 
-A Discord bot for one server. Members who **rep the server** (wear its server tag or put `.gg/femboii` in their status) can pick a colour role from menus in a channel such as #colour-yourself. When someone stops repping, the bot takes their colour off.
+A Discord bot for one server. Colour menus for reppers (§1–6) and a donation panel (§7).
+
+Members who **rep the server** (wear its server tag or put `.gg/femboii` in their status) can pick a colour role from menus in a channel such as #colour-yourself. When someone stops repping, the bot takes their colour off.
 
 Other bots already give reppers a role. This bot never looks at tags or statuses itself: it watches those **unlock roles**.
 
@@ -44,7 +46,8 @@ All under `/colours`, guild-only, hidden from everyone without Administrator (`d
 | `/colours menu list` | Menus, their colours and where they're posted |
 | `/colours unlock-role add\|remove\|list [role]` | Roles that make someone a repper |
 | `/colours post channel [fresh]` | Post or update every menu in order; `fresh` deletes and reposts them |
-| `/colours log-channel [channel]` | Where removals are logged; empty turns it off |
+| `/colours log-channel [channel]` | Where removals and donations are logged; empty turns it off |
+| `/donations setup\|goal\|donor-role\|add\|remove\|list\|reset` | The donation panel (§7) |
 
 The `menu` option autocompletes menu titles (for admins only).
 
@@ -56,3 +59,15 @@ Postgres via Prisma. Tables: `Settings` (log channel), `UnlockRole`, `ColourMenu
 - Intents: Guilds and **Server Members** (privileged). The bot needs **Manage Roles** and its role above every colour role.
 - Dropdowns use fixed custom IDs (`colours:menu:<id>`) handled by one global handler, so they work after restarts.
 - Commands are registered to `GUILD_ID` on startup. Config comes from environment variables validated with zod (`.env.example`).
+
+## 7. Donations (Ko-fi)
+The bot never takes payments: donors pay on the server's Ko-fi page, and Ko-fi tells the bot.
+
+- **Panel** (`/donations setup channel kofi-url`): a box with the fund name (default "Giveaway fund"), the total raised this round, or "raised of goal" with a progress bar when a goal is set, the top 5 donors, the 5 most recent donations, and a **💖 Donate** button. It updates after every donation.
+- **Donate button:** privately gives the member their **donation code** (like `SH-7K2F`, the same one every time) and a link to the Ko-fi page. Pasting the code into the Ko-fi message links the donation to their Discord account.
+- **Ko-fi webhook:** Ko-fi POSTs form data (`data` = JSON) to `POST /kofi` on the bot's port. The request must carry the server's **verification token** (`KOFI_VERIFICATION_TOKEN`), checked in constant time; otherwise 401 and nothing is saved. Only `Donation` and `Subscription` notifications count (shop orders and commissions are ignored with 200). Each donation is saved once, keyed by Ko-fi's `message_id`, so a resend is a no-op. If saving fails the bot answers 500 so Ko-fi retries.
+- **After a donation:** a thank-you in the panel's channel ("💖 @member donated **$5.00** to the **Giveaway fund**!"), pinging only the donor; the **Donor role** (`/donations donor-role`) for donations linked to a member; the panel updates; an embed goes to the log channel (source, Ko-fi name, donor role result).
+- **Privacy:** a donation marked private on Ko-fi shows as "Someone"/"Anonymous", isn't linked to a member, and its Ko-fi name isn't shown. Donor emails and Ko-fi messages are never stored or shown.
+- **Rounds:** `/donations reset` starts a new round: the panel's total and top donors start from $0, and older donations stay in the database.
+- **Staff fixes:** `/donations add user amount` (e.g. a donation made outside Ko-fi), `/donations remove number`, `/donations list` (this round, with numbers), `/donations goal [name] [amount]` (amount 0 = no goal).
+- The endpoint only opens when `KOFI_VERIFICATION_TOKEN` and a port (`WEBHOOK_PORT`, or the host's `SERVER_PORT`) are set. It serves only `POST /kofi` and a `GET /` health check, caps bodies at 64 KB and times out slow requests.

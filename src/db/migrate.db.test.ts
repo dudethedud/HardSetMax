@@ -1,6 +1,6 @@
 // Needs a real Postgres: set TEST_DATABASE_URL to run. Creates (and drops) its own
 // scratch databases next to the test database.
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,11 +37,14 @@ describe.skipIf(!url)('runMigrations', () => {
   it('builds an empty database from every migration, then has nothing to do', async () => {
     const db = await freshDb();
     const applied = await runMigrations({ connectionString: db }, MIGRATIONS, log);
-    expect(applied.at(-1)).toBe('20261108230144_colour_menus');
+    // Every migration folder, newest last.
+    expect(applied).toEqual(readdirSync(MIGRATIONS, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort());
     const c = new pg.Client({ connectionString: db });
     await c.connect();
     const tables = (await c.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1")).rows.map((r) => r.table_name);
-    expect(tables).toEqual(['ColourMenu', 'MenuColour', 'Settings', 'UnlockRole', '_prisma_migrations']);
+    expect(tables).toEqual(expect.arrayContaining(['ColourMenu', 'MenuColour', 'Settings', 'UnlockRole', 'Donation', 'DonationSettings', '_prisma_migrations']));
+    // None of the old bot's tables are left.
+    expect(tables).not.toContain('VipMember');
     const rows = await c.query<{ n: number }>("SELECT count(*)::int AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL AND applied_steps_count = 1");
     expect(rows.rows[0]?.n).toBe(applied.length);
     await c.end();
