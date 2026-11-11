@@ -8,6 +8,7 @@ import {
   ActionRowBuilder,
   AttachmentBuilder,
   ContainerBuilder,
+  EmbedBuilder,
   MediaGalleryBuilder,
   MessageFlags,
   PermissionFlagsBits,
@@ -303,19 +304,34 @@ export class ColourMenuService {
       this.log.warn({ err, userId: member.id }, "couldn't remove colour roles");
       return 0;
     }
-    await this.#log(`🎨 Took ${strip.map((id) => `<@&${id}>`).join(', ')} off <@${member.id}>: they no longer rep the server.`);
-    await this.#tellMember(member, strip);
+    const dmSent = await this.#tellMember(member, strip);
+    await this.#log(
+      new EmbedBuilder()
+        .setColor(0xff8fc7)
+        .setAuthor({ name: member.user.tag ?? member.displayName, iconURL: member.displayAvatarURL() })
+        .setTitle('🎨 Colour removed')
+        .setDescription(`<@${member.id}> no longer reps the server, so their colour was taken off.`)
+        .addFields(
+          { name: 'Removed', value: strip.map((id) => `<@&${id}>`).join(', '), inline: true },
+          { name: 'Reason', value: 'Lost their last unlock role', inline: true },
+          { name: 'DM', value: dmSent ? 'Sent ✅' : "Couldn't send (DMs closed)", inline: true },
+        )
+        .setFooter({ text: `User ID: ${member.id}` })
+        .setTimestamp(new Date()),
+    );
     return 1;
   }
 
-  /** DMs the member why their colour went. Members with closed DMs are skipped quietly. */
-  async #tellMember(member: GuildMember, roleIds: string[]): Promise<void> {
+  /** DMs the member why their colour went. Members with closed DMs are skipped quietly. Returns whether it was sent. */
+  async #tellMember(member: GuildMember, roleIds: string[]): Promise<boolean> {
     const names = roleIds.map((id) => member.guild.roles.cache.get(id)?.name ?? 'colour');
     const posted = await this.db.colourMenu.findFirst({ where: { channelId: { not: null } }, select: { channelId: true }, orderBy: { position: 'asc' } });
     try {
       await member.send({ content: removalDm(names, member.guild.name, posted?.channelId ?? null), allowedMentions: { parse: [] } });
+      return true;
     } catch (err) {
       this.log.info({ userId: member.id, err: err instanceof Error ? err.message : String(err) }, "couldn't DM a member about their removed colour (DMs closed?)");
+      return false;
     }
   }
 
@@ -334,10 +350,11 @@ export class ColourMenuService {
     return fixed;
   }
 
-  async #log(text: string): Promise<void> {
+  /** Posts an embed to the log channel, if one is set. Mentions in it never ping. */
+  async #log(embed: EmbedBuilder): Promise<void> {
     const settings = await this.db.settings.findUnique({ where: { guildId: this.guildId } });
     if (!settings?.logChannelId) return;
     const channel = await this.client.channels.fetch(settings.logChannelId).catch(() => null);
-    if (channel?.isSendable()) await channel.send({ content: text, allowedMentions: { parse: [] } }).catch((err: unknown) => this.log.warn({ err }, "couldn't post to the log channel"));
+    if (channel?.isSendable()) await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch((err: unknown) => this.log.warn({ err }, "couldn't post to the log channel"));
   }
 }
