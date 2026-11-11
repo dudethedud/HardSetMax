@@ -17,6 +17,8 @@ Colour role menus for server reppers. Members who wear the server tag or have `.
 | `/colours post channel [fresh]` | Post or update all menus, in order |
 | `/colours log-channel [channel]` | Log colours the bot takes off |
 
+**Donations:** a 💖 Donate panel backed by Ko-fi: public thank-yous, a total (and optional goal), top donors, and a Donor role. Admin commands: `/donations setup|goal|donor-role|add|remove|list|reset`.
+
 Setup and running: [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The host runs the **`deploy` branch**, which GitHub builds from `main` on every merge (no install or build on the host). Full rules: [`docs/SPEC.md`](docs/SPEC.md).
 
 ## Development

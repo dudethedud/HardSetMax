@@ -3,12 +3,14 @@ import { PermissionFlagsBits } from 'discord.js';
 import { COMMANDS } from './index.js';
 
 describe('commands', () => {
-  it('only /colours, admin only and guild only', () => {
-    expect(COMMANDS.map((c) => c.name)).toEqual(['colours']);
-    const c = COMMANDS[0]!;
-    expect(c.level).toBe('admin');
-    expect(c.data.default_member_permissions).toBe(PermissionFlagsBits.Administrator.toString());
-    expect(c.data.contexts).toEqual([0]);
+  it('/colours and /donations, both admin only and guild only', () => {
+    expect(COMMANDS.map((c) => c.name)).toEqual(['colours', 'donations']);
+    for (const c of COMMANDS) {
+      expect(c.level).toBe('admin');
+      expect(c.data.default_member_permissions).toBe(PermissionFlagsBits.Administrator.toString());
+      expect(c.data.contexts).toEqual([0]);
+    }
+    expect((COMMANDS[1]!.data.options ?? []).map((o) => o.name)).toEqual(['setup', 'goal', 'donor-role', 'add', 'remove', 'list', 'reset']);
   });
 
   it('has the menu, unlock-role, post and log-channel commands', () => {

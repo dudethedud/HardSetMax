@@ -1,8 +1,9 @@
 // The one global interaction handler. Menu dropdowns use fixed custom IDs
 // ("colours:menu:<id>"), so they keep working after restarts.
-import { MessageFlags, PermissionFlagsBits, type AutocompleteInteraction, type ChatInputCommandInteraction, type Interaction, type StringSelectMenuInteraction } from 'discord.js';
+import { MessageFlags, PermissionFlagsBits, type AutocompleteInteraction, type ButtonInteraction, type ChatInputCommandInteraction, type Interaction, type StringSelectMenuInteraction } from 'discord.js';
 import { ACCESS_DENIED, checkAccess, type AccessLevel, type AccessResult } from '../core/access.js';
 import { MENU_SELECT_PREFIX } from '../services/colourMenus.js';
+import { DONATE_BUTTON_ID } from '../services/donations.js';
 import { COMMANDS_BY_NAME } from './commands/index.js';
 import type { AppContext } from './commands/types.js';
 
@@ -17,6 +18,7 @@ function accessOf(interaction: ChatInputCommandInteraction | AutocompleteInterac
 
 export async function handleInteraction(interaction: Interaction, ctx: AppContext): Promise<void> {
   if (interaction.isStringSelectMenu()) return handleMenuPick(interaction, ctx);
+  if (interaction.isButton()) return handleButton(interaction, ctx);
   if (interaction.isAutocomplete()) return handleAutocomplete(interaction, ctx);
   if (!interaction.isChatInputCommand()) return;
 
@@ -54,6 +56,21 @@ async function handleAutocomplete(interaction: AutocompleteInteraction, ctx: App
   } catch (err) {
     ctx.log.warn({ err }, 'autocomplete failed');
     await interaction.respond([]).catch(() => undefined);
+  }
+}
+
+/** The donation panel's Donate button: the member's code and the Ko-fi link, privately. */
+async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
+  if (interaction.customId !== DONATE_BUTTON_ID || !interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
+    await interaction.reply({ content: 'This button no longer works.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    await interaction.editReply({ ...(await ctx.donations.donateReply(interaction.user.id)), allowedMentions: { parse: [] } });
+  } catch (err) {
+    ctx.log.error({ err }, 'donate button failed');
+    await interaction.editReply('❌ Something went wrong. Please try again.').catch(() => undefined);
   }
 }
 

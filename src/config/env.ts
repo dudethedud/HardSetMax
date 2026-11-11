@@ -15,6 +15,12 @@ const EnvSchema = z.object({
   // gateway-leader and migrations need one each on top of this.
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(20).default(5),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  // Donations: Ko-fi's verification token (Ko-fi → More → API). Without it, no
+  // donation endpoint is opened.
+  KOFI_VERIFICATION_TOKEN: z.string().min(8).optional(),
+  // Port for the Ko-fi endpoint. Hosts like Wispbyte give one as SERVER_PORT.
+  WEBHOOK_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+  SERVER_PORT: z.coerce.number().int().min(1).max(65535).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

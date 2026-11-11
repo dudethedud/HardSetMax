@@ -48,3 +48,43 @@ model MenuColour {
 
   @@index([menuId])
 }
+
+// Donations (Ko-fi, plus ones staff add by hand). Totals count donations since
+// DonationSettings.periodStart, so /donations reset starts a new round without
+// deleting history. Donor emails are never stored.
+model Donation {
+  id          Int      @id @default(autoincrement())
+  // Ko-fi's message_id: the same donation is only ever counted once.
+  kofiId      String?  @unique
+  // The Discord member, when their donation code was in the Ko-fi message (or staff added it).
+  userId      String?
+  // Ko-fi name, or "Anonymous" when the donor chose private.
+  displayName String
+  amountCents Int
+  currency    String
+  isPublic    Boolean
+  source      String // "kofi" | "manual"
+  addedBy     String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// A member's donation code, given by the Donate button, to paste into the Ko-fi message.
+model DonationCode {
+  code      String   @id
+  userId    String   @unique
+  createdAt DateTime @default(now())
+}
+
+// The donation panel and fund for the server.
+model DonationSettings {
+  guildId        String    @id
+  channelId      String?
+  messageId      String?
+  kofiUrl        String?
+  fundName       String    @default("Giveaway fund")
+  goalCents      Int?
+  donorRoleId    String?
+  periodStart    DateTime  @default(now())
+}

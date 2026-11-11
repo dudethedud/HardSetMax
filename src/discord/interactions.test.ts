@@ -16,6 +16,7 @@ const base = (over: Record<string, unknown>) =>
     user: { id: 'u1' },
     inCachedGuild: () => true,
     isStringSelectMenu: () => false,
+    isButton: () => false,
     isAutocomplete: () => false,
     isChatInputCommand: () => false,
     ...over,
