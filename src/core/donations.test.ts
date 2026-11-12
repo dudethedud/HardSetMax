@@ -82,6 +82,7 @@ describe('donation helpers', () => {
       { label: '**Bubbles**', cents: 500 },
     ]);
     expect(donorLabel({ userId: null, displayName: '**@everyone**', isPublic: true })).toBe('**everyone**');
+    expect(donorLabel({ userId: null, displayName: '{blue_1|x}', isPublic: true })).toBe('**blue1x**');
     expect(donorLabel({ userId: '9', displayName: 'x', isPublic: false })).toBe('Someone');
   });
 });
