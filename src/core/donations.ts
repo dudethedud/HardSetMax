@@ -125,5 +125,6 @@ export function topDonors(rows: readonly DonationRow[], limit = 5): { label: str
 /** How a donation is named in public: the member, their Ko-fi name (formatting stripped), or "Someone" when private. */
 export function donorLabel(d: { userId: string | null; displayName: string; isPublic: boolean }): string {
   if (!d.isPublic) return 'Someone';
-  return d.userId ? `<@${d.userId}>` : `**${d.displayName.replace(/[*_`~|<>@#]/g, '') || 'Someone'}**`;
+  // Formatting, mentions and {emoji|placeholder} characters are stripped from Ko-fi names.
+  return d.userId ? `<@${d.userId}>` : `**${d.displayName.replace(/[*_`~|<>@#{}]/g, '') || 'Someone'}**`;
 }

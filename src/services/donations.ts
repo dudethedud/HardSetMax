@@ -19,11 +19,14 @@ import {
   type SendableChannels,
 } from 'discord.js';
 import { donorLabel, formatMoney, makeCode, parseKofi, progressBar, topDonors, type KofiDonation } from '../core/donations.js';
+import { fillEmojis } from '../core/emojiText.js';
 import type { Db } from '../db/prisma.js';
 import type { Donation, DonationSettings } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
 
 export const DONATE_BUTTON_ID = 'donations:donate';
+/** Soft blue, matching the server's blue emoji set and rules post. */
+const BLUE = 0x8ec5ff;
 
 export class DonationService {
   constructor(
@@ -36,6 +39,18 @@ export class DonationService {
 
   #guild(): Guild | undefined {
     return this.client.guilds.cache.get(this.guildId);
+  }
+
+  /** Fills `{name|fallback}` with the server's emoji of that name (any case), or the fallback. */
+  #emojis(text: string): string {
+    const emojis = this.#guild()?.emojis.cache;
+    return fillEmojis(text, (name) => emojis?.find((e) => e.name?.toLowerCase() === name.toLowerCase() && e.available !== false)?.toString() ?? null);
+  }
+
+  /** A server emoji for a button by name, or the fallback emoji. */
+  #buttonEmoji(name: string, fallback: string): string | { id: string; name: string; animated: boolean } {
+    const e = this.#guild()?.emojis.cache.find((x) => x.name?.toLowerCase() === name.toLowerCase() && x.available !== false);
+    return e?.name ? { id: e.id, name: e.name, animated: e.animated ?? false } : fallback;
   }
 
   settings(): Promise<DonationSettings> {
@@ -86,15 +101,22 @@ export class DonationService {
   /** The Donate button: the member's code and the Ko-fi link, privately. */
   async donateReply(userId: string): Promise<Pick<MessageCreateOptions, 'content' | 'components'>> {
     const { kofiUrl } = await this.settings();
-    if (!kofiUrl) return { content: '💖 Donations aren’t set up yet. Ask an admin.' };
+    if (!kofiUrl) return { content: this.#emojis('{animBlueHeart|💙} donations aren’t set up yet, ask an admin!') };
     const code = await this.codeFor(userId);
     return {
-      content: [
-        `💖 Thank you for thinking of donating! Your code is **\`${code}\`**.`,
-        'Paste it into the **message** box on Ko-fi so the bot knows it was you, and you get the thank-you and the donor role.',
-        '-# Want to stay anonymous? Leave the code out, or tick "make private" on Ko-fi.',
-      ].join('\n'),
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(kofiUrl).setLabel('Donate on Ko-fi').setEmoji('💖'))],
+      content: this.#emojis(
+        [
+          `{animBlueHeart|💙} thank u for thinking of donating! ✧˚₊`,
+          `{topbracket|╭} your code is **\`${code}\`**`,
+          '{bottombracket|╰} paste it in the **message** box on ko-fi so we know it was u (u get the thank-you + donor role) {sparkle1|✦}',
+          '-# wanna stay anonymous? leave the code out, or tick "make private" on ko-fi',
+        ].join('\n'),
+      ),
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(kofiUrl).setLabel('donate on ko-fi').setEmoji(this.#buttonEmoji('animBlueHeart', '💙')),
+        ),
+      ],
     };
   }
 
@@ -193,7 +215,9 @@ export class DonationService {
       if (channel?.isSendable()) {
         await channel
           .send({
-            content: `💖 ${donorLabel(donation)} donated **${formatMoney(donation.amountCents, donation.currency)}** to the **${settings.fundName}**! Thank you so much!`,
+            content: this.#emojis(
+              `{animBlueHeart|💙} ${donorLabel(donation)} donated **${formatMoney(donation.amountCents, donation.currency)}** to the **${settings.fundName.toLowerCase()}**! thank u sm ✧˚₊ {animBlueStar|✦}`,
+            ),
             allowedMentions: { users: donation.isPublic && donation.userId ? [donation.userId] : [] },
           })
           .catch((err: unknown) => this.log.warn({ err }, "couldn't post the donation thank-you"));
@@ -218,8 +242,8 @@ export class DonationService {
     await this.refreshPanel();
     await this.#log(
       new EmbedBuilder()
-        .setColor(0xff5fa2)
-        .setTitle('💖 Donation')
+        .setColor(BLUE)
+        .setTitle('💙 Donation')
         .setDescription(`${donorLabel(donation)} donated **${formatMoney(donation.amountCents, donation.currency)}**.`)
         .addFields(
           { name: 'Source', value: donation.source === 'kofi' ? `Ko-fi${donation.isPublic ? '' : ' (private)'}` : `Added by <@${actorId ?? donation.addedBy}>`, inline: true },
@@ -237,31 +261,36 @@ export class DonationService {
     const { settings, donations } = await this.#round();
     const total = donations.reduce((s, d) => s + d.amountCents, 0);
     const top = topDonors(donations);
-    const recent = donations.slice(0, 5).map((d) => `${donorLabel(d)} · ${formatMoney(d.amountCents, d.currency)} · <t:${Math.floor(d.createdAt.getTime() / 1000)}:R>`);
+    const recent = donations.slice(0, 5).map((d) => `{blue_arrow|➤} ${donorLabel(d)} · ${formatMoney(d.amountCents, d.currency)} · <t:${Math.floor(d.createdAt.getTime() / 1000)}:R>`);
     const raised = settings.goalCents
-      ? `**${formatMoney(total)}** raised of **${formatMoney(settings.goalCents)}**\n${progressBar(total, settings.goalCents)}`
-      : `**${formatMoney(total)}** raised so far`;
+      ? `{topbracket|╭} **${formatMoney(total)}** raised of **${formatMoney(settings.goalCents)}**\n{bottombracket|╰} ${progressBar(total, settings.goalCents)} {sparkle1|✦}`
+      : `{topbracket|╭} **${formatMoney(total)}** raised so far\n{bottombracket|╰} thank u for supporting soft hearts {sparkle1|✦}`;
+    // Places 1–5 use the server's blue number pills.
+    const place = (i: number) => `{blue_${i + 1}|${['🥇', '🥈', '🥉', '4.', '5.'][i]}}`;
     const box = new ContainerBuilder()
-      .setAccentColor(0xff8fc7)
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 💖 __${settings.fundName}__`))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent('Every donation goes towards server giveaways. Thank you for supporting the server! 🎁'))
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(raised))
+      .setAccentColor(BLUE)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(this.#emojis(`## {animBlueHeart|💙} ⁀ ${settings.fundName.toLowerCase()} ⁀ {animBlueHeart|💙}`)))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# every donation goes to server giveaways ✧˚₊'))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(this.#emojis(raised)))
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          [
-            '**🏆 Top donors**',
-            ...(top.length ? top.map((t, i) => `${['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`} ${t.label} · ${formatMoney(t.cents)}`) : ['Be the first!']),
-            '',
-            '**🕒 Recent**',
-            ...(recent.length ? recent : ['No donations yet.']),
-          ].join('\n'),
+          this.#emojis(
+            [
+              '{blue_bow|🎀} **top donors**',
+              ...(top.length ? top.map((t, i) => `${place(i)} ${t.label} · ${formatMoney(t.cents)}`) : ['-# be the first! ✧']),
+              '',
+              '{blueAnimButterfly|🦋} **recent**',
+              ...(recent.length ? recent : ['-# no donations yet ✧']),
+            ].join('\n'),
+          ),
         ),
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addActionRowComponents(
-        new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(DONATE_BUTTON_ID).setLabel('Donate').setEmoji('💖').setStyle(ButtonStyle.Primary)),
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(DONATE_BUTTON_ID).setLabel('donate').setEmoji(this.#buttonEmoji('animBlueHeart', '💙')).setStyle(ButtonStyle.Primary),
+        ),
       );
     return { components: [box], flags: MessageFlags.IsComponentsV2 };
   }

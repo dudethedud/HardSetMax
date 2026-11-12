@@ -43,7 +43,11 @@ describe.skipIf(!url)('donations', () => {
     });
     const aliceRoles = new Collection<string, unknown>();
     const alice = { id: ALICE, displayName: 'Alice', roles: { cache: aliceRoles, add: (r: string) => (aliceRoles.set(r, {}), Promise.resolve()) } };
-    const guild = { id: GUILD, members: { fetch: (id: string) => (id === ALICE ? Promise.resolve(alice) : Promise.reject(new Error('Unknown Member'))) } };
+    const emojis = new Collection([
+      ['700000000000000001', { id: '700000000000000001', name: 'animBlueHeart', animated: true, available: true, toString: () => '<a:animBlueHeart:700000000000000001>' }],
+      ['700000000000000002', { id: '700000000000000002', name: 'blue_1', animated: false, available: true, toString: () => '<:blue_1:700000000000000002>' }],
+    ]);
+    const guild = { id: GUILD, emojis: { cache: emojis }, members: { fetch: (id: string) => (id === ALICE ? Promise.resolve(alice) : Promise.reject(new Error('Unknown Member'))) } };
     const client = { guilds: { cache: new Map([[GUILD, guild]]) }, channels: { fetch: (id: string) => Promise.resolve(channel(id)) } } as unknown as Client;
     let n = 0;
     const service = new DonationService(client, GUILD, db, pino({ level: 'silent' }), () => Uint8Array.from([n++, 1, 2, 3]));
@@ -57,7 +61,7 @@ describe.skipIf(!url)('donations', () => {
     const t = setup();
     expect(await t.service.setup(t.channel(PANEL) as never, 'https://paypal.me/x')).toMatch(/Ko-fi page link/);
     expect(await t.service.setup(t.channel(PANEL) as never, 'https://ko-fi.com/softhearts')).toMatch(/posted/);
-    expect(text(t.sent[0]!.opts)).toContain('Giveaway fund');
+    expect(text(t.sent[0]!.opts)).toContain('giveaway fund');
     expect(text(t.sent[0]!.opts)).toContain('$0.00');
   });
 
@@ -70,10 +74,10 @@ describe.skipIf(!url)('donations', () => {
 
     expect(await t.service.handleKofi(kofi({ message: `yay ${code.toLowerCase()}` }), TOKEN)).toBe(200);
     const thanks = t.sent.find((s) => s.channelId === PANEL && typeof s.opts['content'] === 'string')!;
-    expect(thanks.opts).toMatchObject({ content: `💖 <@${ALICE}> donated **$5.00** to the **Giveaway fund**! Thank you so much!`, allowedMentions: { users: [ALICE] } });
+    expect(thanks.opts).toMatchObject({ content: `<a:animBlueHeart:700000000000000001> <@${ALICE}> donated **$5.00** to the **giveaway fund**! thank u sm ✧˚₊ ✦`, allowedMentions: { users: [ALICE] } });
     expect(t.aliceRoles.has(DONOR_ROLE)).toBe(true);
     const log = t.sent.find((s) => s.channelId === LOG)!;
-    expect(embedOf(log.opts)).toMatchObject({ title: '💖 Donation' });
+    expect(embedOf(log.opts)).toMatchObject({ title: '💙 Donation' });
     expect(text(t.messages.get('m1')!.edits.at(-1) as Record<string, unknown>)).toContain('$5.00');
 
     // Ko-fi sending the same donation again changes nothing.
@@ -90,7 +94,7 @@ describe.skipIf(!url)('donations', () => {
     expect(await db.donation.count()).toBe(0);
     expect(await t.service.handleKofi(kofi({ message_id: 'k2', is_public: false, from_name: 'Secret Sam' }), TOKEN)).toBe(200);
     const thanks = t.sent.find((s) => typeof s.opts['content'] === 'string' && String(s.opts['content']).includes('donated'))!;
-    expect(thanks.opts).toMatchObject({ content: '💖 Someone donated **$5.00** to the **Giveaway fund**! Thank you so much!', allowedMentions: { users: [] } });
+    expect(thanks.opts).toMatchObject({ content: '<a:animBlueHeart:700000000000000001> Someone donated **$5.00** to the **giveaway fund**! thank u sm ✧˚₊ ✦', allowedMentions: { users: [] } });
     expect(JSON.stringify(t.sent)).not.toContain('Secret Sam');
   });
 
@@ -103,7 +107,8 @@ describe.skipIf(!url)('donations', () => {
     const panel = text(await t.service.render());
     expect(panel).toContain('**$8.00** raised of **$20.00**');
     expect(panel).toContain('▰▰▰▰▱▱▱▱▱▱ 40%');
-    expect(panel).toContain(`🥇 <@${ALICE}> · $5.00`);
+    // Place 1 uses the server's blue_1 pill; place 2 falls back (no blue_2 in this fake server).
+    expect(panel).toContain(`<:blue_1:700000000000000002> <@${ALICE}> · $5.00`);
     expect(panel).toContain('🥈 **Bubbles** · $3.00');
     const list = await t.service.list();
     expect(list).toMatch(/\$8\.00 from 2 donation/);
