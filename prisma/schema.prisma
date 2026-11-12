@@ -88,3 +88,11 @@ model DonationSettings {
   donorRoleId    String?
   periodStart    DateTime  @default(now())
 }
+
+// Images inside the donation panel's box, like the rules post: "top" and "bottom".
+// Kept apart from DonationSettings so clicks don't load them; only drawing the panel does.
+model DonationBanner {
+  slot String @id // "top" | "bottom"
+  name String
+  data Bytes
+}
