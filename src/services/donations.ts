@@ -114,7 +114,7 @@ export class DonationService {
         [
           `{animBlueHeart|💙} thank u for thinking of donating! ✧˚₊`,
           `{topbracket|╭} your code is **\`${code}\`**`,
-          '{bottombracket|╰} paste it in the **message** box on ko-fi so we know it was u (u get the thank-you + donor role) {sparkle1|✦}',
+          '{bluebracket|╰} paste it in the **message** box on ko-fi so we know it was u (u get the thank-you + donor role) {sparkle1|✦}',
           '-# wanna stay anonymous? leave the code out, or tick "make private" on ko-fi',
         ].join('\n'),
       ),
@@ -292,8 +292,8 @@ export class DonationService {
     const top = topDonors(donations);
     const recent = donations.slice(0, 5).map((d) => `{blue_arrow|➤} ${donorLabel(d)} · ${formatMoney(d.amountCents, d.currency)} · <t:${Math.floor(d.createdAt.getTime() / 1000)}:R>`);
     const raised = settings.goalCents
-      ? `{topbracket|╭} **${formatMoney(total)}** raised of **${formatMoney(settings.goalCents)}**\n{bottombracket|╰} ${progressBar(total, settings.goalCents)} {sparkle1|✦}`
-      : `{topbracket|╭} **${formatMoney(total)}** raised so far\n{bottombracket|╰} thank u for supporting soft hearts {sparkle1|✦}`;
+      ? `{topbracket|╭} **${formatMoney(total)}** raised of **${formatMoney(settings.goalCents)}**\n{bluebracket|╰} ${progressBar(total, settings.goalCents)} {sparkle1|✦}`
+      : `{topbracket|╭} **${formatMoney(total)}** raised so far\n{bluebracket|╰} thank u for supporting soft hearts {sparkle1|✦}`;
     // Places 1–5 use the server's blue number pills.
     const place = (i: number) => `{blue_${i + 1}|${['🥇', '🥈', '🥉', '4.', '5.'][i]}}`;
     const box = new ContainerBuilder().setAccentColor(BLUE);
