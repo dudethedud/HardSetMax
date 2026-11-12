@@ -128,3 +128,29 @@ export function donorLabel(d: { userId: string | null; displayName: string; isPu
   // Formatting, mentions and {emoji|placeholder} characters are stripped from Ko-fi names.
   return d.userId ? `<@${d.userId}>` : `**${d.displayName.replace(/[*_`~|<>@#{}]/g, '') || 'Someone'}**`;
 }
+
+export interface Tier {
+  roleId: string;
+  minCents: number;
+}
+
+/** The highest tier a lifetime total reaches, or null. */
+export function tierFor(totalCents: number, tiers: readonly Tier[]): Tier | null {
+  return [...tiers].sort((a, b) => b.minCents - a.minCents).find((t) => totalCents >= t.minCents) ?? null;
+}
+
+/**
+ * The donor roles a member should gain and lose for their lifetime total: the
+ * Donor role for any donation, and only their highest tier (lower tiers come off).
+ */
+export function donorRoleChanges(memberRoleIds: ReadonlySet<string>, totalCents: number, donorRoleId: string | null, tiers: readonly Tier[]): { add: string[]; remove: string[] } {
+  const want = new Set<string>();
+  if (totalCents > 0 && donorRoleId) want.add(donorRoleId);
+  const tier = tierFor(totalCents, tiers);
+  if (tier) want.add(tier.roleId);
+  const managed = new Set([...(donorRoleId ? [donorRoleId] : []), ...tiers.map((t) => t.roleId)]);
+  return {
+    add: [...want].filter((id) => !memberRoleIds.has(id)),
+    remove: [...managed].filter((id) => memberRoleIds.has(id) && !want.has(id)),
+  };
+}

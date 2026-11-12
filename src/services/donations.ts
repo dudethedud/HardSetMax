@@ -18,13 +18,15 @@ import {
   type Client,
   type Guild,
   type MessageCreateOptions,
+  type Role,
   type SendableChannels,
 } from 'discord.js';
-import { donorLabel, formatMoney, makeCode, parseKofi, progressBar, topDonors, type KofiDonation } from '../core/donations.js';
+import { donorLabel, donorRoleChanges, formatMoney, makeCode, parseKofi, progressBar, topDonors, type KofiDonation, type Tier } from '../core/donations.js';
 import { fillEmojis } from '../core/emojiText.js';
 import type { Db } from '../db/prisma.js';
 import type { Donation, DonationSettings } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
+import { assignableRoleError } from './roleSafety.js';
 
 export const DONATE_BUTTON_ID = 'donations:donate';
 /** Both panel images together stay under Discord's upload limit for one message. */
@@ -180,10 +182,87 @@ export class DonationService {
     return `✅ Set the ${slot} image.${note === 'not set up' ? ' It shows once you run `/donations setup`.' : ' The panel is updated.'}`;
   }
 
-  async setDonorRole(roleId: string | null): Promise<string> {
+  async setDonorRole(role: Role | null): Promise<string> {
+    if (role) {
+      const error = await assignableRoleError(role);
+      if (error) return `❌ ${error}`;
+      if (await this.db.donationTier.findUnique({ where: { roleId: role.id } })) return '❌ That role is a donor tier. Pick a different role for the base Donor role.';
+    }
     await this.settings();
-    await this.db.donationSettings.update({ where: { guildId: this.guildId }, data: { donorRoleId: roleId } });
-    return roleId ? `✅ Donors linked to their Discord account get <@&${roleId}>.` : '✅ Donors no longer get a role.';
+    await this.db.donationSettings.update({ where: { guildId: this.guildId }, data: { donorRoleId: role?.id ?? null } });
+    const synced = await this.syncAll();
+    await this.refreshPanel();
+    return role ? `✅ Everyone who has donated gets ${role.toString()}.${synced}` : '✅ Donors no longer get a base role.';
+  }
+
+  // ---- Donor tiers ----
+
+  tiers(): Promise<Tier[]> {
+    return this.db.donationTier.findMany({ orderBy: { minCents: 'asc' } });
+  }
+
+  /** Adds or changes a tier: members whose lifetime total reaches `cents` wear it (only their highest tier). */
+  async setTier(role: Role, cents: number): Promise<string> {
+    const error = await assignableRoleError(role);
+    if (error) return `❌ ${error}`;
+    if ((await this.settings()).donorRoleId === role.id) return '❌ That’s the base Donor role. Tiers need their own roles.';
+    const clash = await this.db.donationTier.findFirst({ where: { minCents: cents, roleId: { not: role.id } } });
+    if (clash) return `❌ <@&${clash.roleId}> already starts at ${formatMoney(cents)}. Use a different amount.`;
+    await this.db.donationTier.upsert({ where: { roleId: role.id }, create: { roleId: role.id, minCents: cents }, update: { minCents: cents } });
+    const synced = await this.syncAll();
+    await this.refreshPanel();
+    return `✅ ${role.toString()} is the tier for **${formatMoney(cents)}+** donated in total.${synced}`;
+  }
+
+  /** Removes a tier and takes its role off everyone wearing it; they move to their next tier, if any. */
+  async removeTier(roleId: string): Promise<string> {
+    const { count } = await this.db.donationTier.deleteMany({ where: { roleId } });
+    if (!count) return '❌ That role isn’t a donor tier.';
+    const role = this.#guild()?.roles.cache.get(roleId);
+    for (const member of role?.members.values() ?? []) await member.roles.remove(roleId, 'No longer a donor tier').catch(() => undefined);
+    const synced = await this.syncAll();
+    await this.refreshPanel();
+    return `✅ <@&${roleId}> is no longer a donor tier and was taken off its members.${synced}`;
+  }
+
+  async listTiers(): Promise<string> {
+    const [tiers, settings] = await Promise.all([this.tiers(), this.settings()]);
+    const lines = [
+      settings.donorRoleId ? `💙 Any donation: <@&${settings.donorRoleId}>` : '💙 No base Donor role (set one with `/donations donor-role`)',
+      ...tiers.map((t) => `⭐ ${formatMoney(t.minCents)}+ in total: <@&${t.roleId}>`),
+    ];
+    return tiers.length ? lines.join('\n') : `${lines[0]}\nNo tiers yet: add one with \`/donations tier action:add role:@… amount:5\`.`;
+  }
+
+  /** Lifetime total for a member (every round, not just this one). */
+  async #lifetime(userId: string): Promise<number> {
+    const sum = await this.db.donation.aggregate({ where: { userId }, _sum: { amountCents: true } });
+    return sum._sum.amountCents ?? 0;
+  }
+
+  /** Gives and takes the Donor role and tier roles to match the member's lifetime total. Returns what happened, for the log. */
+  async syncMember(userId: string): Promise<string> {
+    const guild = this.#guild();
+    const member = guild ? await guild.members.fetch(userId).catch(() => null) : null;
+    if (!member) return 'not in the server';
+    const [total, tiers, settings] = await Promise.all([this.#lifetime(userId), this.tiers(), this.settings()]);
+    const { add, remove } = donorRoleChanges(new Set(member.roles.cache.keys()), total, settings.donorRoleId, tiers);
+    if (!add.length && !remove.length) return settings.donorRoleId || tiers.length ? 'roles already up to date' : 'no donor roles set';
+    try {
+      if (remove.length) await member.roles.remove(remove, `Donor roles: ${formatMoney(total)} donated in total`);
+      if (add.length) await member.roles.add(add, `Donor roles: ${formatMoney(total)} donated in total`);
+    } catch (err) {
+      this.log.warn({ err, userId }, "couldn't change donor roles");
+      return "couldn't change roles (are they above the bot's role?)";
+    }
+    return [add.length ? `gave ${add.map((id) => `<@&${id}>`).join(', ')}` : '', remove.length ? `took ${remove.map((id) => `<@&${id}>`).join(', ')}` : ''].filter(Boolean).join(' · ');
+  }
+
+  /** After the donor role or tiers change: re-checks every member who has donated. Returns a note for the reply. */
+  async syncAll(): Promise<string> {
+    const donors = await this.db.donation.findMany({ where: { userId: { not: null } }, distinct: ['userId'], select: { userId: true } });
+    for (const d of donors) await this.syncMember(d.userId!);
+    return donors.length ? ` Checked roles for ${donors.length} donor(s).` : '';
   }
 
   async addManual(userId: string, cents: number, actorId: string): Promise<string> {
@@ -199,6 +278,8 @@ export class DonationService {
     const donation = await this.db.donation.findUnique({ where: { id } });
     if (!donation) return '❌ No donation with that number. See `/donations list`.';
     await this.db.donation.delete({ where: { id } });
+    // Their total went down: they may drop a tier, or lose the Donor role.
+    if (donation.userId) await this.syncMember(donation.userId);
     await this.refreshPanel();
     await this.#log(
       new EmbedBuilder()
@@ -231,7 +312,6 @@ export class DonationService {
 
   async #afterDonation(donation: Donation, actorId?: string): Promise<void> {
     const settings = await this.settings();
-    const guild = this.#guild();
     // Thank-you in the panel's channel. Only the donor is pinged.
     if (settings.channelId) {
       const channel = await this.client.channels.fetch(settings.channelId).catch(() => null);
@@ -246,22 +326,8 @@ export class DonationService {
           .catch((err: unknown) => this.log.warn({ err }, "couldn't post the donation thank-you"));
       }
     }
-    // The Donor role, when the donation is linked to a member.
-    let role = 'no role (not linked to a member)';
-    if (settings.donorRoleId && donation.userId && guild) {
-      const member = await guild.members.fetch(donation.userId).catch(() => null);
-      if (!member) role = 'not in the server';
-      else if (member.roles.cache.has(settings.donorRoleId)) role = 'already had the role';
-      else {
-        role = await member.roles
-          .add(settings.donorRoleId, `Donated ${formatMoney(donation.amountCents)}`)
-          .then(() => `gave <@&${settings.donorRoleId}>`)
-          .catch((err: unknown) => {
-            this.log.warn({ err }, "couldn't give the donor role");
-            return "couldn't give the role (is it above the bot's role?)";
-          });
-      }
-    } else if (!settings.donorRoleId) role = 'no donor role set';
+    // The Donor role and tier roles, when the donation is linked to a member.
+    const role = donation.userId ? await this.syncMember(donation.userId) : 'no roles (not linked to a member)';
     await this.refreshPanel();
     await this.#log(
       new EmbedBuilder()
@@ -271,7 +337,7 @@ export class DonationService {
         .addFields(
           { name: 'Source', value: donation.source === 'kofi' ? `Ko-fi${donation.isPublic ? '' : ' (private)'}` : `Added by <@${actorId ?? donation.addedBy}>`, inline: true },
           { name: 'Ko-fi name', value: donation.displayName.slice(0, 100), inline: true },
-          { name: 'Donor role', value: role, inline: true },
+          { name: 'Roles', value: role.slice(0, 1024), inline: true },
         )
         .setFooter({ text: `Donation #${donation.id}` })
         .setTimestamp(donation.createdAt),
@@ -283,6 +349,12 @@ export class DonationService {
   async render(): Promise<Pick<MessageCreateOptions, 'components' | 'files' | 'flags'>> {
     const { settings, donations } = await this.#round();
     const banners = await this.db.donationBanner.findMany();
+    const tiers = await this.tiers();
+    // What donating unlocks: the Donor role, then each tier (role mentions show in colour; nobody is pinged).
+    const perks = [
+      ...(settings.donorRoleId ? [`{blue_flower|🌸} any donation · <@&${settings.donorRoleId}>`] : []),
+      ...tiers.map((t) => `{animBlueStar|⭐} ${formatMoney(t.minCents)}+ · <@&${t.roleId}>`),
+    ];
     const image = (slot: BannerSlot) => banners.find((b) => b.slot === slot);
     const gallery = (slot: BannerSlot) => {
       const b = image(slot);
@@ -309,6 +381,7 @@ export class DonationService {
         new TextDisplayBuilder().setContent(
           this.#emojis(
             [
+              ...(perks.length ? ['{blue_ice|💎} **perks**', ...perks, ''] : []),
               '{blue_bow|🎀} **top donors**',
               ...(top.length ? top.map((t, i) => `${place(i)} ${t.label} · ${formatMoney(t.cents)}`) : ['-# be the first! ✧']),
               '',

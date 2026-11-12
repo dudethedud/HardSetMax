@@ -38,11 +38,11 @@ export interface RoleFacts {
   dangerous: boolean;
 }
 
-/** Why a role can't be a menu colour, or null. */
+/** Why the bot can't hand a role out (as a colour, the Donor role or a donor tier), or null. */
 export function colourRoleError(r: RoleFacts): string | null {
-  if (r.id === r.everyoneId) return "@everyone can't be a colour.";
+  if (r.id === r.everyoneId) return "@everyone can't be handed out.";
   if (r.managed) return "That role belongs to a bot or integration, so it can't be given out.";
-  if (r.dangerous) return 'That role has moderator or admin permissions. Colour roles should have none.';
+  if (r.dangerous) return 'That role has moderator or admin permissions. Roles the bot hands out should have none.';
   if (!r.belowBot) return "That role is above the bot's highest role. Drag the bot's role above it in Server Settings → Roles.";
   return null;
 }

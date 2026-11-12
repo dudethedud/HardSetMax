@@ -38,6 +38,20 @@ export const donationsCommand = defineCommand({
       )
       .addSubcommand((s) =>
         s
+          .setName('tier')
+          .setDescription('Donor tier roles by total donated (members wear only their highest)')
+          .addStringOption((o) =>
+            o
+              .setName('action')
+              .setDescription('What to do')
+              .setRequired(true)
+              .addChoices({ name: 'add or change a tier', value: 'add' }, { name: 'remove a tier', value: 'remove' }, { name: 'list tiers', value: 'list' }),
+          )
+          .addRoleOption((o) => o.setName('role').setDescription('The tier role (for add/remove)'))
+          .addNumberOption((o) => o.setName('amount').setDescription('Total donated (USD) to reach this tier, e.g. 5').setMinValue(0.01).setMaxValue(100000)),
+      )
+      .addSubcommand((s) =>
+        s
           .setName('donor-role')
           .setDescription('Role for donors linked to their Discord account (leave empty for none)')
           .addRoleOption((o) => o.setName('role').setDescription('The donor role')),
@@ -77,7 +91,17 @@ export const donationsCommand = defineCommand({
       const got = await downloadBanner(file.url, file.size);
       return void (await reply(got.ok ? await ctx.donations.setBanner(where, got.banner) : `❌ ${got.error}`));
     }
-    if (sub === 'donor-role') return void (await reply(await ctx.donations.setDonorRole(interaction.options.getRole('role')?.id ?? null)));
+    if (sub === 'donor-role') return void (await reply(await ctx.donations.setDonorRole(interaction.options.getRole('role'))));
+    if (sub === 'tier') {
+      const action = interaction.options.getString('action', true);
+      if (action === 'list') return void (await reply(await ctx.donations.listTiers()));
+      const role = interaction.options.getRole('role');
+      if (!role) return void (await reply('❌ Pick the tier role with `role:`.'));
+      if (action === 'remove') return void (await reply(await ctx.donations.removeTier(role.id)));
+      const amount = interaction.options.getNumber('amount');
+      if (amount === null) return void (await reply('❌ Give the total needed for this tier with `amount:` (e.g. 5).'));
+      return void (await reply(await ctx.donations.setTier(role, Math.round(amount * 100))));
+    }
     if (sub === 'add') {
       return void (await reply(await ctx.donations.addManual(interaction.options.getUser('user', true).id, Math.round(interaction.options.getNumber('amount', true) * 100), actor)));
     }

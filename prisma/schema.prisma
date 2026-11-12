@@ -96,3 +96,10 @@ model DonationBanner {
   name String
   data Bytes
 }
+
+// Donor tier roles: a member with at least minCents donated in total (all rounds)
+// wears the highest tier they've reached. Set with /donations tier.
+model DonationTier {
+  roleId   String @id
+  minCents Int
+}

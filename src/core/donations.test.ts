@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { donorLabel, findCode, formatMoney, makeCode, parseKofi, progressBar, toCents, tokenMatches, topDonors } from './donations.js';
+import { donorLabel, donorRoleChanges, findCode, formatMoney, makeCode, parseKofi, progressBar, tierFor, toCents, tokenMatches, topDonors } from './donations.js';
 
 const TOKEN = 'secret-token-123';
 const body = (over: Record<string, unknown> = {}) =>
@@ -84,5 +84,31 @@ describe('donation helpers', () => {
     expect(donorLabel({ userId: null, displayName: '**@everyone**', isPublic: true })).toBe('**everyone**');
     expect(donorLabel({ userId: null, displayName: '{blue_1|x}', isPublic: true })).toBe('**blue1x**');
     expect(donorLabel({ userId: '9', displayName: 'x', isPublic: false })).toBe('Someone');
+  });
+});
+
+describe('donor tiers', () => {
+  const tiers = [
+    { roleId: 'super', minCents: 1500 },
+    { roleId: 'supporter', minCents: 500 },
+    { roleId: 'angel', minCents: 3000 },
+  ];
+
+  it('the highest tier reached', () => {
+    expect(tierFor(499, tiers)).toBeNull();
+    expect(tierFor(500, tiers)?.roleId).toBe('supporter');
+    expect(tierFor(2000, tiers)?.roleId).toBe('super');
+    expect(tierFor(9999, tiers)?.roleId).toBe('angel');
+  });
+
+  it('Donor role for any donation, only the highest tier, lower tiers come off', () => {
+    expect(donorRoleChanges(new Set(), 300, 'donor', tiers)).toEqual({ add: ['donor'], remove: [] });
+    expect(donorRoleChanges(new Set(['donor', 'supporter']), 1600, 'donor', tiers)).toEqual({ add: ['super'], remove: ['supporter'] });
+    expect(donorRoleChanges(new Set(['donor', 'super', 'other']), 1600, 'donor', tiers)).toEqual({ add: [], remove: [] });
+    // A removed donation can drop them back down, or take everything off.
+    expect(donorRoleChanges(new Set(['donor', 'super']), 600, 'donor', tiers)).toEqual({ add: ['supporter'], remove: ['super'] });
+    expect(donorRoleChanges(new Set(['donor', 'supporter']), 0, 'donor', tiers)).toEqual({ add: [], remove: ['donor', 'supporter'] });
+    // No donor role set: tiers still work.
+    expect(donorRoleChanges(new Set(), 600, null, tiers)).toEqual({ add: ['supporter'], remove: [] });
   });
 });

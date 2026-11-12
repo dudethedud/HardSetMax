@@ -11,8 +11,6 @@ import {
   EmbedBuilder,
   MediaGalleryBuilder,
   MessageFlags,
-  PermissionFlagsBits,
-  PermissionsBitField,
   SeparatorBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
@@ -24,35 +22,14 @@ import {
   type Role,
   type SendableChannels,
 } from 'discord.js';
-import { colourRoleError, coloursToStrip, isRepper, MAX_COLOURS_PER_MENU, NO_COLOUR, removalDm, rolesAfterPick } from '../core/colours.js';
+import { coloursToStrip, isRepper, MAX_COLOURS_PER_MENU, NO_COLOUR, removalDm, rolesAfterPick } from '../core/colours.js';
 import type { Db } from '../db/prisma.js';
 import type { ColourMenu, MenuColour } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
+import { assignableRoleError } from './roleSafety.js';
 
 export const MENU_SELECT_PREFIX = 'colours:menu:';
 export const REP_MESSAGE = '🎨 Colours are for server reppers! Wear the server tag or put **.gg/femboii** in your status, then pick again.';
-
-/** Permissions a colour role must never carry: a menu would hand them to anyone. */
-const DANGEROUS = new PermissionsBitField([
-  PermissionFlagsBits.Administrator,
-  PermissionFlagsBits.ManageGuild,
-  PermissionFlagsBits.ManageRoles,
-  PermissionFlagsBits.ManageChannels,
-  PermissionFlagsBits.ManageMessages,
-  PermissionFlagsBits.ManageWebhooks,
-  PermissionFlagsBits.ManageNicknames,
-  PermissionFlagsBits.ManageEvents,
-  PermissionFlagsBits.ManageThreads,
-  PermissionFlagsBits.ManageGuildExpressions,
-  PermissionFlagsBits.KickMembers,
-  PermissionFlagsBits.BanMembers,
-  PermissionFlagsBits.ModerateMembers,
-  PermissionFlagsBits.MentionEveryone,
-  PermissionFlagsBits.MuteMembers,
-  PermissionFlagsBits.DeafenMembers,
-  PermissionFlagsBits.MoveMembers,
-  PermissionFlagsBits.ViewAuditLog,
-]).bitfield;
 
 export type MenuWithColours = ColourMenu & { colours: MenuColour[] };
 export type MenuSummary = Pick<ColourMenu, 'id' | 'title' | 'emoji' | 'position' | 'channelId' | 'messageId'> & { colours: { roleId: string }[] };
@@ -140,17 +117,9 @@ export class ColourMenuService {
   }
 
   async addColour(menuId: number, role: Role): Promise<string> {
-    const guild = role.guild;
     const menu = await this.db.colourMenu.findUnique({ where: { id: menuId }, include: { colours: true } });
     if (!menu) return '❌ That menu no longer exists.';
-    const botTop = (guild.members.me ?? (await guild.members.fetchMe())).roles.highest;
-    const error = colourRoleError({
-      id: role.id,
-      everyoneId: guild.id,
-      managed: role.managed,
-      belowBot: role.position < botTop.position,
-      dangerous: (role.permissions.bitfield & DANGEROUS) !== 0n,
-    });
+    const error = await assignableRoleError(role);
     if (error) return `❌ ${error}`;
     if (this.#unlock.has(role.id)) return "❌ That's an unlock role, not a colour.";
     const existing = await this.db.menuColour.findUnique({ where: { roleId: role.id }, include: { menu: true } });

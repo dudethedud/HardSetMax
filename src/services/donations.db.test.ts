@@ -1,7 +1,7 @@
 // Needs a real Postgres with migrations applied: set TEST_DATABASE_URL to run.
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pino } from 'pino';
-import { Collection, type Client } from 'discord.js';
+import { Collection, PermissionFlagsBits, PermissionsBitField, type Client, type Role } from 'discord.js';
 import { createDb, type Db } from '../db/prisma.js';
 import { DonationService } from './donations.js';
 
@@ -22,7 +22,7 @@ describe.skipIf(!url)('donations', () => {
   const db: Db = createDb({ connectionString: url }, 3);
 
   beforeEach(async () => {
-    await db.$transaction([db.donation.deleteMany(), db.donationCode.deleteMany(), db.donationBanner.deleteMany(), db.donationSettings.deleteMany(), db.settings.deleteMany()]);
+    await db.$transaction([db.donation.deleteMany(), db.donationCode.deleteMany(), db.donationBanner.deleteMany(), db.donationTier.deleteMany(), db.donationSettings.deleteMany(), db.settings.deleteMany()]);
     await db.settings.create({ data: { guildId: GUILD, logChannelId: LOG } });
   });
   afterAll(() => db.$disconnect());
@@ -42,16 +42,32 @@ describe.skipIf(!url)('donations', () => {
       },
     });
     const aliceRoles = new Collection<string, unknown>();
-    const alice = { id: ALICE, displayName: 'Alice', roles: { cache: aliceRoles, add: (r: string) => (aliceRoles.set(r, {}), Promise.resolve()) } };
+    const list = (r: string | string[]) => (Array.isArray(r) ? r : [r]);
+    const alice = {
+      id: ALICE,
+      displayName: 'Alice',
+      roles: {
+        cache: aliceRoles,
+        add: (r: string | string[]) => (list(r).forEach((id) => aliceRoles.set(id, {})), Promise.resolve()),
+        remove: (r: string | string[]) => (list(r).forEach((id) => aliceRoles.delete(id)), Promise.resolve()),
+      },
+    };
+    const roles = new Collection<string, Role>();
     const emojis = new Collection([
       ['700000000000000001', { id: '700000000000000001', name: 'animBlueHeart', animated: true, available: true, toString: () => '<a:animBlueHeart:700000000000000001>' }],
       ['700000000000000002', { id: '700000000000000002', name: 'blue_1', animated: false, available: true, toString: () => '<:blue_1:700000000000000002>' }],
     ]);
-    const guild = { id: GUILD, emojis: { cache: emojis }, members: { fetch: (id: string) => (id === ALICE ? Promise.resolve(alice) : Promise.reject(new Error('Unknown Member'))) } };
+    const guild = { id: GUILD, emojis: { cache: emojis }, roles: { cache: roles }, members: { me: { roles: { highest: { position: 50 } } }, fetch: (id: string) => (id === ALICE ? Promise.resolve(alice) : Promise.reject(new Error('Unknown Member'))) } };
     const client = { guilds: { cache: new Map([[GUILD, guild]]) }, channels: { fetch: (id: string) => Promise.resolve(channel(id)) } } as unknown as Client;
     let n = 0;
     const service = new DonationService(client, GUILD, db, pino({ level: 'silent' }), () => Uint8Array.from([n++, 1, 2, 3]));
-    return { service, sent, messages, channel, aliceRoles };
+    // Roles for donor role/tier tests: safe ones below the bot, one with mod permissions.
+    const role = (id: string, perms = 0n) => {
+      const r = { id, guild, managed: false, position: 10, permissions: new PermissionsBitField(perms), members: new Collection(), toString: () => `<@&${id}>` } as unknown as Role;
+      roles.set(id, r);
+      return r;
+    };
+    return { service, sent, messages, channel, aliceRoles, role };
   }
 
   const embedOf = (opts: Record<string, unknown>) => (opts['embeds'] as { toJSON(): { title?: string; fields?: { name: string; value: string }[] } }[])[0]!.toJSON();
@@ -68,7 +84,7 @@ describe.skipIf(!url)('donations', () => {
   it('a Ko-fi donation with a member’s code: thanked (only they are pinged), donor role, panel, log; counted once', async () => {
     const t = setup();
     await t.service.setup(t.channel(PANEL) as never, 'https://ko-fi.com/softhearts');
-    await t.service.setDonorRole(DONOR_ROLE);
+    await t.service.setDonorRole(t.role(DONOR_ROLE));
     const code = await t.service.codeFor(ALICE);
     expect(await t.service.codeFor(ALICE)).toBe(code);
 
@@ -148,5 +164,37 @@ describe.skipIf(!url)('donations', () => {
     expect(await t.service.setBanner('top', { name: 'big.gif', data: Buffer.alloc(10 * 1024 * 1024) })).toMatch(/10 MB or less/);
     expect(await t.service.setBanner('bottom', null)).toMatch(/Removed the bottom/);
     expect(await db.donationBanner.count()).toBe(1);
+  });
+
+  it('tiers: lifetime total gives the highest tier only, on top of the Donor role; removing a donation drops a tier; unsafe roles refused', async () => {
+    const t = setup();
+    await t.service.setup(t.channel(PANEL) as never, 'https://ko-fi.com/softhearts');
+    const SUPPORTER = '900000000000000070';
+    const SUPER = '900000000000000071';
+    expect(await t.service.setDonorRole(t.role(DONOR_ROLE))).toMatch(/Everyone who has donated/);
+    expect(await t.service.setTier(t.role('900000000000000079', PermissionFlagsBits.BanMembers), 500)).toMatch(/moderator or admin/);
+    expect(await t.service.setTier(t.role(DONOR_ROLE), 500)).toMatch(/base Donor role/);
+    expect(await t.service.setTier(t.role(SUPPORTER), 500)).toMatch(/\$5\.00\+/);
+    expect(await t.service.setTier(t.role(SUPER), 1500)).toMatch(/\$15\.00\+/);
+    expect(await t.service.setTier(t.role('900000000000000072'), 1500)).toMatch(/already starts at \$15\.00/);
+
+    await t.service.addManual(ALICE, 300, '100000000000000099');
+    expect([...t.aliceRoles.keys()].sort()).toEqual([DONOR_ROLE]);
+    await t.service.addManual(ALICE, 300, '100000000000000099');
+    expect([...t.aliceRoles.keys()].sort()).toEqual([DONOR_ROLE, SUPPORTER].sort());
+    // Totals count across rounds: a reset doesn't take tiers away.
+    await t.service.reset('100000000000000099');
+    const big = await t.service.addManual(ALICE, 1000, '100000000000000099');
+    expect([...t.aliceRoles.keys()].sort()).toEqual([DONOR_ROLE, SUPER].sort());
+    const log = embedOf(t.sent.filter((s) => s.channelId === LOG).at(-1)!.opts);
+    expect(log.fields?.find((f) => f.name === 'Roles')?.value).toBe(`gave <@&${SUPER}> · took <@&${SUPPORTER}>`);
+    // Removing the big donation drops them back to Supporter.
+    await t.service.remove(Number(/#(\d+)/.exec(big)![1]), '100000000000000099');
+    expect([...t.aliceRoles.keys()].sort()).toEqual([DONOR_ROLE, SUPPORTER].sort());
+    // The panel lists the perks.
+    const panel = text(await t.service.render());
+    expect(panel).toContain(`any donation · <@&${DONOR_ROLE}>`);
+    expect(panel).toContain(`$5.00+ · <@&${SUPPORTER}>`);
+    expect(await t.service.listTiers()).toContain(`$15.00+ in total: <@&${SUPER}>`);
   });
 });
