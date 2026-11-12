@@ -1,5 +1,6 @@
 // /donations: admins set up the donation panel and fix donations by hand.
 import { ChannelType } from 'discord.js';
+import { downloadBanner } from '../../services/banner.js';
 import { defineCommand } from './types.js';
 
 export const donationsCommand = defineCommand({
@@ -21,6 +22,19 @@ export const donationsCommand = defineCommand({
           .setDescription('Name the fund and set an optional goal')
           .addStringOption((o) => o.setName('name').setDescription('e.g. Giveaway fund').setMaxLength(40))
           .addNumberOption((o) => o.setName('amount').setDescription('Goal in USD (0 = no goal, just show the total)').setMinValue(0).setMaxValue(100000)),
+      )
+      .addSubcommand((s) =>
+        s
+          .setName('banner')
+          .setDescription('A GIF or image inside the panel, at the top or bottom (leave the image out to remove it)')
+          .addStringOption((o) =>
+            o
+              .setName('where')
+              .setDescription('Top or bottom of the panel')
+              .setRequired(true)
+              .addChoices({ name: 'top (big banner)', value: 'top' }, { name: 'bottom (thin strip)', value: 'bottom' }),
+          )
+          .addAttachmentOption((o) => o.setName('image').setDescription('PNG, JPG, GIF or WebP, up to 8 MB')),
       )
       .addSubcommand((s) =>
         s
@@ -55,6 +69,13 @@ export const donationsCommand = defineCommand({
     if (sub === 'goal') {
       const amount = interaction.options.getNumber('amount');
       return void (await reply(await ctx.donations.setGoal(interaction.options.getString('name')?.trim() || null, amount === null ? undefined : Math.round(amount * 100))));
+    }
+    if (sub === 'banner') {
+      const where = interaction.options.getString('where', true) === 'bottom' ? 'bottom' : 'top';
+      const file = interaction.options.getAttachment('image');
+      if (!file) return void (await reply(await ctx.donations.setBanner(where, null)));
+      const got = await downloadBanner(file.url, file.size);
+      return void (await reply(got.ok ? await ctx.donations.setBanner(where, got.banner) : `❌ ${got.error}`));
     }
     if (sub === 'donor-role') return void (await reply(await ctx.donations.setDonorRole(interaction.options.getRole('role')?.id ?? null)));
     if (sub === 'add') {

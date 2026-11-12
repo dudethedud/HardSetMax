@@ -6,10 +6,12 @@
 import { randomBytes } from 'node:crypto';
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ContainerBuilder,
   EmbedBuilder,
+  MediaGalleryBuilder,
   MessageFlags,
   SeparatorBuilder,
   TextDisplayBuilder,
@@ -25,6 +27,10 @@ import type { Donation, DonationSettings } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
 
 export const DONATE_BUTTON_ID = 'donations:donate';
+/** Both panel images together stay under Discord's upload limit for one message. */
+export const PANEL_IMAGES_MAX_BYTES = 10 * 1024 * 1024;
+export type BannerSlot = 'top' | 'bottom';
+
 /** Soft blue, matching the server's blue emoji set and rules post. */
 const BLUE = 0x8ec5ff;
 
@@ -157,6 +163,23 @@ export class DonationService {
     return `✅ Fund: **${s.fundName}**${s.goalCents ? `, goal ${formatMoney(s.goalCents)}` : ', no goal (the panel shows the total raised)'}.`;
   }
 
+  /** Sets (or with null, removes) the image at the top or bottom of the panel's box. */
+  async setBanner(slot: BannerSlot, banner: { name: string; data: Buffer } | null): Promise<string> {
+    if (!banner) {
+      await this.db.donationBanner.deleteMany({ where: { slot } });
+      await this.refreshPanel();
+      return `✅ Removed the ${slot} image.`;
+    }
+    const other = await this.db.donationBanner.findFirst({ where: { slot: { not: slot } }, select: { data: true } });
+    if (banner.data.length + (other?.data.length ?? 0) > PANEL_IMAGES_MAX_BYTES) {
+      return `❌ Together the two images must be 10 MB or less (this one is ${(banner.data.length / 1e6).toFixed(1)} MB). Use a smaller GIF.`;
+    }
+    const name = `${slot}-${banner.name}`;
+    await this.db.donationBanner.upsert({ where: { slot }, create: { slot, name, data: new Uint8Array(banner.data) }, update: { name, data: new Uint8Array(banner.data) } });
+    const note = await this.refreshPanel();
+    return `✅ Set the ${slot} image.${note === 'not set up' ? ' It shows once you run `/donations setup`.' : ' The panel is updated.'}`;
+  }
+
   async setDonorRole(roleId: string | null): Promise<string> {
     await this.settings();
     await this.db.donationSettings.update({ where: { guildId: this.guildId }, data: { donorRoleId: roleId } });
@@ -257,8 +280,14 @@ export class DonationService {
 
   // ---- The panel ----
 
-  async render(): Promise<Pick<MessageCreateOptions, 'components' | 'flags'>> {
+  async render(): Promise<Pick<MessageCreateOptions, 'components' | 'files' | 'flags'>> {
     const { settings, donations } = await this.#round();
+    const banners = await this.db.donationBanner.findMany();
+    const image = (slot: BannerSlot) => banners.find((b) => b.slot === slot);
+    const gallery = (slot: BannerSlot) => {
+      const b = image(slot);
+      return b ? new MediaGalleryBuilder().addItems((i) => i.setURL(`attachment://${b.name}`)) : null;
+    };
     const total = donations.reduce((s, d) => s + d.amountCents, 0);
     const top = topDonors(donations);
     const recent = donations.slice(0, 5).map((d) => `{blue_arrow|➤} ${donorLabel(d)} · ${formatMoney(d.amountCents, d.currency)} · <t:${Math.floor(d.createdAt.getTime() / 1000)}:R>`);
@@ -267,8 +296,11 @@ export class DonationService {
       : `{topbracket|╭} **${formatMoney(total)}** raised so far\n{bottombracket|╰} thank u for supporting soft hearts {sparkle1|✦}`;
     // Places 1–5 use the server's blue number pills.
     const place = (i: number) => `{blue_${i + 1}|${['🥇', '🥈', '🥉', '4.', '5.'][i]}}`;
-    const box = new ContainerBuilder()
-      .setAccentColor(BLUE)
+    const box = new ContainerBuilder().setAccentColor(BLUE);
+    // Like the rules post: an image at the top of the box, and a strip at the bottom.
+    const topImage = gallery('top');
+    if (topImage) box.addMediaGalleryComponents(topImage);
+    box
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(this.#emojis(`## {animBlueHeart|💙} ⁀ ${settings.fundName.toLowerCase()} ⁀ {animBlueHeart|💙}`)))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent('-# every donation goes to server giveaways ✧˚₊'))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(this.#emojis(raised)))
@@ -292,7 +324,10 @@ export class DonationService {
           new ButtonBuilder().setCustomId(DONATE_BUTTON_ID).setLabel('donate').setEmoji(this.#buttonEmoji('animBlueHeart', '💙')).setStyle(ButtonStyle.Primary),
         ),
       );
-    return { components: [box], flags: MessageFlags.IsComponentsV2 };
+    const bottomImage = gallery('bottom');
+    if (bottomImage) box.addMediaGalleryComponents(bottomImage);
+    const files = banners.map((b) => new AttachmentBuilder(Buffer.from(b.data), { name: b.name }));
+    return { components: [box], files, flags: MessageFlags.IsComponentsV2 };
   }
 
   async #postPanel(channel: SendableChannels): Promise<string> {
@@ -309,7 +344,9 @@ export class DonationService {
     if (!channel?.isSendable() || !('messages' in channel)) return 'channel missing';
     const message = s.messageId ? await channel.messages.fetch(s.messageId).catch(() => null) : null;
     if (!message) return this.#postPanel(channel);
-    await message.edit({ components: (await this.render()).components, allowedMentions: { parse: [] } });
+    const content = await this.render();
+    // The images are sent again each time (attachments: [] drops the old copies), so the panel always shows the current ones.
+    await message.edit({ components: content.components, files: content.files, attachments: [], allowedMentions: { parse: [] } });
     return 'updated';
   }
 

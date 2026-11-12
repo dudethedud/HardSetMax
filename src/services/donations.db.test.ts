@@ -22,7 +22,7 @@ describe.skipIf(!url)('donations', () => {
   const db: Db = createDb({ connectionString: url }, 3);
 
   beforeEach(async () => {
-    await db.$transaction([db.donation.deleteMany(), db.donationCode.deleteMany(), db.donationSettings.deleteMany(), db.settings.deleteMany()]);
+    await db.$transaction([db.donation.deleteMany(), db.donationCode.deleteMany(), db.donationBanner.deleteMany(), db.donationSettings.deleteMany(), db.settings.deleteMany()]);
     await db.settings.create({ data: { guildId: GUILD, logChannelId: LOG } });
   });
   afterAll(() => db.$disconnect());
@@ -127,5 +127,26 @@ describe.skipIf(!url)('donations', () => {
     const reply = await t.service.donateReply(ALICE);
     expect(reply.content).toContain(await t.service.codeFor(ALICE));
     expect(JSON.stringify((reply.components as { toJSON(): unknown }[])[0]!.toJSON())).toContain('https://ko-fi.com/softhearts');
+  });
+
+  it('top and bottom images sit inside the box, like the rules post; they stay on updates; size is capped', async () => {
+    const t = setup();
+    await t.service.setup(t.channel(PANEL) as never, 'https://ko-fi.com/softhearts');
+    expect(await t.service.setBanner('top', { name: 'banner.gif', data: Buffer.from('GIF89a-top') })).toMatch(/panel is updated/);
+    expect(await t.service.setBanner('bottom', { name: 'banner.gif', data: Buffer.from('GIF89a-bottom') })).toMatch(/panel is updated/);
+    const out = await t.service.render();
+    const box = (out.components as unknown as { toJSON(): { components: { type: number; items?: { media: { url: string } }[] }[] } }[])[0]!.toJSON();
+    expect(box.components[0]).toMatchObject({ type: 12, items: [{ media: { url: 'attachment://top-banner.gif' } }] });
+    expect(box.components.at(-1)).toMatchObject({ type: 12, items: [{ media: { url: 'attachment://bottom-banner.gif' } }] });
+    expect((out.files as unknown as { name: string }[]).map((f) => f.name).sort()).toEqual(['bottom-banner.gif', 'top-banner.gif']);
+    // A donation update re-sends the images, replacing the old copies.
+    await t.service.handleKofi(kofi({ message_id: 'k9' }), TOKEN);
+    const edit = t.messages.get('m1')!.edits.at(-1) as { files: unknown[]; attachments: unknown[] };
+    expect(edit.files).toHaveLength(2);
+    expect(edit.attachments).toEqual([]);
+    // Too big together; then removing one.
+    expect(await t.service.setBanner('top', { name: 'big.gif', data: Buffer.alloc(10 * 1024 * 1024) })).toMatch(/10 MB or less/);
+    expect(await t.service.setBanner('bottom', null)).toMatch(/Removed the bottom/);
+    expect(await db.donationBanner.count()).toBe(1);
   });
 });

@@ -10,7 +10,7 @@ describe('commands', () => {
       expect(c.data.default_member_permissions).toBe(PermissionFlagsBits.Administrator.toString());
       expect(c.data.contexts).toEqual([0]);
     }
-    expect((COMMANDS[1]!.data.options ?? []).map((o) => o.name)).toEqual(['setup', 'goal', 'donor-role', 'add', 'remove', 'list', 'reset']);
+    expect((COMMANDS[1]!.data.options ?? []).map((o) => o.name)).toEqual(['setup', 'goal', 'banner', 'donor-role', 'add', 'remove', 'list', 'reset']);
   });
 
   it('has the menu, unlock-role, post and log-channel commands', () => {
