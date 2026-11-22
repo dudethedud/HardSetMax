@@ -60,6 +60,7 @@ The free server has 512 MB. There's no build on the server any more; the bot its
 | `P1011: Error opening a TLS connection` or `TLS certificate isn't trusted` | `DATABASE_CA_CERT` is missing or points to the wrong file. Re-download the certificate from Supabase. |
 | `P1001: Can't reach database server` | Wrong host in `DATABASE_URL`, or the Supabase project is paused (open it in Supabase and click Restore). |
 | `Discord refused the intents` | Turn on **Server Members Intent** in the Developer Portal (Bot page). |
+| `invite event: invite tracking is OFF` | Give the bot's role **Manage Server** (README, invite event). It checks again every hour. |
 | `bot is not in GUILD_ID` | Invite the bot to the server, or fix `GUILD_ID`. |
 | Server keeps restarting with no clear error | It may be out of memory. Check the panel's memory graph. |
 | Console shows `npm install` (the `\|/-` spinner), or "stopped for using too much CPU" | The server is still on `main`. Switch it to the `deploy` branch (above). |

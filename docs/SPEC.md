@@ -49,14 +49,16 @@ All under `/colours`, guild-only, hidden from everyone without Administrator (`d
 | `/colours log-channel [channel]` | Where removals and donations are logged; empty turns it off |
 | `/donations setup\|goal\|donor-role\|add\|remove\|list\|reset` | The donation panel (§7) |
 
+The Christmas invite event's commands (§8) are the exception: `/invites`, `/leaderboard` and `/invite-link` are for everyone, and `/invite-event` is for staff with **Manage Server**. They're still guild-only and re-checked at runtime.
+
 The `menu` option autocompletes menu titles (for admins only).
 
 ## 5. Data
-Postgres via Prisma. Tables: `Settings` (log channel), `UnlockRole`, `ColourMenu` (title, emoji, banner bytes, position, posted message), `MenuColour` (role, menu, position). Member colour choices are **not** stored: Discord's roles are the record of who wears what. No message content is stored.
+Postgres via Prisma. Tables: `Settings` (log channel), `UnlockRole`, `ColourMenu` (title, emoji, banner bytes, position, posted message), `MenuColour` (role, menu, position); the invite event's `InviteEventState`, `InviteJoin`, `PersonalInvite`, `KnownMember`, `DisqualifiedInviter`, `InviteFlag` (§8; user IDs, usernames, join/leave times and account creation dates only). Member colour choices are **not** stored: Discord's roles are the record of who wears what. No message content is stored.
 
 ## 6. Running
 - Only one copy connects to Discord at a time (`gateway-leader` Postgres advisory lock).
-- Intents: Guilds and **Server Members** (privileged). The bot needs **Manage Roles** and its role above every colour role.
+- Intents: Guilds, **Server Members** (privileged) and Guild Invites. The bot needs **Manage Roles** and its role above every colour role; the invite event (§8) also needs **Manage Server** and **Create Invite**.
 - Dropdowns use fixed custom IDs (`colours:menu:<id>`) handled by one global handler, so they work after restarts.
 - Commands are registered to `GUILD_ID` on startup. Config comes from environment variables validated with zod (`.env.example`).
 
@@ -74,3 +76,18 @@ The bot never takes payments: donors pay on the server's Ko-fi page, and Ko-fi t
 - **Rounds:** `/donations reset` starts a new round: the panel's total and top donors start from $0, and older donations stay in the database.
 - **Staff fixes:** `/donations add user amount` (e.g. a donation made outside Ko-fi), `/donations remove number`, `/donations list` (this round, with numbers), `/donations goal [name] [amount]` (amount 0 = no goal).
 - The endpoint only opens when `KOFI_VERIFICATION_TOKEN` and a port (`WEBHOOK_PORT`, or the host's `SERVER_PORT`) are set. It serves only `POST /kofi` and a `GET /` health check, caps bodies at 64 KB and times out slow requests.
+
+## 8. Christmas invite event
+Members invite friends; every **valid** invite is one raffle entry. Everything is posted publicly or to staff: **members are never DMed**. Rules are pure in `core/inviteEvent.ts`; the service is `services/inviteEvent.ts`.
+
+- **On** when `LEADERBOARD_CHANNEL_ID` and `LEVEL3_ROLE_ID` are both set. The **start** is saved the first time the bot runs with it on (`InviteEventState.startAt`); the **end** is `INVITE_EVENT_END` (default `2026-12-25T12:00`), Edmonton time. Edmonton is a fixed **UTC-6** (Alberta's all-year time from 2026).
+- **Tracking:** the bot caches every invite's uses on start, on `inviteCreate`/`inviteDelete`, and after each join. On `guildMemberAdd` it reads the uses again: exactly one invite up by one = that invite's creator gets the credit. Two up at once, or one up by two, is **unknown** (never guessed). Only the vanity URL up = **vanity**; nothing up = **discovery** in a discoverable server, else **unknown**. Vanity, discovery and unknown joins never count. Joins are handled one at a time, in order.
+- **Personal links:** `/invite-link` makes (or shows again) a permanent, unlimited invite in `INVITE_LINK_CHANNEL_ID` (default: the leaderboard channel) saved as theirs (`PersonalInvite`). Joins through it are credited to that member, not to the bot that created it. Deleting the invite deletes the link; running the command again makes a new one.
+- **One row per invitee** (`InviteJoin`, unique `inviteeId`): coming back never counts twice. Self-invites and bots are invalid. Only joins from the start to the end (or a staff freeze) count; joins after it aren't saved.
+- **Valid** when all of: (1) the account was at least **30 days** old when they joined; (2) they stayed **7 days** (leaving sooner = **left**); (3) they have the **level 3 role** (`LEVEL3_ROLE_ID`); (4) they **weren't in the server before**: everyone present the first time the event ran is saved (`KnownMember`), as is everyone who joins since. People who left before that can't be known, so they count as new.
+- Statuses: `pending` (waiting for 7 days or the role) → `valid`, or `left` / `invalid` / `disqualified`. An hourly job re-checks every invite and marks anyone gone as left. A valid invitee who leaves **before the end** goes back to `left`; leaving after the end keeps it valid. Once valid, losing the level role doesn't undo it. `validatedAt` (when it first became valid) breaks leaderboard ties: whoever reached their count first ranks higher.
+- **After the end:** joins up to the end keep being checked until their 7 days are up (about Jan 1). At the end the bot freezes the event and posts "event over · final results after Jan 1"; a week (and an hour) later it does a last check, posts the **final** leaderboard and stops changing statuses.
+- **Alt flags** to the staff log (`STAFF_LOG_CHANNEL_ID`, else the `/colours` log channel), each posted once (`InviteFlag`), never acted on automatically: 5+ joins from one inviter within an hour; a default avatar on an account under 90 days old; a username very like the inviter's or another of their invitees' (same letters ignoring numbers/symbols, or one letter apart for 5+ letters); over 50% of an inviter's invitees left, after 5+ joins.
+- **Weekly post** every Sunday 6 PM Edmonton in the leaderboard channel (a missed one is still made up to 12 hours late; never twice): title `🎄 invite leaderboard · week N`; the top 5 as `🥇 @user ── **X** invites` (🥈, 🥉, then `4.`, `5.`); footer `X days left · every valid invite = a raffle entry ♡ check yours with /invites`; colour `EMBED_COLOR` (default `#a8d8f0`). No pings.
+- **Commands** (public): `/invites [user]` (your valid/pending/left counts, rank and what pending ones wait for; private when it's you, public for someone else; says invites from before the start can't be tracked), `/leaderboard` (top 10 and days left), `/invite-link` (private). **Staff** (Manage Server): `/invite-event review user` (each invite, its source, account age, avatar, status and reason, and flags), `disqualify user reason`, `reinstate user`, `set-status invitee status [reason]` (`auto` goes back to the rules), `raffle-export` (a CSV for wheelofnames.com with one line per valid invite, plus a summary), `freeze` (stop counting new joins now).
+- **Permissions:** the bot needs **Manage Server** to see invite uses, and **Create Invite** in the invite link channel for `/invite-link`. Without Manage Server, tracking is **off, loudly**: an error log and a staff-log post, joins in that time are unknown, and the bot re-checks every hour (and posts when it's back). Colours and donations keep working.

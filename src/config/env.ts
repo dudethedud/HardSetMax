@@ -3,6 +3,8 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 const snowflake = z.string().regex(/^\d{17,20}$/, 'must be a Discord ID');
+/** An optional setting where an empty value (`NAME=` in .env) means "not set". */
+const optional = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
 
 const EnvSchema = z.object({
   DISCORD_TOKEN: z.string().min(1),
@@ -21,6 +23,20 @@ const EnvSchema = z.object({
   // Port for the Ko-fi endpoint. Hosts like Wispbyte give one as SERVER_PORT.
   WEBHOOK_PORT: z.coerce.number().int().min(1).max(65535).optional(),
   SERVER_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+  // Christmas invite event (docs/SPEC.md §8): on when LEADERBOARD_CHANNEL_ID and
+  // LEVEL3_ROLE_ID are both set. The end is Edmonton time.
+  INVITE_EVENT_END: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'must look like 2026-12-25T12:00').default('2026-12-25T12:00'),
+  LEADERBOARD_CHANNEL_ID: optional(snowflake),
+  LEVEL3_ROLE_ID: optional(snowflake),
+  // Alt flags and event changes; without it they go to the /colours log channel.
+  STAFF_LOG_CHANNEL_ID: optional(snowflake),
+  // Where /invite-link makes personal invites; without it, the leaderboard channel.
+  INVITE_LINK_CHANNEL_ID: optional(snowflake),
+  EMBED_COLOR: z
+    .string()
+    .regex(/^#?[0-9a-fA-F]{6}$/, 'must be a hex colour like #a8d8f0')
+    .default('#a8d8f0')
+    .transform((c) => parseInt(c.replace('#', ''), 16)),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
