@@ -123,6 +123,7 @@ client.on(Events.InteractionCreate, (interaction) => {
 });
 client.on(Events.GuildMemberUpdate, (_before, after) => {
   colours.check(after).catch(logErrors('colour check'));
+  invites?.onMemberUpdate(after).catch(logErrors('invite event role check'));
 });
 client.on(Events.Error, (err) => log.error({ err }, 'discord client error'));
 

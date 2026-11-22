@@ -8,7 +8,8 @@ import { DateTime } from 'luxon';
 export const EVENT_ZONE = 'UTC-6';
 const DAY_MS = 24 * 3600_000;
 export const MIN_ACCOUNT_AGE_DAYS = 30;
-export const STAY_DAYS = 7;
+/** After the end, invitees who joined in time get this long to reach level 3 before the final results. */
+export const LEVEL_GRACE_DAYS = 7;
 
 // ---- Which invite was used ----
 
@@ -82,9 +83,11 @@ export function joinCutoff(eventEnd: Date, frozenAt: Date | null): Date {
 }
 
 /**
- * An invite's status from its facts (re-run every hour). Order matters: staff
- * overrides, then disqualification, then rules that can never change (invalid),
- * then leaving, then waiting.
+ * An invite's status from its facts (re-run on joins, leaves, role changes and every
+ * hour). "pending" = invited (counts on the leaderboard as invited), "valid" =
+ * verified (has level 3: a raffle entry). Order matters: staff overrides, then
+ * disqualification, then rules that can never change (invalid), then leaving, then
+ * waiting for the role.
  */
 export function evaluateJoin(j: JoinFacts, ctx: EvalContext): Evaluation {
   const keep = (status: InviteStatus, reason: string | null): Evaluation => ({ status, reason, validatedAt: j.validatedAt });
@@ -98,12 +101,10 @@ export function evaluateJoin(j: JoinFacts, ctx: EvalContext): Evaluation {
   if (j.rejoin) return keep('invalid', 'joined the server before');
   if (j.joinedAt < ctx.eventStart || j.joinedAt > joinCutoff(ctx.eventEnd, ctx.frozenAt)) return keep('invalid', 'joined outside the event');
   if (j.joinedAt.getTime() - j.accountCreatedAt.getTime() < MIN_ACCOUNT_AGE_DAYS * DAY_MS) return keep('invalid', 'account too new');
-  const settledAt = j.joinedAt.getTime() + STAY_DAYS * DAY_MS;
-  // Rule 2, and a valid invitee leaving before the end stops counting.
-  if (j.leftAt && (j.leftAt.getTime() < settledAt || j.leftAt < ctx.eventEnd)) return keep('left', j.leftAt.getTime() < settledAt ? `left within ${STAY_DAYS} days` : 'left before the event ended');
-  // Once valid it stays valid while they're in the server (e.g. if the level role is later removed).
+  // Leaving before the end stops it counting (verified or not); a verified invitee leaving after the end still counts.
+  if (j.leftAt && !(j.validatedAt && j.leftAt >= ctx.eventEnd)) return keep('left', j.leftAt < ctx.eventEnd ? 'left the server' : 'left before reaching level 3');
+  // Once verified it stays verified (e.g. if the level role is later removed).
   if (j.validatedAt) return keep('valid', null);
-  if (ctx.now.getTime() < settledAt) return keep('pending', `waiting for ${STAY_DAYS} days in the server`);
   if (!ctx.hasLevel3) return keep('pending', 'needs the level 3 role');
   return { status: 'valid', reason: null, validatedAt: ctx.now };
 }
@@ -187,28 +188,52 @@ export function leaveRateFlag(inviterId: string, joins: readonly FlagJoin[]): Fl
 
 // ---- Leaderboard and raffle ----
 
-export interface ValidRow {
+export interface StandingRow {
   inviterId: string;
-  validatedAt: Date;
+  status: string;
+  joinedAt: Date;
+  validatedAt: Date | null;
 }
 
-/** Valid invites per inviter, most first; ties go to whoever reached their count first. */
-export function rankInviters(rows: readonly ValidRow[], excluded: ReadonlySet<string> = new Set()): { inviterId: string; count: number; reachedAt: Date }[] {
-  const by = new Map<string, Date[]>();
+export interface Standing {
+  inviterId: string;
+  /** Invitees with level 3 (raffle entries). */
+  verified: number;
+  /** Invitees in the server without level 3 yet. */
+  invited: number;
+  left: number;
+  /** When they reached their current verified count (or, with none, their invited count): ties go to whoever was first. */
+  reachedAt: Date;
+}
+
+/**
+ * Like a football table: verified first (points), then invited (goal difference),
+ * then fewer left, then whoever got there first. Left never takes points away.
+ * Inviters with nothing verified or invited aren't listed.
+ */
+export function rankInviters(rows: readonly StandingRow[], excluded: ReadonlySet<string> = new Set()): Standing[] {
+  const by = new Map<string, { verified: Date[]; invited: Date[]; left: number }>();
   for (const r of rows) {
     if (excluded.has(r.inviterId)) continue;
-    const list = by.get(r.inviterId) ?? [];
-    list.push(r.validatedAt);
-    by.set(r.inviterId, list);
+    const s = by.get(r.inviterId) ?? { verified: [], invited: [], left: 0 };
+    if (r.status === 'valid') s.verified.push(r.validatedAt ?? r.joinedAt);
+    else if (r.status === 'pending') s.invited.push(r.joinedAt);
+    else if (r.status === 'left') s.left++;
+    by.set(r.inviterId, s);
   }
+  const latest = (ds: Date[]) => new Date(Math.max(...ds.map((d) => d.getTime())));
   return [...by]
-    .map(([inviterId, times]) => ({ inviterId, count: times.length, reachedAt: new Date(Math.max(...times.map((t) => t.getTime()))) }))
-    .sort((a, b) => b.count - a.count || a.reachedAt.getTime() - b.reachedAt.getTime() || a.inviterId.localeCompare(b.inviterId));
+    .filter(([, s]) => s.verified.length + s.invited.length > 0)
+    .map(([inviterId, s]) => ({ inviterId, verified: s.verified.length, invited: s.invited.length, left: s.left, reachedAt: latest(s.verified.length ? s.verified : s.invited) }))
+    .sort((a, b) => b.verified - a.verified || b.invited - a.invited || a.left - b.left || a.reachedAt.getTime() - b.reachedAt.getTime() || a.inviterId.localeCompare(b.inviterId));
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
-export function leaderboardLines(ranked: readonly { inviterId: string; count: number }[], limit: number): string[] {
-  return ranked.slice(0, limit).map((r, i) => `${MEDALS[i] ?? `${i + 1}.`} <@${r.inviterId}> ── **${r.count}** invite${r.count === 1 ? '' : 's'}`);
+export function leaderboardLines(ranked: readonly Pick<Standing, 'inviterId' | 'verified' | 'invited' | 'left'>[], limit: number): string[] {
+  return ranked.slice(0, limit).map((r, i) => {
+    const extra = [r.invited ? `${r.invited} invited` : '', r.left ? `${r.left} left` : ''].filter(Boolean).join(' · ');
+    return `${MEDALS[i] ?? `${i + 1}.`} <@${r.inviterId}> ── **${r.verified}** verified${extra ? ` · ${extra}` : ''}`;
+  });
 }
 
 /** CSV for wheelofnames.com: one line per raffle entry (each valid invite). Names are quoted and commas/quotes escaped. */
