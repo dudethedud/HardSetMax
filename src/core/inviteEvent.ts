@@ -95,6 +95,7 @@ export function evaluateJoin(j: JoinFacts, ctx: EvalContext): Evaluation {
     return { status: j.overrideStatus, reason: j.overrideReason ?? 'set by staff', validatedAt: j.overrideStatus === 'valid' ? (j.validatedAt ?? ctx.now) : j.validatedAt };
   }
   if (ctx.inviterDisqualified) return keep('disqualified', 'inviter disqualified');
+  if (j.source === 'bot') return keep('invalid', "joined through a bot's invite (e.g. a server listing)");
   if (!j.inviterId || (j.source !== 'invite' && j.source !== 'personal')) return keep('invalid', `${j.source} join (no inviter)`);
   if (j.isBot) return keep('invalid', 'bot account');
   if (j.inviterId === j.inviteeId) return keep('invalid', 'self-invite');
@@ -228,11 +229,15 @@ export function rankInviters(rows: readonly StandingRow[], excluded: ReadonlySet
     .sort((a, b) => b.verified - a.verified || b.invited - a.invited || a.left - b.left || a.reachedAt.getTime() - b.reachedAt.getTime() || a.inviterId.localeCompare(b.inviterId));
 }
 
-const MEDALS = ['🥇', '🥈', '🥉'];
+/** Place badges: the server's `blue_1`…`blue_10` emojis (`{name|fallback}`, see emojiText.ts), else medals and number keycaps. */
+const PLACE_FALLBACKS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+export const placeBadge = (i: number): string => `{blue_${i + 1}|${PLACE_FALLBACKS[i] ?? `${i + 1}.`}}`;
+
+/** One line per place, e.g. "{blue_1|🥇} <@id> - **5** verified · 2 invited · 1 left" (invited and left left out at 0). */
 export function leaderboardLines(ranked: readonly Pick<Standing, 'inviterId' | 'verified' | 'invited' | 'left'>[], limit: number): string[] {
   return ranked.slice(0, limit).map((r, i) => {
-    const extra = [r.invited ? `${r.invited} invited` : '', r.left ? `${r.left} left` : ''].filter(Boolean).join(' · ');
-    return `${MEDALS[i] ?? `${i + 1}.`} <@${r.inviterId}> ── **${r.verified}** verified${extra ? ` · ${extra}` : ''}`;
+    const extra = [r.invited ? `${r.invited.toLocaleString('en-US')} invited` : '', r.left ? `${r.left.toLocaleString('en-US')} left` : ''].filter(Boolean).join(' · ');
+    return `${placeBadge(i)} <@${r.inviterId}> - **${r.verified.toLocaleString('en-US')}** verified${extra ? ` · ${extra}` : ''}`;
   });
 }
 

@@ -14,6 +14,8 @@ const BOT = '900000000000000099';
 const INVITER = '100000000000000001';
 const OTHER = '100000000000000002';
 const OLD_MEMBER = '100000000000000003';
+/** A listing bot (like DISBOARD) whose invite people join through. */
+const LISTING_BOT = '300000000000000001';
 const DAY = 24 * 3600_000;
 // The event starts Sunday Nov 22 2026, 13:00 Edmonton (UTC-6); ends Dec 25 12:00.
 const START = new Date('2026-11-22T19:00:00Z');
@@ -37,7 +39,9 @@ describe.skipIf(!url)('invite event', () => {
 
   function setup(opts: { manageServer?: boolean } = {}) {
     const clock = { now: START };
-    const sent: { channelId: string; embed: { title?: string; description?: string; footer?: { text: string } } }[] = [];
+    type Embed = { title?: string; description?: string; footer?: { text: string } };
+    // Staff log posts are embeds; the leaderboard is a components box, kept here as its text.
+    const sent: { channelId: string; embed: Embed; text: string }[] = [];
     const invites = new Map<string, { uses: number; inviterId: string | null }>();
     const perms = { manage: opts.manageServer ?? true };
     const member = (id: string, o: { roles?: string[]; accountDays?: number; avatar?: string | null; bot?: boolean; name?: string } = {}) =>
@@ -48,9 +52,10 @@ describe.skipIf(!url)('invite event', () => {
         roles: { cache: new Collection((o.roles ?? []).map((r) => [r, {}])) },
       }) as unknown as GuildMember;
     const members = new Collection<string, GuildMember>();
-    type Embeds = { embeds: { toJSON(): (typeof sent)[number]['embed'] }[] };
+    type Payload = { embeds?: { toJSON(): Embed }[]; components?: { toJSON(): { components: { content?: string }[] } }[]; flags?: number };
+    const textOf = (o: Payload) => (o.components ?? []).flatMap((c) => c.toJSON().components.map((x) => x.content ?? '---')).join('\n');
     // Posted messages by ID; editing one replaces what it shows.
-    const posted = new Map<string, { channelId: string; embed: (typeof sent)[number]['embed']; edits: number }>();
+    const posted = new Map<string, { channelId: string; text: string; boxed: boolean; edits: number }>();
     const channel = (channelId: string) => ({
       id: channelId,
       isSendable: () => true,
@@ -58,13 +63,18 @@ describe.skipIf(!url)('invite event', () => {
         fetch: (id: string) => {
           const m = posted.get(id);
           if (!m) return Promise.reject(new Error('Unknown Message'));
-          return Promise.resolve({ id, edit: (o: Embeds) => ((m.embed = o.embeds[0]!.toJSON()), m.edits++, Promise.resolve({})) });
+          return Promise.resolve({
+            id,
+            flags: { has: () => m.boxed },
+            edit: (o: Payload) => ((m.text = textOf(o)), m.edits++, Promise.resolve({})),
+            delete: () => (posted.delete(id), Promise.resolve({})),
+          });
         },
       },
-      send: (o: Embeds) => {
-        sent.push({ channelId, embed: o.embeds[0]!.toJSON() });
+      send: (o: Payload) => {
+        sent.push({ channelId, embed: o.embeds?.[0]?.toJSON() ?? {}, text: textOf(o) });
         const id = `m${sent.length}`;
-        posted.set(id, { channelId, embed: o.embeds[0]!.toJSON(), edits: 0 });
+        posted.set(id, { channelId, text: textOf(o), boxed: !!o.flags, edits: 0 });
         return Promise.resolve({ id });
       },
       createInvite: () => {
@@ -87,7 +97,7 @@ describe.skipIf(!url)('invite event', () => {
     const client = {
       guilds: { cache: new Map([[GUILD, guild]]) },
       channels: { fetch: (id: string) => Promise.resolve(channel(id)) },
-      users: { fetch: (id: string) => Promise.resolve({ id, username: id === INVITER ? 'inviter' : `user${id.slice(-4)}` }) },
+      users: { fetch: (id: string) => Promise.resolve({ id, username: id === INVITER ? 'inviter' : `user${id.slice(-4)}`, bot: id === LISTING_BOT }) },
     } as unknown as Client;
     const service = new InviteEventService(client, GUILD, db, pino({ level: 'silent' }), { end: END, leaderboardChannelId: BOARD, level3RoleId: LEVEL3, staffLogChannelId: STAFF, inviteLinkChannelId: null, color: 0xa8d8f0 }, () => clock.now);
 
@@ -110,11 +120,12 @@ describe.skipIf(!url)('invite event', () => {
     t.members.set(OLD_MEMBER, t.member(OLD_MEMBER));
     await t.service.start(t.guild);
     expect(t.service.enabled).toBe(true);
-    const line = async () => (await t.service.leaderboard()).toJSON().description!.split('\n')[0];
+    // The first place line (the server has no blue_1 emoji here, so it's the medal).
+    const line = async () => JSON.stringify((await t.service.leaderboard()).components.map((c) => c.toJSON())).match(/🥇[^"\\]*|no invites yet/)?.[0];
 
     const a = await t.join('200000000000000001', 'abc');
     expect(await db.inviteJoin.findUnique({ where: { inviteeId: a.id } })).toMatchObject({ inviterId: INVITER, inviteCode: 'abc', source: 'invite', status: 'pending' });
-    expect(await line()).toBe(`🥇 <@${INVITER}> ── **0** verified · 1 invited`);
+    expect(await line()).toBe(`🥇 <@${INVITER}> - **0** verified · 1 invited`);
 
     // Getting level 3 (a role change) verifies them right away, no waiting.
     t.later(1 / 24);
@@ -122,7 +133,7 @@ describe.skipIf(!url)('invite event', () => {
     t.members.set(a.id, levelled);
     await t.service.onMemberUpdate(levelled);
     expect(await t.status(a.id)).toBe('valid');
-    expect(await line()).toBe(`🥇 <@${INVITER}> ── **1** verified`);
+    expect(await line()).toBe(`🥇 <@${INVITER}> - **1** verified`);
     const mine = (await t.service.invitesOf(INVITER)).toJSON().description!;
     expect(mine).toContain('✅ **1** verified = **1** raffle entry · #1 on the leaderboard');
     expect(mine).toContain('⏳ 0 invited · 🚪 0 left');
@@ -131,7 +142,7 @@ describe.skipIf(!url)('invite event', () => {
     t.members.delete(a.id);
     await t.service.onMemberRemove(a.id, GUILD);
     expect(await t.status(a.id)).toBe('left');
-    expect(await line()).toMatch(/^no invites yet/); // only left: not listed
+    expect(await line()).toBe('no invites yet'); // only left: not listed
   });
 
   it('never guesses: two invites used at once, vanity and discovery joins credit nobody', async () => {
@@ -247,7 +258,7 @@ describe.skipIf(!url)('invite event', () => {
     expect((await t.service.state()).snapshotDone).toBe(true);
   });
 
-  it('one live leaderboard: posted at start, edited only when it changes, reposted if deleted; event over, then final', async () => {
+  it('one live leaderboard box: posted at start, edited only when it changes, reposted if deleted; event over, then final', async () => {
     const t = setup();
     t.invites.set('abc', { uses: 0, inviterId: INVITER });
     await t.service.start(t.guild);
@@ -255,8 +266,14 @@ describe.skipIf(!url)('invite event', () => {
     const boards = () => [...t.posted].filter(([, m]) => m.channelId === BOARD);
     expect(boards()).toHaveLength(1);
     const [id, live] = boards()[0]!;
-    expect(live.embed).toMatchObject({ title: '🎄 invite leaderboard', footer: { text: '33 days left · every verified invite = a raffle entry ♡ check yours with /invites' } });
-    expect(live.embed.description).toMatch(/^no invites yet · be the first! get your link with `\/invite-link` ♡\n\n-# \*\*verified\*\* = /);
+    expect(live.boxed).toBe(true);
+    expect(live.text.split('\n')).toEqual([
+      '## 🎄 Invite Leaderboard',
+      '---',
+      'no invites yet · be the first! get your link with `/invite-link` ♡',
+      '-# 33 days left · every verified invite = a raffle entry ♡ check yours with /invites',
+      '-# **verified** = they have the level 3 role (a raffle entry) · **invited** = joined, not level 3 yet · **left** = left the server',
+    ]);
 
     // Nothing changed: no edit.
     t.later(5 / (24 * 60));
@@ -267,12 +284,12 @@ describe.skipIf(!url)('invite event', () => {
     await t.join('200000000000000009', 'abc', { roles: [LEVEL3] });
     expect(boards()).toHaveLength(1);
     expect(live.edits).toBe(1);
-    expect(live.embed.description).toMatch(new RegExp(`^🥇 <@${INVITER}> ── \\*\\*1\\*\\* verified\\n`));
+    expect(live.text).toContain(`\n🥇 <@${INVITER}> - **1** verified\n`); // no blue_1 emoji in this server: the medal
     // A day later only the days left change: edited once more.
     t.later(8);
     await t.service.tick(t.guild);
     expect(live.edits).toBe(2);
-    expect(live.embed.footer!.text).toMatch(/^25 days left/);
+    expect(live.text).toContain('-# 25 days left');
 
     // Someone deleted it: posted again, once.
     t.posted.delete(id);
@@ -284,9 +301,9 @@ describe.skipIf(!url)('invite event', () => {
     // The end: the same message says the event is over; joins after it aren't part of the event.
     t.clock.now = new Date(END.getTime() + 60_000);
     await t.service.tick(t.guild);
-    const [, after] = boards()[0]!;
-    expect(after.embed.title).toBe('🎄 invite leaderboard · event over');
-    expect(after.embed.footer!.text).toBe('the event is over · final results after Jan 1: invited friends have until then to reach level 3 ♡');
+    const after = boards()[0]![1].text;
+    expect(after).toMatch(/^## 🎄 Invite Leaderboard · Event Over\n/);
+    expect(after).toContain('-# the event is over · final results after Jan 1: invited friends have until then to reach level 3 ♡');
     await t.join('200000000000000010', 'abc', { roles: [LEVEL3] });
     expect(await db.inviteJoin.findUnique({ where: { inviteeId: '200000000000000010' } })).toBeNull();
 
@@ -294,8 +311,47 @@ describe.skipIf(!url)('invite event', () => {
     t.clock.now = new Date(END.getTime() + 7 * DAY + 2 * 3600_000);
     await t.service.tick(t.guild);
     expect(boards()).toHaveLength(1);
-    expect(boards()[0]![1].embed).toMatchObject({ title: '🎄 invite leaderboard · final' });
-    expect(boards()[0]![1].embed.description).toMatch(new RegExp(`^🥇 <@${INVITER}> ── \\*\\*1\\*\\* verified\\n`));
+    expect(boards()[0]![1].text).toMatch(new RegExp(`^## 🎄 Invite Leaderboard · Final Results\\n---\\n🥇 <@${INVITER}> - \\*\\*1\\*\\* verified\\n`));
     expect(t.sent.filter((s) => s.channelId === BOARD)).toHaveLength(2); // the first post and the repost, nothing else
+  });
+
+  it('uses the server\'s blue_1…blue_10 emojis for places when it has them', async () => {
+    const t = setup();
+    (t.guild as unknown as { emojis: unknown }).emojis = {
+      cache: new Collection([['700000000000000001', { id: '700000000000000001', name: 'blue_1', available: true, toString: () => '<:blue_1:700000000000000001>' }]]),
+    };
+    t.invites.set('abc', { uses: 0, inviterId: INVITER });
+    await t.service.start(t.guild);
+    await t.join('200000000000000011', 'abc', { roles: [LEVEL3] });
+    const [, live] = [...t.posted].find(([, m]) => m.channelId === BOARD)!;
+    expect(live.text).toContain(`\n<:blue_1:700000000000000001> <@${INVITER}> - **1** verified\n`);
+  });
+
+  it('bots never count as inviters (e.g. DISBOARD\'s server listing invite), including joins credited to them before', async () => {
+    const t = setup();
+    t.invites.set('listing', { uses: 0, inviterId: LISTING_BOT });
+    await t.service.start(t.guild);
+    await t.join('200000000000000012', 'listing', { roles: [LEVEL3] });
+    expect(await db.inviteJoin.findUnique({ where: { inviteeId: '200000000000000012' } })).toMatchObject({ source: 'bot', inviterId: LISTING_BOT, status: 'invalid' });
+    // A join credited to the bot by an older version: hidden at once, relabelled by the hourly check.
+    const old = await db.inviteJoin.create({ data: { inviteeId: '200000000000000013', inviteeName: 'someone', inviterId: LISTING_BOT, inviteCode: 'listing', source: 'invite', joinedAt: t.clock.now, accountCreatedAt: new Date(t.clock.now.getTime() - 400 * DAY) } });
+    t.members.set(old.inviteeId, t.member(old.inviteeId));
+    expect(JSON.stringify((await t.service.leaderboard()).components.map((c) => c.toJSON()))).not.toContain(LISTING_BOT);
+    await t.service.evaluateAll(t.guild);
+    expect(await db.inviteJoin.findUnique({ where: { id: old.id } })).toMatchObject({ source: 'bot', status: 'invalid' });
+  });
+
+  it('replaces an old-style (embed) leaderboard message with the new box, once', async () => {
+    const t = setup();
+    await t.service.start(t.guild);
+    t.posted.set('old', { channelId: BOARD, text: '', boxed: false, edits: 0 });
+    await db.inviteEventState.update({ where: { guildId: GUILD }, data: { leaderboardMessageId: 'old' } });
+    await t.service.tick(t.guild);
+    await t.service.tick(t.guild);
+    expect(t.posted.has('old')).toBe(false);
+    const boards = [...t.posted].filter(([, m]) => m.channelId === BOARD);
+    expect(boards).toHaveLength(1);
+    expect(boards[0]![1].boxed).toBe(true);
+    expect((await t.service.state()).leaderboardMessageId).toBe(boards[0]![0]);
   });
 });

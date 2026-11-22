@@ -37,7 +37,7 @@ export const leaderboardCommand = defineCommand({
   ephemeral: () => false,
   execute: (interaction, ctx) =>
     withEvent(interaction, ctx, async (events) => {
-      await interaction.editReply({ embeds: [await events.leaderboard()], allowedMentions: { parse: [] } });
+      await interaction.editReply({ ...(await events.leaderboard()), allowedMentions: { parse: [] } });
     }),
 });
 

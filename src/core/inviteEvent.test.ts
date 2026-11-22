@@ -109,6 +109,8 @@ describe('validity rules', () => {
     expect(evaluateJoin(facts({ inviteeId: 'inviter' }), ctx())).toMatchObject({ status: 'invalid', reason: 'self-invite' });
     expect(evaluateJoin(facts({ isBot: true }), ctx())).toMatchObject({ status: 'invalid', reason: 'bot account' });
     expect(evaluateJoin(facts({ inviterId: null, source: 'vanity' }), ctx())).toMatchObject({ status: 'invalid', reason: 'vanity join (no inviter)' });
+    // A bot's invite (e.g. DISBOARD's server listing) never credits the bot.
+    expect(evaluateJoin(facts({ source: 'bot' }), ctx())).toMatchObject({ status: 'invalid', reason: "joined through a bot's invite (e.g. a server listing)" });
   });
 
   it('only joins between the start and the end (or an early freeze) count', () => {
@@ -196,10 +198,10 @@ describe('leaderboard and raffle', () => {
     const ranked = rankInviters(rows, new Set(['x']));
     expect(ranked.map((r) => [r.inviterId, r.verified, r.invited, r.left])).toEqual([['b', 2, 2, 0], ['a', 2, 1, 0], ['c', 2, 1, 1], ['d', 0, 4, 0]]);
     expect(leaderboardLines(ranked, 10)).toEqual([
-      '🥇 <@b> ── **2** verified · 2 invited',
-      '🥈 <@a> ── **2** verified · 1 invited',
-      '🥉 <@c> ── **2** verified · 1 invited · 1 left',
-      '4. <@d> ── **0** verified · 4 invited',
+      '{blue_1|🥇} <@b> - **2** verified · 2 invited',
+      '{blue_2|🥈} <@a> - **2** verified · 1 invited',
+      '{blue_3|🥉} <@c> - **2** verified · 1 invited · 1 left',
+      '{blue_4|4️⃣} <@d> - **0** verified · 4 invited',
     ]);
   });
 
@@ -214,9 +216,12 @@ describe('leaderboard and raffle', () => {
     expect(rankInviters(rows).map((r) => r.inviterId)).toEqual(['most', 'early', 'late']);
   });
 
-  it('places 4 to 10 are numbered', () => {
-    const ranked = ['a', 'b', 'c', 'd', 'e', 'f'].map((id, i) => ({ inviterId: id, verified: 10 - i, invited: 0, left: 0 }));
-    expect(leaderboardLines(ranked, 5).slice(3)).toEqual(['4. <@d> ── **7** verified', '5. <@e> ── **6** verified']);
+  it('places 1 to 10 get the server\'s blue_1…blue_10 badges (medals and number keycaps if missing); big numbers get commas', () => {
+    const ranked = Array.from({ length: 11 }, (_, i) => ({ inviterId: `u${i}`, verified: 1200 - i, invited: 0, left: 0 }));
+    const lines = leaderboardLines(ranked, 10);
+    expect(lines).toHaveLength(10);
+    expect(lines[0]).toBe('{blue_1|🥇} <@u0> - **1,200** verified');
+    expect(lines[9]).toBe('{blue_10|🔟} <@u9> - **1,191** verified');
   });
 
   it('raffle CSV: one line per entry, names quoted safely', () => {

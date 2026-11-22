@@ -1,8 +1,9 @@
 // Christmas invite event (docs/SPEC.md §8). Works out which invite each new member
-// used, re-checks every invite's validity each hour, flags likely alts to staff,
-// posts the weekly leaderboard, freezes at the end and exports the raffle.
+// used, keeps each invite's status up to date, flags likely alts to staff, keeps one
+// live leaderboard message up to date, freezes at the end and exports the raffle.
 // Members are never DMed. Rules live in core/inviteEvent.ts.
-import { EmbedBuilder, GuildFeature, PermissionFlagsBits, type Client, type Guild, type GuildMember, type Invite } from 'discord.js';
+import { ContainerBuilder, EmbedBuilder, GuildFeature, MessageFlags, PermissionFlagsBits, SeparatorSpacingSize, type Client, type Guild, type GuildMember, type Invite } from 'discord.js';
+import { fillEmojis } from '../core/emojiText.js';
 import {
   diffInvites,
   daysLeft,
@@ -205,6 +206,8 @@ export class InviteEventService {
         const personal = await this.db.personalInvite.findUnique({ where: { code: use.code } });
         source = personal ? 'personal' : 'invite';
         inviterId = personal?.userId ?? after.invites.get(use.code)?.inviterId ?? null;
+        // A bot's invite (e.g. DISBOARD's server listing) never credits the bot.
+        if (!personal && inviterId && (await this.#isBot(inviterId))) source = 'bot';
       } else if (use.kind === 'vanity') {
         source = 'vanity';
       } else if (use.kind === 'none' && member.guild.features.includes(GuildFeature.Discoverable)) {
@@ -240,7 +243,7 @@ export class InviteEventService {
     // They show as "invited" straight away.
     if (inviterId) await this.#refreshBoard();
 
-    if (inviterId && source !== 'vanity') {
+    if (inviterId && (source === 'invite' || source === 'personal')) {
       const inviter = await this.client.users.fetch(inviterId).catch(() => null);
       const joins = await this.db.inviteJoin.findMany({ where: { inviterId } });
       await this.#postFlags(inviterId, flagsForJoin({ id: inviterId, name: inviter?.username ?? '' }, joins, join, now));
@@ -317,6 +320,8 @@ export class InviteEventService {
     const disqualified = new Set((await this.db.disqualifiedInviter.findMany()).map((d) => d.userId));
     let changed = 0;
     for (let join of joins) {
+      // Joins credited to a bot before bots were left out (e.g. DISBOARD): relabel them.
+      if (join.source === 'invite' && join.inviterId && (await this.#isBot(join.inviterId))) join = await this.db.inviteJoin.update({ where: { id: join.id }, data: { source: 'bot' } });
       const member = members.get(join.inviteeId);
       // Left while the bot was offline.
       if (!member && !join.leftAt) join = await this.db.inviteJoin.update({ where: { id: join.id }, data: { leftAt: now } });
@@ -359,19 +364,24 @@ export class InviteEventService {
   /** The live leaderboard message: posted once, then edited only when what it shows changes. Reposted if deleted (checked every tick). */
   async #refreshBoard(): Promise<void> {
     const state = await this.state();
-    const embed = await this.leaderboard(state);
-    const shown = JSON.stringify(embed.toJSON());
+    const board = await this.leaderboard(state);
+    const shown = JSON.stringify(board.components.map((c) => c.toJSON()));
     const channel = await this.client.channels.fetch(this.config.leaderboardChannelId).catch(() => null);
     if (!channel?.isSendable() || !('messages' in channel)) {
       this.log.error({ channelId: this.config.leaderboardChannelId }, "invite event: can't post in LEADERBOARD_CHANNEL_ID");
       return;
     }
-    const message = state.leaderboardMessageId ? await channel.messages.fetch(state.leaderboardMessageId).catch(() => null) : null;
+    let message = state.leaderboardMessageId ? await channel.messages.fetch(state.leaderboardMessageId).catch(() => null) : null;
+    // An older-style (embed) leaderboard can't be edited into the new layout: replace it once.
+    if (message && !message.flags.has(MessageFlags.IsComponentsV2)) {
+      await message.delete().catch(() => undefined);
+      message = null;
+    }
     if (message) {
       if (shown === this.#boardShown) return;
-      await message.edit({ embeds: [embed], allowedMentions: { parse: [] } });
+      await message.edit({ components: board.components, allowedMentions: { parse: [] } });
     } else {
-      const posted = await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      const posted = await channel.send({ ...board, allowedMentions: { parse: [] } });
       await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { leaderboardMessageId: posted.id } });
     }
     this.#boardShown = shown;
@@ -395,16 +405,37 @@ export class InviteEventService {
       where: { status: { in: ['valid', 'pending', 'left'] }, inviterId: { not: null } },
       select: { inviterId: true, status: true, joinedAt: true, validatedAt: true },
     });
-    return rankInviters(rows.map((r) => ({ ...r, inviterId: r.inviterId! })));
+    const bots = new Set<string>();
+    for (const id of new Set(rows.map((r) => r.inviterId!))) if (await this.#isBot(id)) bots.add(id);
+    return rankInviters(
+      rows.map((r) => ({ ...r, inviterId: r.inviterId! })),
+      bots,
+    );
   }
 
-  async #leaderboard(title: string, limit: number, footer: string): Promise<EmbedBuilder> {
-    const lines = leaderboardLines(await this.#ranked(), limit);
-    return new EmbedBuilder()
-      .setColor(this.config.color)
-      .setTitle(title)
-      .setDescription(`${lines.length ? lines.join('\n') : 'no invites yet · be the first! get your link with `/invite-link` ♡'}\n\n${this.#legend()}`)
-      .setFooter({ text: footer });
+  /** Bots (e.g. DISBOARD) never count as inviters. Users are cached after the first look-up. */
+  async #isBot(userId: string): Promise<boolean> {
+    const user = this.client.users.cache?.get(userId) ?? (await this.client.users.fetch(userId).catch(() => null));
+    return !!user?.bot;
+  }
+
+  /** Fills `{name|fallback}` with the server's emoji of that name (any case), or the fallback. */
+  #emojis(text: string): string {
+    const emojis = this.#guild()?.emojis?.cache;
+    return fillEmojis(text, (name) => emojis?.find((e) => e.name?.toLowerCase() === name.toLowerCase() && e.available !== false)?.toString() ?? null);
+  }
+
+  /** The leaderboard box: title, a line, the top 10 with place badges, then the footer and the key in small text. */
+  async #leaderboard(title: string, footer: string): Promise<{ components: ContainerBuilder[]; flags: MessageFlags.IsComponentsV2 }> {
+    const lines = leaderboardLines(await this.#ranked(), 10);
+    const body = lines.length ? lines.join('\n') : 'no invites yet · be the first! get your link with `/invite-link` ♡';
+    const box = new ContainerBuilder()
+      .setAccentColor(this.config.color)
+      .addTextDisplayComponents((t) => t.setContent(`## ${title}`))
+      .addSeparatorComponents((sep) => sep.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+      .addTextDisplayComponents((t) => t.setContent(this.#emojis(body)))
+      .addTextDisplayComponents((t) => t.setContent(`-# ${footer}\n${this.#legend()}`));
+    return { components: [box], flags: MessageFlags.IsComponentsV2 };
   }
 
   /** The key under the leaderboard: what the numbers mean. */
@@ -413,15 +444,15 @@ export class InviteEventService {
   }
 
   /** The top 10 now: the live message and /leaderboard. */
-  async leaderboard(state?: InviteEventState): Promise<EmbedBuilder> {
+  async leaderboard(state?: InviteEventState): Promise<{ components: ContainerBuilder[]; flags: MessageFlags.IsComponentsV2 }> {
     state ??= await this.state();
     const now = this.now();
-    if (state.finalPostedAt) return this.#leaderboard('🎄 invite leaderboard · final', 10, 'final results · every verified invite = a raffle entry ♡ thank you all!');
+    if (state.finalPostedAt) return this.#leaderboard('🎄 Invite Leaderboard · Final Results', 'final results · every verified invite = a raffle entry ♡ thank you all!');
     if (state.frozenAt || now >= this.config.end) {
-      return this.#leaderboard('🎄 invite leaderboard · event over', 10, `the event is over · final results after ${this.#settleDay(joinCutoff(this.config.end, state.frozenAt))}: invited friends have until then to reach level 3 ♡`);
+      return this.#leaderboard('🎄 Invite Leaderboard · Event Over', `the event is over · final results after ${this.#settleDay(joinCutoff(this.config.end, state.frozenAt))}: invited friends have until then to reach level 3 ♡`);
     }
     const left = daysLeft(now, this.config.end);
-    return this.#leaderboard('🎄 invite leaderboard', 10, `${left} day${left === 1 ? '' : 's'} left · every verified invite = a raffle entry ♡ check yours with /invites`);
+    return this.#leaderboard('🎄 Invite Leaderboard', `${left} day${left === 1 ? '' : 's'} left · every verified invite = a raffle entry ♡ check yours with /invites`);
   }
 
   /** /invites: one member's counts and rank. */

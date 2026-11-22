@@ -132,7 +132,7 @@ model InviteJoin {
   /** Who gets the credit; null for vanity, discovery or unknown joins. */
   inviterId        String?
   inviteCode       String?
-  /** "invite" | "personal" | "vanity" | "discovery" | "unknown" */
+  /** "invite" | "personal" | "bot" (a bot's invite, e.g. DISBOARD) | "vanity" | "discovery" | "unknown" */
   source           String
   joinedAt         DateTime
   leftAt           DateTime?
