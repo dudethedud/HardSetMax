@@ -19,7 +19,7 @@ Colour role menus for server reppers. Members who wear the server tag or have `.
 
 **Donations:** a 💖 Donate panel backed by Ko-fi: public thank-yous, a total (and optional goal), top donors, and a Donor role. Admin commands: `/donations setup|goal|donor-role|add|remove|list|reset`.
 
-**Christmas invite event:** every valid invite is a raffle entry. Members use `/invites`, `/leaderboard` and `/invite-link` (their own permanent link); staff with Manage Server use `/invite-event review|disqualify|reinstate|set-status|raffle-export|freeze`. One live leaderboard message in the leaderboard channel updates itself as invites count. Rules: [`docs/SPEC.md` §8](docs/SPEC.md).
+**Christmas invite event:** every verified invite (the friend has the level 3 role) is a raffle entry, and invites count the moment someone joins. Members use `/invites`, `/leaderboard` and `/invite-link` (their own permanent link); staff with Manage Server use `/invite-event review|disqualify|reinstate|set-status|raffle-export|freeze`. One live leaderboard message in the leaderboard channel updates itself as invites count. Rules: [`docs/SPEC.md` §8](docs/SPEC.md).
 
 ### Setting up the invite event
 1. **Developer Portal → your app → Bot → Privileged Gateway Intents:** turn on **Server Members Intent** (already needed for colours). The bot also uses the **Guild Invites** intent, which isn't privileged, so there's nothing to switch on for it.

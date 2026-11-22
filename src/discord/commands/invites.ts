@@ -14,7 +14,7 @@ async function withEvent(interaction: ChatInputCommandInteraction<'cached'>, ctx
 
 export const invitesCommand = defineCommand({
   name: 'invites',
-  description: 'How many valid invites you (or someone) have in the Christmas event',
+  description: 'Your (or someone\'s) verified, invited and left invites in the Christmas event',
   level: 'everyone',
   build: (b) => b.addUserOption((o) => o.setName('user').setDescription('Whose invites (default: yours)')),
   // Your own count is just for you; someone else's is shown in the channel.
@@ -99,7 +99,7 @@ export const inviteEventCommand = defineCommand({
           )
           .addStringOption((o) => o.setName('reason').setDescription('Why (shown to staff only)').setMaxLength(200)),
       )
-      .addSubcommand((s) => s.setName('raffle-export').setDescription('CSV for wheelofnames.com: one line per valid invite'))
+      .addSubcommand((s) => s.setName('raffle-export').setDescription('CSV for wheelofnames.com: one line per verified invite'))
       .addSubcommand((s) => s.setName('freeze').setDescription('Stop counting new joins now (happens by itself at the end)')),
 
   execute: (interaction, ctx) =>

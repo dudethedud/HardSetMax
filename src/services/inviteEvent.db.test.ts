@@ -104,29 +104,34 @@ describe.skipIf(!url)('invite event', () => {
     return { service, guild, clock, sent, posted, invites, members, perms, member, join, status, later };
   }
 
-  it('credits the inviter, waits 7 days and the level 3 role, then counts on the leaderboard', async () => {
+  it('counts straight away: invited on join, verified the moment they get level 3, left when they leave', async () => {
     const t = setup();
     t.invites.set('abc', { uses: 4, inviterId: INVITER });
     t.members.set(OLD_MEMBER, t.member(OLD_MEMBER));
     await t.service.start(t.guild);
     expect(t.service.enabled).toBe(true);
+    const line = async () => (await t.service.leaderboard()).toJSON().description!.split('\n')[0];
 
     const a = await t.join('200000000000000001', 'abc');
     expect(await db.inviteJoin.findUnique({ where: { inviteeId: a.id } })).toMatchObject({ inviterId: INVITER, inviteCode: 'abc', source: 'invite', status: 'pending' });
+    expect(await line()).toBe(`🥇 <@${INVITER}> ── **0** verified · 1 invited`);
 
-    t.later(8);
-    await t.service.evaluateAll(t.guild);
-    expect(await t.status(a.id)).toBe('pending'); // no level 3 yet
-    t.members.set(a.id, t.member(a.id, { roles: [LEVEL3] }));
-    await t.service.evaluateAll(t.guild);
+    // Getting level 3 (a role change) verifies them right away, no waiting.
+    t.later(1 / 24);
+    const levelled = t.member(a.id, { roles: [LEVEL3] });
+    t.members.set(a.id, levelled);
+    await t.service.onMemberUpdate(levelled);
     expect(await t.status(a.id)).toBe('valid');
-    expect((await t.service.leaderboard()).toJSON().description).toBe(`🥇 <@${INVITER}> ── **1** invite`);
-    expect((await t.service.invitesOf(INVITER)).toJSON().description).toContain('**1** valid invite = **1** raffle entry · #1 on the leaderboard');
+    expect(await line()).toBe(`🥇 <@${INVITER}> ── **1** verified`);
+    const mine = (await t.service.invitesOf(INVITER)).toJSON().description!;
+    expect(mine).toContain('✅ **1** verified = **1** raffle entry · #1 on the leaderboard');
+    expect(mine).toContain('⏳ 0 invited · 🚪 0 left');
 
-    // Leaving before the end stops it counting.
+    // Leaving before the end: it moves to left.
     t.members.delete(a.id);
     await t.service.onMemberRemove(a.id, GUILD);
     expect(await t.status(a.id)).toBe('left');
+    expect(await line()).toMatch(/^no invites yet/); // only left: not listed
   });
 
   it('never guesses: two invites used at once, vanity and discovery joins credit nobody', async () => {
@@ -250,21 +255,23 @@ describe.skipIf(!url)('invite event', () => {
     const boards = () => [...t.posted].filter(([, m]) => m.channelId === BOARD);
     expect(boards()).toHaveLength(1);
     const [id, live] = boards()[0]!;
-    expect(live.embed).toMatchObject({ title: '🎄 invite leaderboard', footer: { text: '33 days left · every valid invite = a raffle entry ♡ check yours with /invites' } });
-    expect(live.embed.description).toMatch(/no valid invites yet/);
+    expect(live.embed).toMatchObject({ title: '🎄 invite leaderboard', footer: { text: '33 days left · every verified invite = a raffle entry ♡ check yours with /invites' } });
+    expect(live.embed.description).toMatch(/^no invites yet · be the first! get your link with `\/invite-link` ♡\n\n-# \*\*verified\*\* = /);
 
     // Nothing changed: no edit.
     t.later(5 / (24 * 60));
     await t.service.tick(t.guild);
     expect(live.edits).toBe(0);
 
-    // A valid invite: the same message is edited.
+    // A join that already has level 3: verified, and the same message is edited straight away.
     await t.join('200000000000000009', 'abc', { roles: [LEVEL3] });
-    t.later(8);
-    await t.service.tick(t.guild);
     expect(boards()).toHaveLength(1);
     expect(live.edits).toBe(1);
-    expect(live.embed.description).toBe(`🥇 <@${INVITER}> ── **1** invite`);
+    expect(live.embed.description).toMatch(new RegExp(`^🥇 <@${INVITER}> ── \\*\\*1\\*\\* verified\\n`));
+    // A day later only the days left change: edited once more.
+    t.later(8);
+    await t.service.tick(t.guild);
+    expect(live.edits).toBe(2);
     expect(live.embed.footer!.text).toMatch(/^25 days left/);
 
     // Someone deleted it: posted again, once.
@@ -279,7 +286,7 @@ describe.skipIf(!url)('invite event', () => {
     await t.service.tick(t.guild);
     const [, after] = boards()[0]!;
     expect(after.embed.title).toBe('🎄 invite leaderboard · event over');
-    expect(after.embed.footer!.text).toMatch(/final results after Jan 1/);
+    expect(after.embed.footer!.text).toBe('the event is over · final results after Jan 1: invited friends have until then to reach level 3 ♡');
     await t.join('200000000000000010', 'abc', { roles: [LEVEL3] });
     expect(await db.inviteJoin.findUnique({ where: { inviteeId: '200000000000000010' } })).toBeNull();
 
@@ -287,7 +294,8 @@ describe.skipIf(!url)('invite event', () => {
     t.clock.now = new Date(END.getTime() + 7 * DAY + 2 * 3600_000);
     await t.service.tick(t.guild);
     expect(boards()).toHaveLength(1);
-    expect(boards()[0]![1].embed).toMatchObject({ title: '🎄 invite leaderboard · final', description: `🥇 <@${INVITER}> ── **1** invite` });
+    expect(boards()[0]![1].embed).toMatchObject({ title: '🎄 invite leaderboard · final' });
+    expect(boards()[0]![1].embed.description).toMatch(new RegExp(`^🥇 <@${INVITER}> ── \\*\\*1\\*\\* verified\\n`));
     expect(t.sent.filter((s) => s.channelId === BOARD)).toHaveLength(2); // the first post and the repost, nothing else
   });
 });

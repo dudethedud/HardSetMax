@@ -14,7 +14,7 @@ import {
   leaveRateFlag,
   raffleCsv,
   rankInviters,
-  STAY_DAYS,
+  LEVEL_GRACE_DAYS,
   type Flag,
   type InviteStatus,
 } from '../core/inviteEvent.js';
@@ -237,12 +237,27 @@ export class InviteEventService {
     const disqualified = inviterId ? !!(await this.db.disqualifiedInviter.findUnique({ where: { userId: inviterId } })) : false;
     await this.#apply(join, state, member.roles.cache.has(this.config.level3RoleId), disqualified, now);
     this.log.info({ invitee: member.id, inviter: inviterId, source }, 'invite event: join');
+    // They show as "invited" straight away.
+    if (inviterId) await this.#refreshBoard();
 
     if (inviterId && source !== 'vanity') {
       const inviter = await this.client.users.fetch(inviterId).catch(() => null);
       const joins = await this.db.inviteJoin.findMany({ where: { inviterId } });
       await this.#postFlags(inviterId, flagsForJoin({ id: inviterId, name: inviter?.username ?? '' }, joins, join, now));
     }
+  }
+
+  /** A member's roles changed: an invitee who just got level 3 is verified straight away. */
+  onMemberUpdate(member: GuildMember): Promise<void> {
+    if (member.guild.id !== this.guildId || !member.roles.cache.has(this.config.level3RoleId)) return Promise.resolve();
+    return this.#serial(async () => {
+      const join = await this.db.inviteJoin.findUnique({ where: { inviteeId: member.id } });
+      if (join?.status !== 'pending') return;
+      const state = await this.state();
+      if (state.finalPostedAt) return;
+      const after = await this.#apply(join, state, true, await this.#isDisqualified(join.inviterId), this.now());
+      if (after.status !== join.status) await this.#refreshBoard();
+    });
   }
 
   /** A member left: their invite stops counting (if before the 7 days or the end). */
@@ -255,7 +270,7 @@ export class InviteEventService {
       const state = await this.state();
       if (!state.finalPostedAt) await this.#apply(updated, state, null, await this.#isDisqualified(join.inviterId), this.now());
       if (join.inviterId) await this.#postFlags(join.inviterId, leaveRateFlag(join.inviterId, await this.db.inviteJoin.findMany({ where: { inviterId: join.inviterId } })));
-      if (join.status === 'valid') await this.#refreshBoard();
+      await this.#refreshBoard();
     });
   }
 
@@ -327,7 +342,7 @@ export class InviteEventService {
           state = await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { frozenAt: this.config.end } });
         }
         // Settled once the last joins have had their 7 days (and been checked since): statuses stop changing.
-        if (state.frozenAt && now.getTime() >= joinCutoff(this.config.end, state.frozenAt).getTime() + STAY_DAYS * DAY + HOUR) {
+        if (state.frozenAt && now.getTime() >= joinCutoff(this.config.end, state.frozenAt).getTime() + LEVEL_GRACE_DAYS * DAY + HOUR) {
           await this.#evaluateAll(guild);
           await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { finalPostedAt: now } });
         }
@@ -363,7 +378,7 @@ export class InviteEventService {
   }
 
   #settleDay(cutoff: Date): string {
-    return new Date(cutoff.getTime() + STAY_DAYS * DAY).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    return new Date(cutoff.getTime() + LEVEL_GRACE_DAYS * DAY).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   }
 
   async #staffLog(embed: EmbedBuilder): Promise<void> {
@@ -376,8 +391,11 @@ export class InviteEventService {
   // ---- Leaderboard and /invites ----
 
   async #ranked() {
-    const rows = await this.db.inviteJoin.findMany({ where: { status: 'valid', validatedAt: { not: null }, inviterId: { not: null } }, select: { inviterId: true, validatedAt: true } });
-    return rankInviters(rows.map((r) => ({ inviterId: r.inviterId!, validatedAt: r.validatedAt! })));
+    const rows = await this.db.inviteJoin.findMany({
+      where: { status: { in: ['valid', 'pending', 'left'] }, inviterId: { not: null } },
+      select: { inviterId: true, status: true, joinedAt: true, validatedAt: true },
+    });
+    return rankInviters(rows.map((r) => ({ ...r, inviterId: r.inviterId! })));
   }
 
   async #leaderboard(title: string, limit: number, footer: string): Promise<EmbedBuilder> {
@@ -385,37 +403,45 @@ export class InviteEventService {
     return new EmbedBuilder()
       .setColor(this.config.color)
       .setTitle(title)
-      .setDescription(lines.length ? lines.join('\n') : 'no valid invites yet · invite friends and they count after 7 days ♡')
+      .setDescription(`${lines.length ? lines.join('\n') : 'no invites yet · be the first! get your link with `/invite-link` ♡'}\n\n${this.#legend()}`)
       .setFooter({ text: footer });
+  }
+
+  /** The key under the leaderboard: what the numbers mean. */
+  #legend(): string {
+    return '-# **verified** = they have the level 3 role (a raffle entry) · **invited** = joined, not level 3 yet · **left** = left the server';
   }
 
   /** The top 10 now: the live message and /leaderboard. */
   async leaderboard(state?: InviteEventState): Promise<EmbedBuilder> {
     state ??= await this.state();
     const now = this.now();
-    if (state.finalPostedAt) return this.#leaderboard('🎄 invite leaderboard · final', 10, 'final results · every valid invite = a raffle entry ♡ thank you all!');
+    if (state.finalPostedAt) return this.#leaderboard('🎄 invite leaderboard · final', 10, 'final results · every verified invite = a raffle entry ♡ thank you all!');
     if (state.frozenAt || now >= this.config.end) {
-      return this.#leaderboard('🎄 invite leaderboard · event over', 10, `the event is over · final results after ${this.#settleDay(joinCutoff(this.config.end, state.frozenAt))}, once the last invites finish their ${STAY_DAYS} days ♡`);
+      return this.#leaderboard('🎄 invite leaderboard · event over', 10, `the event is over · final results after ${this.#settleDay(joinCutoff(this.config.end, state.frozenAt))}: invited friends have until then to reach level 3 ♡`);
     }
     const left = daysLeft(now, this.config.end);
-    return this.#leaderboard('🎄 invite leaderboard', 10, `${left} day${left === 1 ? '' : 's'} left · every valid invite = a raffle entry ♡ check yours with /invites`);
+    return this.#leaderboard('🎄 invite leaderboard', 10, `${left} day${left === 1 ? '' : 's'} left · every verified invite = a raffle entry ♡ check yours with /invites`);
   }
 
   /** /invites: one member's counts and rank. */
   async invitesOf(userId: string): Promise<EmbedBuilder> {
     const state = await this.state();
-    const joins = await this.db.inviteJoin.findMany({ where: { inviterId: userId } });
+    const joins = await this.db.inviteJoin.findMany({ where: { inviterId: userId }, orderBy: { joinedAt: 'asc' } });
     const count = (s: InviteStatus) => joins.filter((j) => j.status === s).length;
     const ranked = await this.#ranked();
     const rank = ranked.findIndex((r) => r.inviterId === userId);
+    const verified = count('valid');
     const lines = [
-      `**${count('valid')}** valid invite${count('valid') === 1 ? '' : 's'} = **${count('valid')}** raffle entr${count('valid') === 1 ? 'y' : 'ies'}${rank >= 0 ? ` · #${rank + 1} on the leaderboard` : ''}`,
-      `⏳ ${count('pending')} pending · 🚪 ${count('left')} left · ✖️ ${count('invalid') + count('disqualified')} not counted`,
+      `✅ **${verified}** verified = **${verified}** raffle entr${verified === 1 ? 'y' : 'ies'}${rank >= 0 ? ` · #${rank + 1} on the leaderboard` : ''}`,
+      `⏳ ${count('pending')} invited · 🚪 ${count('left')} left · ✖️ ${count('invalid') + count('disqualified')} not counted`,
     ];
     const pending = joins.filter((j) => j.status === 'pending');
-    if (pending.length) lines.push('', '**Pending**', ...pending.slice(0, 10).map((j) => `<@${j.inviteeId}> · ${j.invalidReason ?? 'checking'}`));
+    if (pending.length) lines.push('', '**Invited, waiting for level 3**', ...pending.slice(0, 10).map((j) => `<@${j.inviteeId}>`));
+    const notCounted = joins.filter((j) => j.status === 'invalid');
+    if (notCounted.length) lines.push('', '**Not counted**', ...notCounted.slice(0, 5).map((j) => `<@${j.inviteeId}> · ${j.invalidReason ?? 'not counted'}`));
     if (await this.#isDisqualified(userId)) lines.push('', '⚠️ Your invites are not counting in this event. Ask staff if you think this is a mistake.');
-    lines.push('', `-# Only joins since <t:${Math.floor(state.startAt.getTime() / 1000)}:D> are tracked: invites from before can't be counted. An invite counts once they've been here ${STAY_DAYS} days and have the level 3 role.`);
+    lines.push('', `-# Only joins since <t:${Math.floor(state.startAt.getTime() / 1000)}:D> are tracked: invites from before can't be counted. Someone you invite shows as invited straight away and becomes verified (a raffle entry) when they get the level 3 role. If they leave, it moves to left.`);
     return new EmbedBuilder().setColor(this.config.color).setTitle('🎄 your invites').setDescription(`<@${userId}>\n\n${lines.join('\n')}`);
   }
 
@@ -503,18 +529,18 @@ export class InviteEventService {
     }
   }
 
-  /** The raffle list for wheelofnames.com: one line per valid invite, plus a summary. */
+  /** The raffle list for wheelofnames.com: one line per verified invite, plus a summary. */
   async raffleExport(): Promise<{ csv: string; summary: string }> {
     const ranked = await this.#ranked();
     const entries = await Promise.all(
-      ranked.map(async (r) => ({ name: (await this.client.users.fetch(r.inviterId).catch(() => null))?.username ?? r.inviterId, count: r.count, id: r.inviterId })),
+      ranked.filter((r) => r.verified > 0).map(async (r) => ({ name: (await this.client.users.fetch(r.inviterId).catch(() => null))?.username ?? r.inviterId, count: r.verified, id: r.inviterId })),
     );
     const state = await this.state();
     const total = entries.reduce((n, e) => n + e.count, 0);
     const pending = await this.db.inviteJoin.count({ where: { status: 'pending' } });
     const summary = [
       `🎟️ **${total}** raffle entr${total === 1 ? 'y' : 'ies'} from **${entries.length}** inviter${entries.length === 1 ? '' : 's'}${state.finalPostedAt ? ' (final)' : ' (not final yet)'}.`,
-      pending ? `⏳ ${pending} invite${pending === 1 ? ' is' : 's are'} still pending and not included.` : '',
+      pending ? `⏳ ${pending} invitee${pending === 1 ? ' is' : 's are'} invited but not level 3 yet, so not included.` : '',
       ...entries.slice(0, 20).map((e, i) => `${i + 1}. <@${e.id}> (${e.name}) · ${e.count}`),
     ].filter(Boolean);
     return { csv: raffleCsv(entries), summary: summary.join('\n').slice(0, 1900) };
@@ -525,9 +551,9 @@ export class InviteEventService {
     const state = await this.state();
     if (state.frozenAt) return `The event is already frozen (since <t:${Math.floor(state.frozenAt.getTime() / 1000)}:f>).`;
     await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { frozenAt: this.now() } });
-    await this.#staffLog(new EmbedBuilder().setColor(this.config.color).setTitle('🧊 Invite event frozen').setDescription(`by <@${byId}>. New joins no longer count; earlier ones keep being checked for their ${STAY_DAYS} days.`).setTimestamp(this.now()));
+    await this.#staffLog(new EmbedBuilder().setColor(this.config.color).setTitle('🧊 Invite event frozen').setDescription(`by <@${byId}>. New joins no longer count; invited people who joined before have ${LEVEL_GRACE_DAYS} days to reach level 3.`).setTimestamp(this.now()));
     this.#boardChanged();
-    return `🧊 Frozen. New joins no longer count; the leaderboard now says "event over", and shows the final results ${STAY_DAYS} days later.`;
+    return `🧊 Frozen. New joins no longer count; the leaderboard now says "event over", and shows the final results ${LEVEL_GRACE_DAYS} days later.`;
   }
 
   /** Why tracking is off, for staff commands. */

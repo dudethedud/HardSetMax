@@ -81,9 +81,12 @@ describe('validity rules', () => {
     expect(evaluateJoin(facts({ accountCreatedAt: new Date(joined.getTime() - 29 * DAY) }), ctx())).toMatchObject({ status: 'invalid', reason: 'account too new' });
   });
 
-  it('rule 2: waits 7 days; leaving within them is "left"', () => {
-    expect(evaluateJoin(facts(), ctx({ now: new Date(joined.getTime() + 6 * DAY) }))).toMatchObject({ status: 'pending' });
-    expect(evaluateJoin(facts({ leftAt: new Date(joined.getTime() + 3 * DAY) }), ctx())).toMatchObject({ status: 'left' });
+  it('counts straight away: verified the moment they have level 3, no waiting', () => {
+    expect(evaluateJoin(facts(), ctx({ now: joined }))).toEqual({ status: 'valid', reason: null, validatedAt: joined });
+  });
+
+  it('leaving before the end is "left", verified or not', () => {
+    expect(evaluateJoin(facts({ leftAt: new Date(joined.getTime() + 3600_000) }), ctx({ hasLevel3: null }))).toMatchObject({ status: 'left', reason: 'left the server' });
   });
 
   it('rule 3: pending until they have the level 3 role', () => {
@@ -113,9 +116,11 @@ describe('validity rules', () => {
     expect(evaluateJoin(facts(), ctx({ frozenAt: new Date(joined.getTime() - 1000) }))).toMatchObject({ status: 'invalid', reason: 'joined outside the event' });
   });
 
-  it('joins in the last week keep being checked after the end', () => {
+  it('after the end, invited people can still reach level 3 (until the final results); leaving then means it never counted', () => {
     const late = new Date(end.getTime() - 2 * DAY);
-    expect(evaluateJoin(facts({ joinedAt: late, accountCreatedAt: new Date(late.getTime() - 90 * DAY) }), ctx({ now: new Date(late.getTime() + 7 * DAY + 1000) }))).toMatchObject({ status: 'valid' });
+    const lateJoin = facts({ joinedAt: late, accountCreatedAt: new Date(late.getTime() - 90 * DAY) });
+    expect(evaluateJoin(lateJoin, ctx({ now: new Date(end.getTime() + 3 * DAY) }))).toMatchObject({ status: 'valid' });
+    expect(evaluateJoin({ ...lateJoin, leftAt: new Date(end.getTime() + DAY) }, ctx({ hasLevel3: null }))).toMatchObject({ status: 'left', reason: 'left before reaching level 3' });
   });
 
   it('disqualified inviters and staff overrides win', () => {
@@ -173,26 +178,45 @@ describe('alt / fraud flags', () => {
 });
 
 describe('leaderboard and raffle', () => {
-  it('most valid invites first; ties go to whoever got there first; disqualified left out', () => {
+  it('like a football table: verified, then invited, then fewer left, then whoever got there first', () => {
     const t = (d: number) => new Date(Date.UTC(2026, 11, d));
+    const row = (inviterId: string, status: string, d: number) => ({ inviterId, status, joinedAt: t(d), validatedAt: status === 'valid' ? t(d) : null });
     const rows = [
-      { inviterId: 'a', validatedAt: t(1) },
-      { inviterId: 'a', validatedAt: t(5) },
-      { inviterId: 'b', validatedAt: t(2) },
-      { inviterId: 'b', validatedAt: t(3) },
-      { inviterId: 'c', validatedAt: t(1) },
-      { inviterId: 'x', validatedAt: t(1) },
-      { inviterId: 'x', validatedAt: t(1) },
-      { inviterId: 'x', validatedAt: t(1) },
+      // a and b: 2 verified each; b has more invited.
+      row('a', 'valid', 1), row('a', 'valid', 5), row('a', 'pending', 6),
+      row('b', 'valid', 2), row('b', 'valid', 3), row('b', 'pending', 4), row('b', 'pending', 4),
+      // c: same as a but one left, so below a.
+      row('c', 'valid', 1), row('c', 'valid', 2), row('c', 'pending', 3), row('c', 'left', 3),
+      // d: nothing verified, the most invited: under everyone with a verified invite.
+      row('d', 'pending', 1), row('d', 'pending', 1), row('d', 'pending', 1), row('d', 'pending', 1),
+      // e: only left or invalid: not listed. x: disqualified.
+      row('e', 'left', 1), row('e', 'invalid', 1),
+      row('x', 'valid', 1), row('x', 'valid', 1), row('x', 'valid', 1),
     ];
     const ranked = rankInviters(rows, new Set(['x']));
-    expect(ranked.map((r) => [r.inviterId, r.count])).toEqual([['b', 2], ['a', 2], ['c', 1]]);
-    expect(leaderboardLines(ranked, 5)).toEqual(['🥇 <@b> ── **2** invites', '🥈 <@a> ── **2** invites', '🥉 <@c> ── **1** invite']);
+    expect(ranked.map((r) => [r.inviterId, r.verified, r.invited, r.left])).toEqual([['b', 2, 2, 0], ['a', 2, 1, 0], ['c', 2, 1, 1], ['d', 0, 4, 0]]);
+    expect(leaderboardLines(ranked, 10)).toEqual([
+      '🥇 <@b> ── **2** verified · 2 invited',
+      '🥈 <@a> ── **2** verified · 1 invited',
+      '🥉 <@c> ── **2** verified · 1 invited · 1 left',
+      '4. <@d> ── **0** verified · 4 invited',
+    ]);
   });
 
-  it('places 4 and 5 are numbered', () => {
-    const ranked = ['a', 'b', 'c', 'd', 'e', 'f'].map((id, i) => ({ inviterId: id, count: 10 - i }));
-    expect(leaderboardLines(ranked, 5).slice(3)).toEqual(['4. <@d> ── **7** invites', '5. <@e> ── **6** invites']);
+  it('with nobody verified, the most invited is first; a full tie goes to whoever got there first', () => {
+    const t = (d: number) => new Date(Date.UTC(2026, 11, d));
+    const rows = [
+      { inviterId: 'late', status: 'pending', joinedAt: t(5), validatedAt: null },
+      { inviterId: 'early', status: 'pending', joinedAt: t(2), validatedAt: null },
+      { inviterId: 'most', status: 'pending', joinedAt: t(9), validatedAt: null },
+      { inviterId: 'most', status: 'pending', joinedAt: t(9), validatedAt: null },
+    ];
+    expect(rankInviters(rows).map((r) => r.inviterId)).toEqual(['most', 'early', 'late']);
+  });
+
+  it('places 4 to 10 are numbered', () => {
+    const ranked = ['a', 'b', 'c', 'd', 'e', 'f'].map((id, i) => ({ inviterId: id, verified: 10 - i, invited: 0, left: 0 }));
+    expect(leaderboardLines(ranked, 5).slice(3)).toEqual(['4. <@d> ── **7** verified', '5. <@e> ── **6** verified']);
   });
 
   it('raffle CSV: one line per entry, names quoted safely', () => {
