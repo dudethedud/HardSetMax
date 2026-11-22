@@ -120,7 +120,7 @@ describe.skipIf(!url)('invite event', () => {
     t.members.set(OLD_MEMBER, t.member(OLD_MEMBER));
     await t.service.start(t.guild);
     expect(t.service.enabled).toBe(true);
-    // The first place line (the server has no blue_1 emoji here, so it's the medal).
+    // The first place line (the server has no `first` emoji here, so it's the medal).
     const line = async () => JSON.stringify((await t.service.leaderboard()).components.map((c) => c.toJSON())).match(/🥇[^"\\]*|no invites yet/)?.[0];
 
     const a = await t.join('200000000000000001', 'abc');
@@ -284,7 +284,7 @@ describe.skipIf(!url)('invite event', () => {
     await t.join('200000000000000009', 'abc', { roles: [LEVEL3] });
     expect(boards()).toHaveLength(1);
     expect(live.edits).toBe(1);
-    expect(live.text).toContain(`\n🥇 <@${INVITER}> - **1** verified\n`); // no blue_1 emoji in this server: the medal
+    expect(live.text).toContain(`\n🥇 <@${INVITER}> - **1** verified\n`); // no `first` emoji in this server: the medal
     // A day later only the days left change: edited once more.
     t.later(8);
     await t.service.tick(t.guild);
@@ -315,16 +315,16 @@ describe.skipIf(!url)('invite event', () => {
     expect(t.sent.filter((s) => s.channelId === BOARD)).toHaveLength(2); // the first post and the repost, nothing else
   });
 
-  it('uses the server\'s blue_1…blue_10 emojis for places when it has them', async () => {
+  it('uses the server\'s first…tenth emojis for places when it has them', async () => {
     const t = setup();
     (t.guild as unknown as { emojis: unknown }).emojis = {
-      cache: new Collection([['700000000000000001', { id: '700000000000000001', name: 'blue_1', available: true, toString: () => '<:blue_1:700000000000000001>' }]]),
+      cache: new Collection([['700000000000000001', { id: '700000000000000001', name: 'First', available: true, toString: () => '<:First:700000000000000001>' }]]),
     };
     t.invites.set('abc', { uses: 0, inviterId: INVITER });
     await t.service.start(t.guild);
     await t.join('200000000000000011', 'abc', { roles: [LEVEL3] });
     const [, live] = [...t.posted].find(([, m]) => m.channelId === BOARD)!;
-    expect(live.text).toContain(`\n<:blue_1:700000000000000001> <@${INVITER}> - **1** verified\n`);
+    expect(live.text).toContain(`\n<:First:700000000000000001> <@${INVITER}> - **1** verified\n`);
   });
 
   it('bots never count as inviters (e.g. DISBOARD\'s server listing invite), including joins credited to them before', async () => {

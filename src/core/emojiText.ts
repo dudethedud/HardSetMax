@@ -8,3 +8,6 @@ const TOKEN = /\{([A-Za-z0-9_]{2,32})\|([^{}]*)\}/g;
 export function fillEmojis(template: string, lookup: (name: string) => string | null): string {
   return template.replace(TOKEN, (_, name: string, fallback: string) => lookup(name) ?? fallback);
 }
+
+/** The server's place badge emojis (1st to 10th), by name: used by the donation panel and the invite leaderboard. */
+export const PLACE_EMOJI_NAMES = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'] as const;
