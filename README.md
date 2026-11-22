@@ -19,7 +19,7 @@ Colour role menus for server reppers. Members who wear the server tag or have `.
 
 **Donations:** a 💖 Donate panel backed by Ko-fi: public thank-yous, a total (and optional goal), top donors, and a Donor role. Admin commands: `/donations setup|goal|donor-role|add|remove|list|reset`.
 
-**Christmas invite event:** every valid invite is a raffle entry. Members use `/invites`, `/leaderboard` and `/invite-link` (their own permanent link); staff with Manage Server use `/invite-event review|disqualify|reinstate|set-status|raffle-export|freeze`. A leaderboard posts every Sunday at 6 PM Edmonton. Rules: [`docs/SPEC.md` §8](docs/SPEC.md).
+**Christmas invite event:** every valid invite is a raffle entry. Members use `/invites`, `/leaderboard` and `/invite-link` (their own permanent link); staff with Manage Server use `/invite-event review|disqualify|reinstate|set-status|raffle-export|freeze`. One live leaderboard message in the leaderboard channel updates itself as invites count. Rules: [`docs/SPEC.md` §8](docs/SPEC.md).
 
 ### Setting up the invite event
 1. **Developer Portal → your app → Bot → Privileged Gateway Intents:** turn on **Server Members Intent** (already needed for colours). The bot also uses the **Guild Invites** intent, which isn't privileged, so there's nothing to switch on for it.
@@ -28,7 +28,7 @@ Colour role menus for server reppers. Members who wear the server tag or have `.
 
    | Name | What | Default |
    |---|---|---|
-   | `LEADERBOARD_CHANNEL_ID` | Where the weekly and final leaderboards are posted (required to turn the event on) | – |
+   | `LEADERBOARD_CHANNEL_ID` | Where the live leaderboard message goes; the bot posts it once and keeps editing it (required to turn the event on) | – |
    | `LEVEL3_ROLE_ID` | The level 3 role an invitee needs (required to turn the event on) | – |
    | `INVITE_EVENT_END` | End time, Edmonton | `2026-12-25T12:00` |
    | `STAFF_LOG_CHANNEL_ID` | Alt flags and staff changes | the `/colours` log channel |

@@ -118,6 +118,8 @@ model InviteEventState {
   weeklyPosts    Int       @default(0)
   lastWeeklyDay  String?
   lastEvaluatedAt DateTime?
+  /** The live leaderboard message in LEADERBOARD_CHANNEL_ID, edited when it changes. */
+  leaderboardMessageId String?
   /** Everyone already in the server was saved as a known member (rule 4). */
   snapshotDone   Boolean   @default(false)
 }

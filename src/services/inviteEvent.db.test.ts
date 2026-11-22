@@ -1,7 +1,7 @@
 // Needs a real Postgres with migrations applied: set TEST_DATABASE_URL to run.
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pino } from 'pino';
-import { Collection, PermissionFlagsBits, type Client, type Guild, type GuildMember, type Invite } from 'discord.js';
+import { Collection, PermissionFlagsBits, type Client, type Guild, type GuildMember } from 'discord.js';
 import { createDb, type Db } from '../db/prisma.js';
 import { InviteEventService } from './inviteEvent.js';
 
@@ -48,10 +48,25 @@ describe.skipIf(!url)('invite event', () => {
         roles: { cache: new Collection((o.roles ?? []).map((r) => [r, {}])) },
       }) as unknown as GuildMember;
     const members = new Collection<string, GuildMember>();
+    type Embeds = { embeds: { toJSON(): (typeof sent)[number]['embed'] }[] };
+    // Posted messages by ID; editing one replaces what it shows.
+    const posted = new Map<string, { channelId: string; embed: (typeof sent)[number]['embed']; edits: number }>();
     const channel = (channelId: string) => ({
       id: channelId,
       isSendable: () => true,
-      send: (o: { embeds: { toJSON(): (typeof sent)[number]['embed'] }[] }) => (sent.push({ channelId, embed: o.embeds[0]!.toJSON() }), Promise.resolve({})),
+      messages: {
+        fetch: (id: string) => {
+          const m = posted.get(id);
+          if (!m) return Promise.reject(new Error('Unknown Message'));
+          return Promise.resolve({ id, edit: (o: Embeds) => ((m.embed = o.embeds[0]!.toJSON()), m.edits++, Promise.resolve({})) });
+        },
+      },
+      send: (o: Embeds) => {
+        sent.push({ channelId, embed: o.embeds[0]!.toJSON() });
+        const id = `m${sent.length}`;
+        posted.set(id, { channelId, embed: o.embeds[0]!.toJSON(), edits: 0 });
+        return Promise.resolve({ id });
+      },
       createInvite: () => {
         const code = `personal${invites.size}`;
         invites.set(code, { uses: 0, inviterId: BOT });
@@ -86,7 +101,7 @@ describe.skipIf(!url)('invite event', () => {
     };
     const status = async (id: string) => (await db.inviteJoin.findUnique({ where: { inviteeId: id } }))?.status;
     const later = (days: number) => (clock.now = new Date(clock.now.getTime() + days * DAY));
-    return { service, guild, clock, sent, invites, members, perms, member, join, status, later };
+    return { service, guild, clock, sent, posted, invites, members, perms, member, join, status, later };
   }
 
   it('credits the inviter, waits 7 days and the level 3 role, then counts on the leaderboard', async () => {
@@ -227,42 +242,52 @@ describe.skipIf(!url)('invite event', () => {
     expect((await t.service.state()).snapshotDone).toBe(true);
   });
 
-  it('posts each Sunday at 6 PM once, freezes at the end, posts the final results a week later', async () => {
+  it('one live leaderboard: posted at start, edited only when it changes, reposted if deleted; event over, then final', async () => {
     const t = setup();
-    await t.service.start(t.guild);
-    await t.service.tick(t.guild); // Sunday 1 PM, the start: no post yet
-    expect(t.sent.filter((s) => s.channelId === BOARD)).toHaveLength(0);
-
-    t.clock.now = new Date('2026-11-23T00:05:00Z'); // Sunday 6:05 PM Edmonton
-    await t.service.tick(t.guild);
-    await t.service.tick(t.guild);
-    const board = () => t.sent.filter((s) => s.channelId === BOARD).map((s) => s.embed);
-    expect(board()).toHaveLength(1);
-    expect(board()[0]).toMatchObject({ title: '🎄 invite leaderboard · week 1', footer: { text: '33 days left · every valid invite = a raffle entry ♡ check yours with /invites' } });
-
-    t.clock.now = new Date('2026-11-30T00:10:00Z');
-    await t.service.tick(t.guild);
-    expect(board()[1]!.title).toBe('🎄 invite leaderboard · week 2');
-
-    // An invite made late, and a join an hour before the end: it still gets its 7 days.
-    t.clock.now = new Date(END.getTime() - 3600_000);
     t.invites.set('abc', { uses: 0, inviterId: INVITER });
-    t.service.onInviteCreate({ code: 'abc', uses: 0, inviterId: INVITER, guild: { id: GUILD } } as unknown as Invite);
-    await t.join('200000000000000009', 'abc', { roles: [LEVEL3] });
+    await t.service.start(t.guild);
+    await t.service.tick(t.guild);
+    const boards = () => [...t.posted].filter(([, m]) => m.channelId === BOARD);
+    expect(boards()).toHaveLength(1);
+    const [id, live] = boards()[0]!;
+    expect(live.embed).toMatchObject({ title: '🎄 invite leaderboard', footer: { text: '33 days left · every valid invite = a raffle entry ♡ check yours with /invites' } });
+    expect(live.embed.description).toMatch(/no valid invites yet/);
 
+    // Nothing changed: no edit.
+    t.later(5 / (24 * 60));
+    await t.service.tick(t.guild);
+    expect(live.edits).toBe(0);
+
+    // A valid invite: the same message is edited.
+    await t.join('200000000000000009', 'abc', { roles: [LEVEL3] });
+    t.later(8);
+    await t.service.tick(t.guild);
+    expect(boards()).toHaveLength(1);
+    expect(live.edits).toBe(1);
+    expect(live.embed.description).toBe(`🥇 <@${INVITER}> ── **1** invite`);
+    expect(live.embed.footer!.text).toMatch(/^25 days left/);
+
+    // Someone deleted it: posted again, once.
+    t.posted.delete(id);
+    t.later(1 / 24);
+    await t.service.tick(t.guild);
+    await t.service.tick(t.guild);
+    expect(boards()).toHaveLength(1);
+
+    // The end: the same message says the event is over; joins after it aren't part of the event.
     t.clock.now = new Date(END.getTime() + 60_000);
     await t.service.tick(t.guild);
-    expect(board().at(-1)!.title).toBe('🎄 invite leaderboard · event over');
-    expect(board().at(-1)!.footer!.text).toMatch(/final results after Jan 1/);
-    // Joins after the end aren't part of the event.
+    const [, after] = boards()[0]!;
+    expect(after.embed.title).toBe('🎄 invite leaderboard · event over');
+    expect(after.embed.footer!.text).toMatch(/final results after Jan 1/);
     await t.join('200000000000000010', 'abc', { roles: [LEVEL3] });
     expect(await db.inviteJoin.findUnique({ where: { inviteeId: '200000000000000010' } })).toBeNull();
 
+    // A week later: final results, still the same message, and statuses stop changing.
     t.clock.now = new Date(END.getTime() + 7 * DAY + 2 * 3600_000);
     await t.service.tick(t.guild);
-    expect(board().at(-1)).toMatchObject({ title: '🎄 invite leaderboard · final', description: `🥇 <@${INVITER}> ── **1** invite` });
-    const count = board().length;
-    await t.service.tick(t.guild);
-    expect(board()).toHaveLength(count);
+    expect(boards()).toHaveLength(1);
+    expect(boards()[0]![1].embed).toMatchObject({ title: '🎄 invite leaderboard · final', description: `🥇 <@${INVITER}> ── **1** invite` });
+    expect(t.sent.filter((s) => s.channelId === BOARD)).toHaveLength(2); // the first post and the repost, nothing else
   });
 });

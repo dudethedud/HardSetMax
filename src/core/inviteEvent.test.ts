@@ -6,7 +6,6 @@ import {
   edmontonTime,
   evaluateJoin,
   flagsForJoin,
-  lastSundayPost,
   leaderboardLines,
   leaveRateFlag,
   raffleCsv,
@@ -211,14 +210,5 @@ describe('event time', () => {
     const end = edmontonTime('2026-12-25T12:00');
     expect(daysLeft(new Date(end.getTime() - 2.5 * DAY), end)).toBe(3);
     expect(daysLeft(new Date(end.getTime() + DAY), end)).toBe(0);
-  });
-
-  it('the latest Sunday 6 PM in Edmonton', () => {
-    // Sunday Nov 29 2026, 18:30 Edmonton = 00:30 UTC Monday.
-    expect(lastSundayPost(new Date('2026-11-30T00:30:00Z'))).toEqual({ at: new Date('2026-11-30T00:00:00Z'), day: '2026-11-29' });
-    // Sunday 17:00 Edmonton: still last week's.
-    expect(lastSundayPost(new Date('2026-11-29T23:00:00Z')).day).toBe('2026-11-22');
-    // A Wednesday.
-    expect(lastSundayPost(new Date('2026-12-02T20:00:00Z')).day).toBe('2026-11-29');
   });
 });
