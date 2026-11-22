@@ -103,3 +103,85 @@ model DonationTier {
   roleId   String @id
   minCents Int
 }
+
+// ---- Christmas invite event (docs/SPEC.md §8) ----
+
+// The event's state. startAt is set the first time the feature runs, so restarts don't move it.
+model InviteEventState {
+  guildId        String    @id
+  startAt        DateTime
+  /** Counting of new joins stopped (staff /invite-event freeze, or the end time). */
+  frozenAt       DateTime?
+  frozenPostedAt DateTime?
+  finalPostedAt  DateTime?
+  /** Weekly leaderboard posts so far (the next one is week weeklyPosts + 1), and the last one's Sunday. */
+  weeklyPosts    Int       @default(0)
+  lastWeeklyDay  String?
+  lastEvaluatedAt DateTime?
+  /** Everyone already in the server was saved as a known member (rule 4). */
+  snapshotDone   Boolean   @default(false)
+}
+
+// One row per invitee: rejoins never count twice.
+model InviteJoin {
+  id               Int       @id @default(autoincrement())
+  inviteeId        String    @unique
+  inviteeName      String
+  /** Who gets the credit; null for vanity, discovery or unknown joins. */
+  inviterId        String?
+  inviteCode       String?
+  /** "invite" | "personal" | "vanity" | "discovery" | "unknown" */
+  source           String
+  joinedAt         DateTime
+  leftAt           DateTime?
+  accountCreatedAt DateTime
+  defaultAvatar    Boolean   @default(false)
+  isBot            Boolean   @default(false)
+  /** They were in the server (or joined) before this join (rule 4). */
+  rejoin           Boolean   @default(false)
+  /** "pending" | "valid" | "invalid" | "left" | "disqualified" */
+  status           String    @default("pending")
+  invalidReason    String?
+  /** When it first became valid: ties on the leaderboard go to whoever got there first. */
+  validatedAt      DateTime?
+  /** Staff override (/invite-event set-status): wins over the rules. */
+  overrideStatus   String?
+  overrideReason   String?
+  overrideBy       String?
+
+  @@index([inviterId])
+  @@index([joinedAt])
+}
+
+// A member's personal invite link (/invite-link): joins through it are credited to them for sure.
+model PersonalInvite {
+  code      String   @id
+  userId    String   @unique
+  channelId String
+  createdAt DateTime @default(now())
+}
+
+// Everyone seen in the server: the members present when the event started, and every join since (rule 4).
+model KnownMember {
+  userId      String   @id
+  firstSeenAt DateTime
+  /** "snapshot" | "join" */
+  source      String
+}
+
+// Inviters staff disqualified: none of their invites count, now or later.
+model DisqualifiedInviter {
+  userId String   @id
+  reason String
+  byId   String
+  at     DateTime @default(now())
+}
+
+// Alt/fraud flags posted to staff, so each is posted once.
+model InviteFlag {
+  key        String   @id
+  inviterId  String
+  reason     String
+  inviteeIds String[]
+  createdAt  DateTime @default(now())
+}

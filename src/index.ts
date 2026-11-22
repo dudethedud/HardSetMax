@@ -12,12 +12,16 @@ import { registerCommands } from './discord/registerCommands.js';
 import { createLogger } from './logger.js';
 import { ColourMenuService } from './services/colourMenus.js';
 import { DonationService } from './services/donations.js';
+import { edmontonTime } from './core/inviteEvent.js';
+import { InviteEventService } from './services/inviteEvent.js';
 import { startWebhookServer } from './services/webhookServer.js';
 import { acquireGatewayLeader } from './services/gatewayLeader.js';
 import { createShutdown } from './services/shutdown.js';
 import { VERSION } from './version.js';
 
 const SWEEP_EVERY_MS = 60 * 60_000;
+/** The invite event's due-or-not steps (hourly check, Sunday posts, freeze) run this often. */
+const INVITE_TICK_MS = 5 * 60_000;
 
 const env = loadEnv();
 const log = createLogger(env.LOG_LEVEL);
@@ -57,7 +61,20 @@ const db = createDb(connection, env.DATABASE_POOL_MAX);
 const client = createClient();
 const colours = new ColourMenuService(client, env.GUILD_ID, db, log);
 const donations = new DonationService(client, env.GUILD_ID, db, log);
-const ctx: AppContext = { env, log, db, client, colours, donations };
+// The Christmas invite event, only when its channel and level role are set.
+const invites =
+  env.LEADERBOARD_CHANNEL_ID && env.LEVEL3_ROLE_ID
+    ? new InviteEventService(client, env.GUILD_ID, db, log, {
+        end: edmontonTime(env.INVITE_EVENT_END),
+        leaderboardChannelId: env.LEADERBOARD_CHANNEL_ID,
+        level3RoleId: env.LEVEL3_ROLE_ID,
+        staffLogChannelId: env.STAFF_LOG_CHANNEL_ID ?? null,
+        inviteLinkChannelId: env.INVITE_LINK_CHANNEL_ID ?? null,
+        color: env.EMBED_COLOR,
+      })
+    : null;
+if (!invites && (env.LEADERBOARD_CHANNEL_ID || env.LEVEL3_ROLE_ID)) log.warn('invite event needs both LEADERBOARD_CHANNEL_ID and LEVEL3_ROLE_ID: it is off');
+const ctx: AppContext = { env, log, db, client, colours, donations, invites };
 
 // Steps run in order: stop taking Ko-fi donations before the database closes.
 let webhook: Server | null = null;
@@ -86,6 +103,20 @@ client.once(Events.ClientReady, (c) => {
   // Catch up on anyone who stopped repping while the bot was offline, then every hour.
   sweep();
   setInterval(sweep, SWEEP_EVERY_MS).unref();
+  const guild = c.guilds.cache.get(env.GUILD_ID);
+  if (invites && guild) {
+    const tick = () => void invites.tick(guild).catch(logErrors('invite event tick'));
+    void invites.start(guild).then(tick, logErrors('invite event start'));
+    setInterval(tick, INVITE_TICK_MS).unref();
+  }
+});
+client.on(Events.InviteCreate, (invite) => invites?.onInviteCreate(invite));
+client.on(Events.InviteDelete, (invite) => invites?.onInviteDelete(invite));
+client.on(Events.GuildMemberAdd, (member) => {
+  invites?.onMemberAdd(member).catch(logErrors('invite event join'));
+});
+client.on(Events.GuildMemberRemove, (member) => {
+  invites?.onMemberRemove(member.id, member.guild.id).catch(logErrors('invite event leave'));
 });
 client.on(Events.InteractionCreate, (interaction) => {
   handleInteraction(interaction, ctx).catch(logErrors('interaction handler'));

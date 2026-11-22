@@ -13,6 +13,7 @@ function accessOf(interaction: ChatInputCommandInteraction | AutocompleteInterac
     expectedGuildId: ctx.env.GUILD_ID,
     isOwner: interaction.guild?.ownerId === interaction.user.id,
     isAdministrator: interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false,
+    canManageServer: interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false,
   });
 }
 
@@ -34,7 +35,7 @@ export async function handleInteraction(interaction: Interaction, ctx: AppContex
     return;
   }
   // Answer Discord first, so slow work (banner downloads, posting) never hits the 3-second limit.
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply(command.ephemeral?.(interaction) === false ? {} : { flags: MessageFlags.Ephemeral });
   try {
     await command.execute(interaction, ctx);
   } catch (err) {

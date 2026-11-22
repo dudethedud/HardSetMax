@@ -7,6 +7,7 @@ import {
   type ChatInputCommandInteraction,
   type Client,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
+  type SlashCommandOptionsOnlyBuilder,
   type SlashCommandSubcommandsOnlyBuilder,
 } from 'discord.js';
 import type { Env } from '../../config/env.js';
@@ -15,6 +16,7 @@ import type { Db } from '../../db/prisma.js';
 import type { Logger } from '../../logger.js';
 import type { ColourMenuService } from '../../services/colourMenus.js';
 import type { DonationService } from '../../services/donations.js';
+import type { InviteEventService } from '../../services/inviteEvent.js';
 
 export interface AppContext {
   env: Env;
@@ -23,6 +25,8 @@ export interface AppContext {
   client: Client;
   colours: ColourMenuService;
   donations: DonationService;
+  /** The Christmas invite event; null when it isn't configured. */
+  invites: InviteEventService | null;
 }
 
 export type Autocomplete = (interaction: AutocompleteInteraction<'cached'>, ctx: AppContext) => Promise<ApplicationCommandOptionChoiceData[]>;
@@ -31,30 +35,40 @@ export interface Command {
   name: string;
   data: RESTPostAPIChatInputApplicationCommandsJSONBody;
   level: AccessLevel;
-  /** Runs after the access check, with the reply already deferred (ephemeral): answer with editReply. */
+  /** Whether the reply is only visible to the user (default: always). Decided before the deferred reply. */
+  ephemeral?: (interaction: ChatInputCommandInteraction<'cached'>) => boolean;
+  /** Runs after the access check, with the reply already deferred: answer with editReply. */
   execute(interaction: ChatInputCommandInteraction<'cached'>, ctx: AppContext): Promise<void>;
   autocomplete?: Autocomplete;
 }
 
-/** Guild-only, hidden from everyone without Administrator, re-checked at runtime. */
+/** Who Discord shows each level's commands to; the runtime check (core/access.ts) still applies. */
+const DEFAULT_PERMISSIONS: Record<AccessLevel, bigint | null> = {
+  everyone: null,
+  'manage-server': PermissionFlagsBits.ManageGuild,
+  admin: PermissionFlagsBits.Administrator,
+  owner: PermissionFlagsBits.Administrator,
+};
+
+/** Guild-only, hidden from members below the command's level, re-checked at runtime. */
 export function defineCommand(spec: {
   name: string;
   description: string;
   level: AccessLevel;
-  build: (b: SlashCommandBuilder) => SlashCommandSubcommandsOnlyBuilder;
+  build: (b: SlashCommandBuilder) => SlashCommandSubcommandsOnlyBuilder | SlashCommandOptionsOnlyBuilder;
   execute: Command['execute'];
+  ephemeral?: Command['ephemeral'];
   autocomplete?: Autocomplete;
 }): Command {
-  const base = new SlashCommandBuilder()
-    .setName(spec.name)
-    .setDescription(spec.description)
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .setContexts(InteractionContextType.Guild);
+  const base = new SlashCommandBuilder().setName(spec.name).setDescription(spec.description).setContexts(InteractionContextType.Guild);
+  const perms = DEFAULT_PERMISSIONS[spec.level];
+  if (perms !== null) base.setDefaultMemberPermissions(perms);
   return {
     name: spec.name,
     data: spec.build(base).toJSON(),
     level: spec.level,
     execute: spec.execute,
+    ...(spec.ephemeral ? { ephemeral: spec.ephemeral } : {}),
     ...(spec.autocomplete ? { autocomplete: spec.autocomplete } : {}),
   };
 }

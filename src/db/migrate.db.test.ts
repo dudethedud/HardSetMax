@@ -42,7 +42,7 @@ describe.skipIf(!url)('runMigrations', () => {
     const c = new pg.Client({ connectionString: db });
     await c.connect();
     const tables = (await c.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1")).rows.map((r) => r.table_name);
-    expect(tables).toEqual(expect.arrayContaining(['ColourMenu', 'MenuColour', 'Settings', 'UnlockRole', 'Donation', 'DonationSettings', '_prisma_migrations']));
+    expect(tables).toEqual(expect.arrayContaining(['ColourMenu', 'MenuColour', 'Settings', 'UnlockRole', 'Donation', 'DonationSettings', 'InviteJoin', 'InviteEventState', 'PersonalInvite', 'KnownMember', '_prisma_migrations']));
     // None of the old bot's tables are left.
     expect(tables).not.toContain('VipMember');
     const rows = await c.query<{ n: number }>("SELECT count(*)::int AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL AND applied_steps_count = 1");

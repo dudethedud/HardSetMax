@@ -19,6 +19,25 @@ Colour role menus for server reppers. Members who wear the server tag or have `.
 
 **Donations:** a 💖 Donate panel backed by Ko-fi: public thank-yous, a total (and optional goal), top donors, and a Donor role. Admin commands: `/donations setup|goal|donor-role|add|remove|list|reset`.
 
+**Christmas invite event:** every valid invite is a raffle entry. Members use `/invites`, `/leaderboard` and `/invite-link` (their own permanent link); staff with Manage Server use `/invite-event review|disqualify|reinstate|set-status|raffle-export|freeze`. A leaderboard posts every Sunday at 6 PM Edmonton. Rules: [`docs/SPEC.md` §8](docs/SPEC.md).
+
+### Setting up the invite event
+1. **Developer Portal → your app → Bot → Privileged Gateway Intents:** turn on **Server Members Intent** (already needed for colours). The bot also uses the **Guild Invites** intent, which isn't privileged, so there's nothing to switch on for it.
+2. **Permissions:** give the bot's role **Manage Server** (Discord only shows invite use counts to it) and **Create Invite** in the channel for personal links. Without Manage Server the event turns itself off and says so in the staff log.
+3. **Config** (Wispbyte → Startup / the `.env` file):
+
+   | Name | What | Default |
+   |---|---|---|
+   | `LEADERBOARD_CHANNEL_ID` | Where the weekly and final leaderboards are posted (required to turn the event on) | – |
+   | `LEVEL3_ROLE_ID` | The level 3 role an invitee needs (required to turn the event on) | – |
+   | `INVITE_EVENT_END` | End time, Edmonton | `2026-12-25T12:00` |
+   | `STAFF_LOG_CHANNEL_ID` | Alt flags and staff changes | the `/colours` log channel |
+   | `INVITE_LINK_CHANNEL_ID` | Channel personal invite links point to | the leaderboard channel |
+   | `EMBED_COLOR` | Embed colour | `#a8d8f0` |
+
+   Copy a channel or role ID with Developer Mode on (User Settings → Advanced), then right-click → Copy ID.
+4. Restart the bot. The event **starts at that moment**: it saves who's already in the server (they can't count as invites) and the start date. Invites from before can't be tracked.
+
 Setup and running: [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The host runs the **`deploy` branch**, which GitHub builds from `main` on every merge (no install or build on the host). Full rules: [`docs/SPEC.md`](docs/SPEC.md).
 
 ## Development

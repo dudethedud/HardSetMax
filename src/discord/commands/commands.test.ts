@@ -3,14 +3,22 @@ import { PermissionFlagsBits } from 'discord.js';
 import { COMMANDS } from './index.js';
 
 describe('commands', () => {
-  it('/colours and /donations, both admin only and guild only', () => {
-    expect(COMMANDS.map((c) => c.name)).toEqual(['colours', 'donations']);
+  it('every command is guild only; admin, staff and public ones are hidden from the right people', () => {
+    expect(COMMANDS.map((c) => [c.name, c.level])).toEqual([
+      ['colours', 'admin'],
+      ['donations', 'admin'],
+      ['invites', 'everyone'],
+      ['leaderboard', 'everyone'],
+      ['invite-link', 'everyone'],
+      ['invite-event', 'manage-server'],
+    ]);
+    const perms = { admin: PermissionFlagsBits.Administrator.toString(), 'manage-server': PermissionFlagsBits.ManageGuild.toString(), everyone: undefined };
     for (const c of COMMANDS) {
-      expect(c.level).toBe('admin');
-      expect(c.data.default_member_permissions).toBe(PermissionFlagsBits.Administrator.toString());
+      expect(c.data.default_member_permissions).toBe(perms[c.level as keyof typeof perms]);
       expect(c.data.contexts).toEqual([0]);
     }
     expect((COMMANDS[1]!.data.options ?? []).map((o) => o.name)).toEqual(['setup', 'goal', 'banner', 'tier', 'donor-role', 'add', 'remove', 'list', 'reset']);
+    expect((COMMANDS[5]!.data.options ?? []).map((o) => o.name)).toEqual(['review', 'disqualify', 'reinstate', 'set-status', 'raffle-export', 'freeze']);
   });
 
   it('has the menu, unlock-role, post and log-channel commands', () => {
