@@ -251,7 +251,7 @@ describe.skipIf(!url)('invite event', () => {
     expect(boards()).toHaveLength(1);
     const [id, live] = boards()[0]!;
     expect(live.embed).toMatchObject({ title: '🎄 invite leaderboard', footer: { text: '33 days left · every valid invite = a raffle entry ♡ check yours with /invites' } });
-    expect(live.embed.description).toMatch(/no valid invites yet/);
+    expect(live.embed.description).toMatch(/^no valid invites yet · be the first! get your link with `\/invite-link` ♡/);
 
     // Nothing changed: no edit.
     t.later(5 / (24 * 60));

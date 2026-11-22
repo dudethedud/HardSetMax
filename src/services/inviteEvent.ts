@@ -385,7 +385,7 @@ export class InviteEventService {
     return new EmbedBuilder()
       .setColor(this.config.color)
       .setTitle(title)
-      .setDescription(lines.length ? lines.join('\n') : 'no valid invites yet · invite friends and they count after 7 days ♡')
+      .setDescription(lines.length ? lines.join('\n') : 'no valid invites yet · be the first! get your link with `/invite-link` ♡\n-# an invite counts once your friend has been here 7 days and has the level 3 role')
       .setFooter({ text: footer });
   }
 
