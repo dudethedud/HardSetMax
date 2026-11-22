@@ -1,10 +1,9 @@
 // Christmas invite event (pure). docs/SPEC.md §8: which invite a join used, whether
-// an invite is valid, alt/fraud flags, the leaderboard, the raffle list and the
-// Sunday 6 PM schedule.
+// an invite is valid, alt/fraud flags, the leaderboard and the raffle list.
 import { DateTime } from 'luxon';
 
 // Edmonton time. Alberta is on UTC-6 all year from 2026 (tz 2026e); a fixed offset
-// keeps the end and the Sunday posts right on hosts whose Node has older time zone
+// keeps the end time right on hosts whose Node has older time zone
 // data (which would still say UTC-7 in winter). docs/DECISIONS.md.
 export const EVENT_ZONE = 'UTC-6';
 const DAY_MS = 24 * 3600_000;
@@ -223,15 +222,6 @@ export function raffleCsv(entries: readonly { name: string; count: number }[]): 
 /** Whole days left until `end` (0 once it's passed). */
 export function daysLeft(now: Date, end: Date): number {
   return Math.max(0, Math.ceil((end.getTime() - now.getTime()) / DAY_MS));
-}
-
-/** The most recent Sunday 6 PM Edmonton at or before `now`, and its date (to post each Sunday once). */
-export function lastSundayPost(now: Date): { at: Date; day: string } {
-  const local = DateTime.fromJSDate(now, { zone: EVENT_ZONE });
-  // luxon weekday: 7 = Sunday.
-  let sunday = local.minus({ days: local.weekday % 7 }).set({ hour: 18, minute: 0, second: 0, millisecond: 0 });
-  if (sunday > local) sunday = sunday.minus({ weeks: 1 });
-  return { at: sunday.toJSDate(), day: sunday.toISODate()! };
 }
 
 /** "2026-12-25T12:00" in Edmonton time, as an instant. */

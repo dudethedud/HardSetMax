@@ -14,7 +14,6 @@ import {
   leaveRateFlag,
   raffleCsv,
   rankInviters,
-  lastSundayPost,
   STAY_DAYS,
   type Flag,
   type InviteStatus,
@@ -26,8 +25,6 @@ import { fetchAllMembers } from './memberList.js';
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
-/** A Sunday post missed while the bot was offline is still made if it's under this late. */
-const WEEKLY_GRACE_MS = 12 * HOUR;
 
 export interface InviteEventConfig {
   end: Date;
@@ -55,6 +52,8 @@ export class InviteEventService {
   #disabledReason: string | null = null;
   #queue: Promise<unknown> = Promise.resolve();
   #lastPermCheck = 0;
+  /** What the live leaderboard message shows now, so it's only edited when that changes. */
+  #boardShown: string | null = null;
 
   constructor(
     private readonly client: Client,
@@ -256,6 +255,7 @@ export class InviteEventService {
       const state = await this.state();
       if (!state.finalPostedAt) await this.#apply(updated, state, null, await this.#isDisqualified(join.inviterId), this.now());
       if (join.inviterId) await this.#postFlags(join.inviterId, leaveRateFlag(join.inviterId, await this.db.inviteJoin.findMany({ where: { inviterId: join.inviterId } })));
+      if (join.status === 'valid') await this.#refreshBoard();
     });
   }
 
@@ -319,49 +319,51 @@ export class InviteEventService {
       await this.#snapshot(guild);
       let state = await this.state();
       const now = this.now();
-      if (state.finalPostedAt) return;
-      if (!state.lastEvaluatedAt || now.getTime() - state.lastEvaluatedAt.getTime() >= HOUR) {
-        await this.#evaluateAll(guild);
+      if (!state.finalPostedAt) {
+        if (!state.lastEvaluatedAt || now.getTime() - state.lastEvaluatedAt.getTime() >= HOUR) await this.#evaluateAll(guild);
+        // Auto-freeze at the end.
         state = await this.state();
+        if (!state.frozenAt && now >= this.config.end) {
+          state = await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { frozenAt: this.config.end } });
+        }
+        // Settled once the last joins have had their 7 days (and been checked since): statuses stop changing.
+        if (state.frozenAt && now.getTime() >= joinCutoff(this.config.end, state.frozenAt).getTime() + STAY_DAYS * DAY + HOUR) {
+          await this.#evaluateAll(guild);
+          await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { finalPostedAt: now } });
+        }
       }
-      // Auto-freeze at the end.
-      if (!state.frozenAt && now >= this.config.end) {
-        state = await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { frozenAt: this.config.end } });
-      }
-      const cutoff = joinCutoff(this.config.end, state.frozenAt);
-      if (state.frozenAt && !state.frozenPostedAt) {
-        await this.#post(await this.#leaderboard('🎄 invite leaderboard · event over', 10, `the event is over · final results after ${this.#settleDay(cutoff)}, once the last invites finish their ${STAY_DAYS} days ♡`));
-        state = await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { frozenPostedAt: now } });
-      }
-      // Everything is settled once the last joins have had their 7 days (and been checked since).
-      if (state.frozenAt && now.getTime() >= cutoff.getTime() + STAY_DAYS * DAY + HOUR) {
-        await this.#evaluateAll(guild);
-        await this.#post(await this.#leaderboard('🎄 invite leaderboard · final', 10, 'final results · every valid invite = a raffle entry ♡ thank you all!'));
-        await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { finalPostedAt: now } });
-        return;
-      }
-      // Sunday 6 PM Edmonton, while the event runs.
-      const sunday = lastSundayPost(now);
-      if (!state.frozenAt && sunday.at >= state.startAt && state.lastWeeklyDay !== sunday.day && now.getTime() - sunday.at.getTime() < WEEKLY_GRACE_MS) {
-        const week = state.weeklyPosts + 1;
-        const left = daysLeft(now, this.config.end);
-        await this.#post(await this.#leaderboard(`🎄 invite leaderboard · week ${week}`, 5, `${left} day${left === 1 ? '' : 's'} left · every valid invite = a raffle entry ♡ check yours with /invites`));
-        await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { weeklyPosts: week, lastWeeklyDay: sunday.day } });
-      }
+      await this.#refreshBoard();
     });
+  }
+
+  /** Brings the live leaderboard up to date after a staff change (queued, so it never double-posts). */
+  #boardChanged(): void {
+    void this.#serial(() => this.#refreshBoard());
+  }
+
+  /** The live leaderboard message: posted once, then edited only when what it shows changes. Reposted if deleted (checked every tick). */
+  async #refreshBoard(): Promise<void> {
+    const state = await this.state();
+    const embed = await this.leaderboard(state);
+    const shown = JSON.stringify(embed.toJSON());
+    const channel = await this.client.channels.fetch(this.config.leaderboardChannelId).catch(() => null);
+    if (!channel?.isSendable() || !('messages' in channel)) {
+      this.log.error({ channelId: this.config.leaderboardChannelId }, "invite event: can't post in LEADERBOARD_CHANNEL_ID");
+      return;
+    }
+    const message = state.leaderboardMessageId ? await channel.messages.fetch(state.leaderboardMessageId).catch(() => null) : null;
+    if (message) {
+      if (shown === this.#boardShown) return;
+      await message.edit({ embeds: [embed], allowedMentions: { parse: [] } });
+    } else {
+      const posted = await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { leaderboardMessageId: posted.id } });
+    }
+    this.#boardShown = shown;
   }
 
   #settleDay(cutoff: Date): string {
     return new Date(cutoff.getTime() + STAY_DAYS * DAY).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-  }
-
-  async #post(embed: EmbedBuilder): Promise<void> {
-    const channel = await this.client.channels.fetch(this.config.leaderboardChannelId).catch(() => null);
-    if (!channel?.isSendable()) {
-      this.log.error({ channelId: this.config.leaderboardChannelId }, "invite event: can't post in LEADERBOARD_CHANNEL_ID");
-      return;
-    }
-    await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
   }
 
   async #staffLog(embed: EmbedBuilder): Promise<void> {
@@ -387,13 +389,16 @@ export class InviteEventService {
       .setFooter({ text: footer });
   }
 
-  /** /leaderboard: the top 10 now. */
-  async leaderboard(): Promise<EmbedBuilder> {
-    const state = await this.state();
+  /** The top 10 now: the live message and /leaderboard. */
+  async leaderboard(state?: InviteEventState): Promise<EmbedBuilder> {
+    state ??= await this.state();
     const now = this.now();
-    const over = !!state.frozenAt || now >= this.config.end;
+    if (state.finalPostedAt) return this.#leaderboard('🎄 invite leaderboard · final', 10, 'final results · every valid invite = a raffle entry ♡ thank you all!');
+    if (state.frozenAt || now >= this.config.end) {
+      return this.#leaderboard('🎄 invite leaderboard · event over', 10, `the event is over · final results after ${this.#settleDay(joinCutoff(this.config.end, state.frozenAt))}, once the last invites finish their ${STAY_DAYS} days ♡`);
+    }
     const left = daysLeft(now, this.config.end);
-    return this.#leaderboard('🎄 invite leaderboard', 10, over ? `the event is over · ${state.finalPostedAt ? 'these are the final results' : `final after ${this.#settleDay(joinCutoff(this.config.end, state.frozenAt))}`} ♡` : `${left} day${left === 1 ? '' : 's'} left · every valid invite = a raffle entry ♡`);
+    return this.#leaderboard('🎄 invite leaderboard', 10, `${left} day${left === 1 ? '' : 's'} left · every valid invite = a raffle entry ♡ check yours with /invites`);
   }
 
   /** /invites: one member's counts and rank. */
@@ -460,6 +465,7 @@ export class InviteEventService {
     await this.db.disqualifiedInviter.upsert({ where: { userId }, create: { userId, reason, byId }, update: { reason, byId, at: this.now() } });
     await this.db.inviteJoin.updateMany({ where: { inviterId: userId, overrideStatus: null }, data: { status: 'disqualified', invalidReason: 'inviter disqualified' } });
     await this.#staffLog(new EmbedBuilder().setColor(0xed4245).setTitle('⛔ Inviter disqualified').setDescription(`<@${userId}> by <@${byId}>\n**Why:** ${reason}`).setTimestamp(this.now()));
+    this.#boardChanged();
     return `⛔ <@${userId}> is disqualified: none of their invites count.`;
   }
 
@@ -468,6 +474,7 @@ export class InviteEventService {
     if (!count) return `<@${userId}> isn't disqualified.`;
     await this.#reevaluate({ inviterId: userId });
     await this.#staffLog(new EmbedBuilder().setColor(0x57f287).setTitle('✅ Inviter reinstated').setDescription(`<@${userId}> by <@${byId}>`).setTimestamp(this.now()));
+    this.#boardChanged();
     return `✅ <@${userId}> is back in the event: their invites are checked by the normal rules again.`;
   }
 
@@ -483,6 +490,7 @@ export class InviteEventService {
     await this.#reevaluate({ id: join.id });
     const now = await this.db.inviteJoin.findUniqueOrThrow({ where: { id: join.id } });
     await this.#staffLog(new EmbedBuilder().setColor(this.config.color).setTitle('✏️ Invite status set').setDescription(`<@${inviteeId}> (invited by ${join.inviterId ? `<@${join.inviterId}>` : 'nobody'}) → **${now.status}** by <@${byId}>${reason ? `\n**Why:** ${reason}` : ''}`).setTimestamp(this.now()));
+    this.#boardChanged();
     return `✏️ <@${inviteeId}>'s invite is now **${now.status}**${now.invalidReason ? ` (${now.invalidReason})` : ''}.`;
   }
 
@@ -518,7 +526,8 @@ export class InviteEventService {
     if (state.frozenAt) return `The event is already frozen (since <t:${Math.floor(state.frozenAt.getTime() / 1000)}:f>).`;
     await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { frozenAt: this.now() } });
     await this.#staffLog(new EmbedBuilder().setColor(this.config.color).setTitle('🧊 Invite event frozen').setDescription(`by <@${byId}>. New joins no longer count; earlier ones keep being checked for their ${STAY_DAYS} days.`).setTimestamp(this.now()));
-    return `🧊 Frozen. New joins no longer count; the leaderboard posts "event over" within a few minutes, and the final results ${STAY_DAYS} days later.`;
+    this.#boardChanged();
+    return `🧊 Frozen. New joins no longer count; the leaderboard now says "event over", and shows the final results ${STAY_DAYS} days later.`;
   }
 
   /** Why tracking is off, for staff commands. */
