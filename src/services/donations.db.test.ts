@@ -55,7 +55,7 @@ describe.skipIf(!url)('donations', () => {
     const roles = new Collection<string, Role>();
     const emojis = new Collection([
       ['700000000000000001', { id: '700000000000000001', name: 'animBlueHeart', animated: true, available: true, toString: () => '<a:animBlueHeart:700000000000000001>' }],
-      ['700000000000000002', { id: '700000000000000002', name: 'blue_1', animated: false, available: true, toString: () => '<:blue_1:700000000000000002>' }],
+      ['700000000000000002', { id: '700000000000000002', name: 'first', animated: false, available: true, toString: () => '<:first:700000000000000002>' }],
     ]);
     const guild = { id: GUILD, emojis: { cache: emojis }, roles: { cache: roles }, members: { me: { roles: { highest: { position: 50 } } }, fetch: (id: string) => (id === ALICE ? Promise.resolve(alice) : Promise.reject(new Error('Unknown Member'))) } };
     const client = { guilds: { cache: new Map([[GUILD, guild]]) }, channels: { fetch: (id: string) => Promise.resolve(channel(id)) } } as unknown as Client;
@@ -123,8 +123,8 @@ describe.skipIf(!url)('donations', () => {
     const panel = text(await t.service.render());
     expect(panel).toContain('**$8.00** raised of **$20.00**');
     expect(panel).toContain('▰▰▰▰▱▱▱▱▱▱ 40%');
-    // Place 1 uses the server's blue_1 pill; place 2 falls back (no blue_2 in this fake server).
-    expect(panel).toContain(`<:blue_1:700000000000000002> <@${ALICE}> · $5.00`);
+    // Place 1 uses the server's `first` badge; place 2 falls back (no `second` in this fake server).
+    expect(panel).toContain(`<:first:700000000000000002> <@${ALICE}> · $5.00`);
     expect(panel).toContain('🥈 **Bubbles** · $3.00');
     const list = await t.service.list();
     expect(list).toMatch(/\$8\.00 from 2 donation/);

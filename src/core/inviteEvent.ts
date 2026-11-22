@@ -1,6 +1,7 @@
 // Christmas invite event (pure). docs/SPEC.md §8: which invite a join used, whether
 // an invite is valid, alt/fraud flags, the leaderboard and the raffle list.
 import { DateTime } from 'luxon';
+import { PLACE_EMOJI_NAMES } from './emojiText.js';
 
 // Edmonton time. Alberta is on UTC-6 all year from 2026 (tz 2026e); a fixed offset
 // keeps the end time right on hosts whose Node has older time zone
@@ -229,11 +230,11 @@ export function rankInviters(rows: readonly StandingRow[], excluded: ReadonlySet
     .sort((a, b) => b.verified - a.verified || b.invited - a.invited || a.left - b.left || a.reachedAt.getTime() - b.reachedAt.getTime() || a.inviterId.localeCompare(b.inviterId));
 }
 
-/** Place badges: the server's `blue_1`…`blue_10` emojis (`{name|fallback}`, see emojiText.ts), else medals and number keycaps. */
+/** Place badges: the server's `first`…`tenth` emojis (`{name|fallback}`, see emojiText.ts), else medals and number keycaps. */
 const PLACE_FALLBACKS = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
-export const placeBadge = (i: number): string => `{blue_${i + 1}|${PLACE_FALLBACKS[i] ?? `${i + 1}.`}}`;
+export const placeBadge = (i: number): string => (PLACE_EMOJI_NAMES[i] ? `{${PLACE_EMOJI_NAMES[i]}|${PLACE_FALLBACKS[i]}}` : `${i + 1}.`);
 
-/** One line per place, e.g. "{blue_1|🥇} <@id> - **5** verified · 2 invited · 1 left" (invited and left left out at 0). */
+/** One line per place, e.g. "{first|🥇} <@id> - **5** verified · 2 invited · 1 left" (invited and left left out at 0). */
 export function leaderboardLines(ranked: readonly Pick<Standing, 'inviterId' | 'verified' | 'invited' | 'left'>[], limit: number): string[] {
   return ranked.slice(0, limit).map((r, i) => {
     const extra = [r.invited ? `${r.invited.toLocaleString('en-US')} invited` : '', r.left ? `${r.left.toLocaleString('en-US')} left` : ''].filter(Boolean).join(' · ');

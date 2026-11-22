@@ -22,7 +22,7 @@ import {
   type SendableChannels,
 } from 'discord.js';
 import { donorLabel, donorRoleChanges, formatMoney, makeCode, parseKofi, progressBar, topDonors, type KofiDonation, type Tier } from '../core/donations.js';
-import { fillEmojis } from '../core/emojiText.js';
+import { fillEmojis, PLACE_EMOJI_NAMES } from '../core/emojiText.js';
 import type { Db } from '../db/prisma.js';
 import type { Donation, DonationSettings } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
@@ -367,7 +367,7 @@ export class DonationService {
       ? `{topbracket|╭} **${formatMoney(total)}** raised of **${formatMoney(settings.goalCents)}**\n{bluebracket|╰} ${progressBar(total, settings.goalCents)} {sparkle1|✦}`
       : `{topbracket|╭} **${formatMoney(total)}** raised so far\n{bluebracket|╰} thank u for supporting soft hearts {sparkle1|✦}`;
     // Places 1–5 use the server's blue number pills.
-    const place = (i: number) => `{blue_${i + 1}|${['🥇', '🥈', '🥉', '4.', '5.'][i]}}`;
+    const place = (i: number) => `{${PLACE_EMOJI_NAMES[i]}|${['🥇', '🥈', '🥉', '4.', '5.'][i]}}`;
     const box = new ContainerBuilder().setAccentColor(BLUE);
     // Like the rules post: an image at the top of the box, and a strip at the bottom.
     const topImage = gallery('top');

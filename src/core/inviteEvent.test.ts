@@ -198,10 +198,10 @@ describe('leaderboard and raffle', () => {
     const ranked = rankInviters(rows, new Set(['x']));
     expect(ranked.map((r) => [r.inviterId, r.verified, r.invited, r.left])).toEqual([['b', 2, 2, 0], ['a', 2, 1, 0], ['c', 2, 1, 1], ['d', 0, 4, 0]]);
     expect(leaderboardLines(ranked, 10)).toEqual([
-      '{blue_1|🥇} <@b> - **2** verified · 2 invited',
-      '{blue_2|🥈} <@a> - **2** verified · 1 invited',
-      '{blue_3|🥉} <@c> - **2** verified · 1 invited · 1 left',
-      '{blue_4|4️⃣} <@d> - **0** verified · 4 invited',
+      '{first|🥇} <@b> - **2** verified · 2 invited',
+      '{second|🥈} <@a> - **2** verified · 1 invited',
+      '{third|🥉} <@c> - **2** verified · 1 invited · 1 left',
+      '{fourth|4️⃣} <@d> - **0** verified · 4 invited',
     ]);
   });
 
@@ -216,12 +216,12 @@ describe('leaderboard and raffle', () => {
     expect(rankInviters(rows).map((r) => r.inviterId)).toEqual(['most', 'early', 'late']);
   });
 
-  it('places 1 to 10 get the server\'s blue_1…blue_10 badges (medals and number keycaps if missing); big numbers get commas', () => {
+  it('places 1 to 10 get the server\'s first…tenth badges (medals and number keycaps if missing); big numbers get commas', () => {
     const ranked = Array.from({ length: 11 }, (_, i) => ({ inviterId: `u${i}`, verified: 1200 - i, invited: 0, left: 0 }));
     const lines = leaderboardLines(ranked, 10);
     expect(lines).toHaveLength(10);
-    expect(lines[0]).toBe('{blue_1|🥇} <@u0> - **1,200** verified');
-    expect(lines[9]).toBe('{blue_10|🔟} <@u9> - **1,191** verified');
+    expect(lines[0]).toBe('{first|🥇} <@u0> - **1,200** verified');
+    expect(lines[9]).toBe('{tenth|🔟} <@u9> - **1,191** verified');
   });
 
   it('raffle CSV: one line per entry, names quoted safely', () => {
