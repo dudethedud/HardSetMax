@@ -22,6 +22,7 @@ import {
 import type { Db } from '../db/prisma.js';
 import type { InviteEventState, InviteJoin } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
+import { fetchAllMembers } from './memberList.js';
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -89,16 +90,21 @@ export class InviteEventService {
   /** On ready: save who's already here (rule 4), check permissions and cache invite uses. */
   start(guild: Guild): Promise<void> {
     return this.#serial(async () => {
-      const state = await this.state();
-      if (!state.snapshotDone) {
-        const members = await guild.members.fetch();
-        const at = this.now();
-        await this.db.knownMember.createMany({ data: [...members.keys()].map((userId) => ({ userId, firstSeenAt: at, source: 'snapshot' })), skipDuplicates: true });
-        await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { snapshotDone: true } });
-        this.log.info({ members: members.size }, 'invite event: saved the current members');
-      }
       await this.#checkPermissions(guild, true);
+      await this.#snapshot(guild);
     });
+  }
+
+  /** Saves everyone in the server as known (once). Retried by tick() if it failed at start. */
+  async #snapshot(guild: Guild): Promise<void> {
+    const state = await this.state();
+    if (state.snapshotDone) return;
+    const members = await fetchAllMembers(guild);
+    const at = this.now();
+    // People who joined since the start already have a "join" row, which is kept.
+    await this.db.knownMember.createMany({ data: [...members.keys()].map((userId) => ({ userId, firstSeenAt: at, source: 'snapshot' })), skipDuplicates: true });
+    await this.db.inviteEventState.update({ where: { guildId: this.guildId }, data: { snapshotDone: true } });
+    this.log.info({ members: members.size }, 'invite event: saved the current members');
   }
 
   /** Invite tracking needs Manage Server (to read invite uses). Without it, the event is off, loudly. */
@@ -292,7 +298,7 @@ export class InviteEventService {
     if (state.finalPostedAt) return 0;
     const now = this.now();
     const joins = await this.db.inviteJoin.findMany();
-    const members = await guild.members.fetch();
+    const members = await fetchAllMembers(guild);
     const disqualified = new Set((await this.db.disqualifiedInviter.findMany()).map((d) => d.userId));
     let changed = 0;
     for (let join of joins) {
@@ -310,6 +316,7 @@ export class InviteEventService {
   tick(guild: Guild): Promise<void> {
     return this.#serial(async () => {
       await this.#checkPermissions(guild);
+      await this.#snapshot(guild);
       let state = await this.state();
       const now = this.now();
       if (state.finalPostedAt) return;

@@ -27,6 +27,7 @@ import type { Db } from '../db/prisma.js';
 import type { ColourMenu, MenuColour } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
 import { assignableRoleError } from './roleSafety.js';
+import { fetchAllMembers } from './memberList.js';
 
 export const MENU_SELECT_PREFIX = 'colours:menu:';
 export const REP_MESSAGE = '🎨 Colours are for server reppers! Wear the server tag or put **.gg/femboii** in your status, then pick again.';
@@ -307,7 +308,7 @@ export class ColourMenuService {
   /** Startup and hourly: checks every member, in case Discord missed a role change. Returns how many were fixed. */
   async sweep(guild: Guild): Promise<number> {
     if (this.#unlock.size === 0 || this.#colourRoles.size === 0) return 0;
-    const members = await guild.members.fetch();
+    const members = await fetchAllMembers(guild);
     let fixed = 0;
     for (const member of members.values()) {
       const removed = await this.check(member);

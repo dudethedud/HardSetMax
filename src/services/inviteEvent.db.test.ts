@@ -213,6 +213,20 @@ describe.skipIf(!url)('invite event', () => {
     expect((await t.service.raffleExport()).csv).toBe('"inviter"\n"inviter"\n');
   });
 
+  it('if saving the members fails at start, the next check does it (rule 4 still works)', async () => {
+    const t = setup();
+    t.members.set(OLD_MEMBER, t.member(OLD_MEMBER));
+    const fetch = t.guild.members.fetch.bind(t.guild.members) as unknown as (id?: string) => Promise<unknown>;
+    let fail = true;
+    (t.guild.members as { fetch: unknown }).fetch = (id?: string) => (fail && id === undefined ? Promise.reject(new Error('gateway hiccup')) : fetch(id));
+    await expect(t.service.start(t.guild)).rejects.toThrow('gateway hiccup');
+    expect(t.service.enabled).toBe(true); // invite tracking doesn't wait for it
+    fail = false;
+    await t.service.tick(t.guild);
+    expect(await db.knownMember.findUnique({ where: { userId: OLD_MEMBER } })).toMatchObject({ source: 'snapshot' });
+    expect((await t.service.state()).snapshotDone).toBe(true);
+  });
+
   it('posts each Sunday at 6 PM once, freezes at the end, posts the final results a week later', async () => {
     const t = setup();
     await t.service.start(t.guild);
