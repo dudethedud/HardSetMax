@@ -11,6 +11,7 @@ describe('commands', () => {
       ['leaderboard', 'everyone'],
       ['invite-link', 'everyone'],
       ['invite-event', 'manage-server'],
+      ['checkins', 'everyone'],
     ]);
     const perms = { admin: PermissionFlagsBits.Administrator.toString(), 'manage-server': PermissionFlagsBits.ManageGuild.toString(), everyone: undefined };
     for (const c of COMMANDS) {
