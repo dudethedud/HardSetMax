@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkinDue, checkinOrder, checkinText, lastActiveAt, nextEvent, runDay, type CheckinFacts } from './checkins.js';
+import { checkinDue, checkinOrder, checkinText, dmGap, lastActiveAt, nextEvent, runDay, type CheckinFacts } from './checkins.js';
 
 const DAY = 24 * 3600_000;
 const now = new Date('2026-12-10T20:00:00Z');
@@ -69,6 +69,13 @@ describe('the event and the message', () => {
       "Hey! It's been a bit, we miss you at Soft Hearts ♡ **Movie Night** is on <t:1797044400:F>, come say hi!\n-# Don't want these? Tap below.",
     );
     expect(checkinText('**bold** _x_', new Date(0))).toContain('**\\*\\*bold\\*\\* \\_x\\_**');
+  });
+
+  it('DMs are 5 to 10 minutes apart, at random', () => {
+    expect(dmGap(0)).toBe(5 * 60_000);
+    expect(dmGap(0.5)).toBe(7.5 * 60_000);
+    expect(dmGap(0.999)).toBeLessThan(10 * 60_000);
+    expect(dmGap(5)).toBe(10 * 60_000); // never more than 10
   });
 
   it('runs once a day, after noon Edmonton (UTC-6)', () => {

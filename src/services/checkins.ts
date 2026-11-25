@@ -1,9 +1,9 @@
 // Check-in DMs for quiet members (docs/SPEC.md §9). Notes when members talk
 // (timestamps only, saved in batches), and once a day DMs up to 20 members who've
-// been quiet a week, about the server's next scheduled event, 30 seconds apart.
+// been quiet a week, about the server's next scheduled event, 5–10 minutes apart.
 // Members can opt out with the DM's button or /checkins. Rules are in core/checkins.ts.
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, GuildScheduledEventStatus, RESTEvents, type Client, type Guild, type Message } from 'discord.js';
-import { checkinDue, checkinOrder, checkinText, DM_GAP_MS, MAX_PER_RUN, nextEvent, runDay, type CheckinFacts } from '../core/checkins.js';
+import { checkinDue, checkinOrder, checkinText, dmGap, MAX_PER_RUN, nextEvent, runDay, type CheckinFacts } from '../core/checkins.js';
 import type { Db } from '../db/prisma.js';
 import type { CheckinState } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
@@ -14,6 +14,8 @@ export interface CheckinRun {
   due: number;
   sent: number;
   closed: number;
+  /** Started talking again while the run was going: skipped. */
+  becameActive: number;
   /** Why the run stopped early, if it did. */
   stopped: string | null;
 }
@@ -34,6 +36,7 @@ export class CheckinService {
     readonly enabled: boolean,
     private readonly now: () => Date = () => new Date(),
     private readonly wait: (ms: number) => Promise<void> = sleep,
+    private readonly random: () => number = Math.random,
   ) {}
 
   state(): Promise<CheckinState> {
@@ -97,10 +100,16 @@ export class CheckinService {
     }
   }
 
+  async #activeSince(userId: string, since: Date): Promise<boolean> {
+    if (this.#seen.has(userId)) return true;
+    const row = await this.db.memberActivity.findUnique({ where: { userId }, select: { lastMessageAt: true } });
+    return !!row?.lastMessageAt && row.lastMessageAt > since;
+  }
+
   async #run(guild: Guild, state: CheckinState): Promise<CheckinRun> {
     await this.flush();
     const now = this.now();
-    const result: CheckinRun = { due: 0, sent: 0, closed: 0, stopped: null };
+    const result: CheckinRun = { due: 0, sent: 0, closed: 0, becameActive: 0, stopped: null };
 
     // No real upcoming event, no DMs.
     const events = await guild.scheduledEvents.fetch();
@@ -134,13 +143,19 @@ export class CheckinService {
     const onRateLimit = () => (rateLimited = true);
     this.client.rest?.on(RESTEvents.RateLimited, onRateLimit);
     try {
-      let attempts = 0;
+      let tried = 0;
       for (const c of checkinOrder(due, state.trackingStartedAt).slice(0, MAX_PER_RUN)) {
-        if (attempts++ > 0) await this.wait(DM_GAP_MS);
+        if (tried > 0) await this.wait(dmGap(this.random()));
         if (rateLimited) {
           result.stopped = 'rate limited';
           break;
         }
+        // The run takes hours: skip anyone who has talked since it started.
+        if (await this.#activeSince(c.userId, now)) {
+          result.becameActive++;
+          continue;
+        }
+        tried++;
         const dm = await sendDm(this.client, this.db, c.userId, message);
         if (dm.status === 'failed') {
           result.stopped = dm.error instanceof Error ? dm.error.message : String(dm.error);
@@ -160,7 +175,7 @@ export class CheckinService {
     } finally {
       this.client.rest?.off(RESTEvents.RateLimited, onRateLimit);
     }
-    this.log.info({ event: event.name, due: result.due, sent: result.sent, dmsClosed: result.closed, stopped: result.stopped }, `check-ins: sent ${result.sent} DM${result.sent === 1 ? '' : 's'} today`);
+    this.log.info({ event: event.name, due: result.due, sent: result.sent, dmsClosed: result.closed, becameActive: result.becameActive, stopped: result.stopped }, `check-ins: sent ${result.sent} DM${result.sent === 1 ? '' : 's'} today`);
     return result;
   }
 }

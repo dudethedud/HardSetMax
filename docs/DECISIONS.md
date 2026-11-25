@@ -36,3 +36,4 @@
 | 2026-11-25 | Closed DMs count as the member's check-in (no retries until they're active again) | Owner picked it; failing DMs waste the daily 20 and look spammy to Discord |
 | 2026-11-25 | Message times are noted in memory and saved every 5 minutes and on shutdown, not per message; only timestamps, never content (no Message Content intent) | One database write per message would be heavy on Supabase's free tier; losing up to 5 minutes in a crash only delays a check-in |
 | 2026-11-25 | The check-in opt-out covers check-ins only; colour-removal DMs are unchanged | They tell members why a role came off; the owner can ask to fold them in |
+| 2026-11-25 | Check-in DMs are a random 5–10 minutes apart (not 30 s): 20 take about 2½ hours, and members who talk again mid-run are skipped | Owner: "make sure it doesn't abuse any rate limits so space out DMs"; an even, fast stream of DMs is what spam filters look for |

@@ -46,7 +46,7 @@ describe.skipIf(!url)('check-in DMs', () => {
         },
       },
     } as unknown as Client;
-    const service = new CheckinService(client, GUILD, db, pino({ level: 'silent' }), opts.enabled ?? true, () => clock.now, (ms) => (waits.push(ms), Promise.resolve()));
+    const service = new CheckinService(client, GUILD, db, pino({ level: 'silent' }), opts.enabled ?? true, () => clock.now, (ms) => (waits.push(ms), Promise.resolve()), () => 0.5);
     /** Someone talked `daysAgo` days ago (saved the way the bot saves them). */
     const talked = async (n: number, daysAgo: number) => {
       const at = clock.now;
@@ -84,16 +84,16 @@ describe.skipIf(!url)('check-in DMs', () => {
     await t.service.setOptOut(id(3), true); // opted out: no
     await t.talked(4, 8); // quiet: yes
     const run = await t.service.run(t.guild);
-    expect(run).toEqual({ due: 2, sent: 2, closed: 0, stopped: null });
+    expect(run).toEqual({ due: 2, sent: 2, closed: 0, becameActive: 0, stopped: null });
     // Most recently quiet first.
     expect(t.dms.map((d) => d.userId)).toEqual([id(4), id(1)]);
     expect(t.dms[0]!.content).toBe(`Hey! It's been a bit, we miss you at Soft Hearts ♡ **Movie Night** is on <t:${Math.floor((NOW.getTime() + 2 * DAY) / 1000)}:F>, come say hi!\n-# Don't want these? Tap below.`);
     expect(t.dms[0]!.buttonId).toBe(CHECKIN_STOP_ID);
-    expect(t.waits).toEqual([30_000]);
+    expect(t.waits).toEqual([7.5 * 60_000]); // 5–10 minutes apart
     expect((await db.memberActivity.findUnique({ where: { userId: id(1) } }))!.lastCheckinAt).toEqual(NOW);
   });
 
-  it('at most 20 a run, 30 seconds apart', async () => {
+  it('at most 20 a run, 5–10 minutes apart (about 2½ hours in all)', async () => {
     const t = setup();
     await t.trackingFrom(60);
     for (let n = 1; n <= 25; n++) {
@@ -103,7 +103,23 @@ describe.skipIf(!url)('check-in DMs', () => {
     const run = await t.service.run(t.guild);
     expect(run).toMatchObject({ due: 25, sent: 20 });
     expect(t.dms).toHaveLength(20);
-    expect(t.waits).toEqual(Array(19).fill(30_000));
+    expect(t.waits).toEqual(Array(19).fill(7.5 * 60_000));
+  });
+
+  it('the run takes hours: anyone who talks again while it is going is skipped', async () => {
+    const t = setup();
+    await t.trackingFrom(60);
+    [1, 2, 3].forEach((n) => t.addMember(n));
+    await t.talked(1, 8);
+    await t.talked(2, 9);
+    await t.talked(3, 10);
+    // Member 2 says something after the first DM goes out.
+    t.failFor.set(id(1), () => {
+      t.service.noteMessage({ guildId: GUILD, author: { id: id(2), bot: false } as never, webhookId: null, system: false });
+      return undefined as never;
+    });
+    expect(await t.service.run(t.guild)).toMatchObject({ sent: 2, becameActive: 1 });
+    expect(t.dms.map((d) => d.userId)).toEqual([id(1), id(3)]);
   });
 
   it('no upcoming scheduled event: no DMs', async () => {
@@ -113,7 +129,7 @@ describe.skipIf(!url)('check-in DMs', () => {
     await t.talked(1, 10);
     t.events.clear();
     t.events.set('past', { name: 'Old', scheduledStartAt: new Date(NOW.getTime() - DAY), status: GuildScheduledEventStatus.Completed });
-    expect(await t.service.run(t.guild)).toEqual({ due: 0, sent: 0, closed: 0, stopped: null });
+    expect(await t.service.run(t.guild)).toEqual({ due: 0, sent: 0, closed: 0, becameActive: 0, stopped: null });
     expect(t.dms).toHaveLength(0);
   });
 

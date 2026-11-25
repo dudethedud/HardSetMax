@@ -10,7 +10,18 @@ export const INACTIVE_DAYS = 7;
 export const COOLDOWN_DAYS = 14;
 /** Per daily run, to stay well clear of Discord's spam filter. */
 export const MAX_PER_RUN = 20;
-export const DM_GAP_MS = 30_000;
+/**
+ * Time between check-in DMs: 5 minutes plus a random 0–5 more, so 20 DMs are spread
+ * over about 2½ hours instead of arriving as a steady burst (what spam filters look for).
+ */
+export const DM_GAP_MS = 5 * 60_000;
+export const DM_GAP_JITTER_MS = 5 * 60_000;
+
+/** The wait before the next DM, from a random number in [0, 1). */
+export function dmGap(random: number): number {
+  return DM_GAP_MS + Math.floor(Math.min(Math.max(random, 0), 1) * DM_GAP_JITTER_MS);
+}
+
 /** The daily run starts after this hour (Edmonton), so DMs arrive at a friendly time. */
 export const RUN_AFTER_HOUR = 12;
 
