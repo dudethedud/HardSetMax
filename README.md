@@ -38,6 +38,8 @@ Colour role menus for server reppers. Members who wear the server tag or have `.
    Copy a channel or role ID with Developer Mode on (User Settings → Advanced), then right-click → Copy ID.
 4. Restart the bot. The event **starts at that moment**: it saves who's already in the server (they can't count as invites) and the start date. Invites from before can't be tracked.
 
+**Check-in DMs:** once a day, members who've been quiet for a week get a friendly DM about the server's next scheduled event (at most 20 a day, 5–10 minutes apart, once per 14 days, and only one until they talk again). They can stop them with the DM's button or `/checkins off`. Needs a scheduled event in the server to send anything; `CHECKIN_DMS=off` turns it off. Rules: [`docs/SPEC.md` §9](docs/SPEC.md).
+
 Setup and running: [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The host runs the **`deploy` branch**, which GitHub builds from `main` on every merge (no install or build on the host). Full rules: [`docs/SPEC.md`](docs/SPEC.md).
 
 ## Development

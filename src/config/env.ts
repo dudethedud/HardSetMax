@@ -32,6 +32,8 @@ const EnvSchema = z.object({
   STAFF_LOG_CHANNEL_ID: optional(snowflake),
   // Where /invite-link makes personal invites; without it, the leaderboard channel.
   INVITE_LINK_CHANNEL_ID: optional(snowflake),
+  // Check-in DMs for quiet members (docs/SPEC.md §9). "off" stops all check-ins.
+  CHECKIN_DMS: z.enum(['on', 'off']).default('on'),
   EMBED_COLOR: z
     .string()
     .regex(/^#?[0-9a-fA-F]{6}$/, 'must be a hex colour like #a8d8f0')

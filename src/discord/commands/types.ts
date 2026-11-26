@@ -16,6 +16,7 @@ import type { Db } from '../../db/prisma.js';
 import type { Logger } from '../../logger.js';
 import type { ColourMenuService } from '../../services/colourMenus.js';
 import type { DonationService } from '../../services/donations.js';
+import type { CheckinService } from '../../services/checkins.js';
 import type { InviteEventService } from '../../services/inviteEvent.js';
 
 export interface AppContext {
@@ -27,6 +28,7 @@ export interface AppContext {
   donations: DonationService;
   /** The Christmas invite event; null when it isn't configured. */
   invites: InviteEventService | null;
+  checkins: CheckinService;
 }
 
 export type Autocomplete = (interaction: AutocompleteInteraction<'cached'>, ctx: AppContext) => Promise<ApplicationCommandOptionChoiceData[]>;

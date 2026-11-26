@@ -187,3 +187,21 @@ model InviteFlag {
   inviteeIds String[]
   createdAt  DateTime @default(now())
 }
+
+// Check-in DMs (docs/SPEC.md §9). Timestamps and the opt-out only: never message content.
+model MemberActivity {
+  userId        String    @id
+  /** Their last message anywhere in the server (saved in batches every few minutes). */
+  lastMessageAt DateTime?
+  /** The last check-in DM; also set when their DMs were closed, so it isn't retried. */
+  lastCheckinAt DateTime?
+  checkinOptOut Boolean   @default(false)
+}
+
+model CheckinState {
+  guildId           String   @id
+  /** When the bot started noticing messages. Members with no message on record count as quiet from here (or from when they joined, if later). */
+  trackingStartedAt DateTime
+  /** The Edmonton date of the last daily run, so it runs once a day. */
+  lastRunDay        String?
+}

@@ -10,10 +10,11 @@ Discord bot for one server: reppers (members with an unlock role, given by other
 5. If the spec is unclear, **ask** rather than guessing, and note the answer in `docs/DECISIONS.md`.
 
 ## Non-negotiable rules
-- **Commands are admin-only** except the invite event's (SPEC §8): guild-only (`setContexts(Guild)`), `default_member_permissions` Administrator via `defineCommand`, plus a runtime check (`src/core/access.ts`). Members only use the menu dropdowns, the Donate button and the public `/invites`, `/leaderboard` and `/invite-link`; `/invite-event` is for Manage Server staff.
+- **Commands are admin-only** except the invite event's (SPEC §8) and `/checkins` (§9): guild-only (`setContexts(Guild)`), `default_member_permissions` Administrator via `defineCommand`, plus a runtime check (`src/core/access.ts`). Members only use the menu dropdowns, the Donate button, the check-in DM's Stop button and the public `/invites`, `/leaderboard`, `/invite-link` and `/checkins`; `/invite-event` is for Manage Server staff.
 - **Never DM members about the invite event.** Its posts go to the leaderboard channel and the staff log.
+- **Check-in DMs only through `services/dm.ts`**, which checks the opt-out first. Keep the limits (SPEC §9): once a day, at most 20 per run, a random 5–10 minutes apart, stop on any rate limit or error, one per member per 14 days and one until they're active again, and only when a scheduled event is coming up.
 - **The bot never creates, edits or deletes roles.** It only gives and takes the colour roles admins put in menus. Roles with moderator/admin permissions can never be colours.
-- **Never store message content.** For donations: never store donor emails or Ko-fi messages, and never handle payments (Ko-fi does).
+- **Never store message content.** Check-ins store only when members last talked (a timestamp). For donations: never store donor emails or Ko-fi messages, and never handle payments (Ko-fi does).
 - **Ko-fi webhooks are verified** with the verification token (constant-time) and saved once per Ko-fi `message_id`.
 - **Only one copy of the bot connects to Discord at a time** (`gateway-leader` advisory lock).
 - **Dropdowns use fixed IDs and a global handler**, so they work after restarts. Defer before slow work.
@@ -31,7 +32,7 @@ TypeScript (strict), Node 22+, discord.js v14, Prisma + PostgreSQL (Supabase), V
 src/
   core/        pure rules + tests (colours, access, banner checks)
   discord/     client, commands/, interactions
-  services/    colour menus, donations, Ko-fi webhook server, banner download, gateway-leader, shutdown
+  services/    colour menus, donations, Ko-fi webhook server, invite event, check-ins, dm (the check-in DM helper), member list, banner download, gateway-leader, shutdown
   db/          prisma client, connection, migrate (applies migrations without the Prisma CLI)
   deploy.ts    entry of the one-file bundle: migrate, then start
   cli/         register-commands

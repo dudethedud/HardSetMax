@@ -62,4 +62,15 @@ describe('interactions', () => {
     await handleInteraction(base({ isStringSelectMenu: () => true, customId: 'old:thing', reply }), ctx());
     expect(reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'This menu no longer works.' }));
   });
+
+  it('"Stop these DMs" in a check-in DM opts them out, confirms and removes the button (works with no server, after restarts)', async () => {
+    const setOptOut = vi.fn(() => Promise.resolve());
+    const reply = vi.fn(() => Promise.resolve());
+    const edit = vi.fn(() => Promise.resolve());
+    const c = { ...ctx(), checkins: { setOptOut } } as unknown as AppContext;
+    await handleInteraction(base({ isButton: () => true, customId: 'checkins:stop', guildId: null, guild: null, inCachedGuild: () => false, inGuild: () => false, reply, message: { edit } }), c);
+    expect(setOptOut).toHaveBeenCalledWith('u1', true);
+    expect(reply).toHaveBeenCalledWith({ content: 'Done! No more check-ins ♡ Turn them back on with /checkins on' });
+    expect(edit).toHaveBeenCalledWith({ components: [] });
+  });
 });
