@@ -2,12 +2,12 @@
 // (timestamps only, saved in batches), and once a day DMs up to 20 members who've
 // been quiet a week, about the server's next scheduled event, 5–10 minutes apart.
 // Members can opt out with the DM's button or /checkins. Rules are in core/checkins.ts.
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, GuildScheduledEventStatus, RESTEvents, type Client, type Guild, type Message } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, GuildScheduledEventStatus, type Guild, type Message } from 'discord.js';
 import { checkinDue, checkinOrder, checkinText, dmGap, MAX_PER_RUN, nextEvent, runDay, type CheckinFacts } from '../core/checkins.js';
 import type { Db } from '../db/prisma.js';
 import type { CheckinState } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
-import { CHECKIN_STOP_ID, sendDm } from './dm.js';
+import { CHECKIN_STOP_ID, type DmQueue } from './dm.js';
 import { fetchAllMembers } from './memberList.js';
 
 export interface CheckinRun {
@@ -28,7 +28,8 @@ export class CheckinService {
   #running = false;
 
   constructor(
-    private readonly client: Client,
+    /** Every DM goes through the shared queue (opt-out, limits, rate-limit pause). */
+    private readonly dms: DmQueue,
     private readonly guildId: string,
     private readonly db: Db,
     private readonly log: Logger,
@@ -138,42 +139,31 @@ export class CheckinService {
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(CHECKIN_STOP_ID).setLabel('Stop these DMs').setStyle(ButtonStyle.Secondary))],
     };
 
-    // Any rate limit during the run stops it for the day.
-    let rateLimited = false;
-    const onRateLimit = () => (rateLimited = true);
-    this.client.rest?.on(RESTEvents.RateLimited, onRateLimit);
-    try {
-      let tried = 0;
-      for (const c of checkinOrder(due, state.trackingStartedAt).slice(0, MAX_PER_RUN)) {
-        if (tried > 0) await this.wait(dmGap(this.random()));
-        if (rateLimited) {
-          result.stopped = 'rate limited';
-          break;
-        }
-        // The run takes hours: skip anyone who has talked since it started.
-        if (await this.#activeSince(c.userId, now)) {
-          result.becameActive++;
-          continue;
-        }
-        tried++;
-        const dm = await sendDm(this.client, this.db, c.userId, message);
-        if (dm.status === 'failed') {
-          result.stopped = dm.error instanceof Error ? dm.error.message : String(dm.error);
-          this.log.warn({ err: dm.error, userId: c.userId }, 'check-ins: a DM failed, stopping for today');
-          break;
-        }
-        if (dm.status === 'opted-out') continue;
-        // Closed DMs count as their check-in: no retries until they're active again.
-        await this.db.memberActivity.upsert({ where: { userId: c.userId }, create: { userId: c.userId, lastCheckinAt: now }, update: { lastCheckinAt: now } });
-        if (dm.status === 'sent') result.sent++;
-        else result.closed++;
-        if (rateLimited) {
-          result.stopped = 'rate limited';
-          break;
-        }
+    let tried = 0;
+    for (const c of checkinOrder(due, state.trackingStartedAt).slice(0, MAX_PER_RUN)) {
+      if (tried > 0) await this.wait(dmGap(this.random()));
+      // The run takes hours: skip anyone who has talked since it started.
+      if (await this.#activeSince(c.userId, now)) {
+        result.becameActive++;
+        continue;
       }
-    } finally {
-      this.client.rest?.off(RESTEvents.RateLimited, onRateLimit);
+      tried++;
+      const dm = await this.dms.send(c.userId, message, 'checkin');
+      // A rate limit (DMs paused), the hourly DM limit or any error stops the run for the day.
+      if (dm.status === 'held') {
+        result.stopped = `DM limit (${dm.reason})`;
+        break;
+      }
+      if (dm.status === 'failed') {
+        result.stopped = dm.error instanceof Error ? dm.error.message : String(dm.error);
+        this.log.warn({ err: dm.error, userId: c.userId }, 'check-ins: a DM failed, stopping for today');
+        break;
+      }
+      if (dm.status === 'opted-out') continue;
+      // Closed DMs count as their check-in: no retries until they're active again.
+      await this.db.memberActivity.upsert({ where: { userId: c.userId }, create: { userId: c.userId, lastCheckinAt: now }, update: { lastCheckinAt: now } });
+      if (dm.status === 'sent') result.sent++;
+      else result.closed++;
     }
     this.log.info({ event: event.name, due: result.due, sent: result.sent, dmsClosed: result.closed, becameActive: result.becameActive, stopped: result.stopped }, `check-ins: sent ${result.sent} DM${result.sent === 1 ? '' : 's'} today`);
     return result;

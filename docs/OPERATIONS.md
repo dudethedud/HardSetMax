@@ -60,6 +60,8 @@ The free server has 512 MB. There's no build on the server any more; the bot its
 | `P1011: Error opening a TLS connection` or `TLS certificate isn't trusted` | `DATABASE_CA_CERT` is missing or points to the wrong file. Re-download the certificate from Supabase. |
 | `P1001: Can't reach database server` | Wrong host in `DATABASE_URL`, or the Supabase project is paused (open it in Supabase and click Restore). |
 | `Discord refused the intents` | Turn on **Server Members Intent** in the Developer Portal (Bot page). |
+| `colour removals paused: too many reppers lost their rep role at once` (and ⚠️ in the log channel) | Usually the tag/status bot glitched. Nothing to do: removals resume 15 minutes after the last one and the hourly check catches up. If it keeps happening, check that bot. |
+| `Discord rate-limited DMs: all DMs paused for an hour` | DMs resume by themselves after an hour. Colours still come off meanwhile; the log says the DM was skipped. |
 | `check-ins: no upcoming scheduled event, so no DMs today` | Normal: create a scheduled event (Server name → Create Event) and the next daily run uses it. |
 | `check-ins: a DM failed, stopping for today` | Discord refused a DM (often a rate limit). It tries again tomorrow; if it keeps happening, set `CHECKIN_DMS=off` and tell the developer. |
 | `invite event: invite tracking is OFF` | Give the bot's role **Manage Server** (README, invite event). It checks again every hour. |
@@ -104,7 +106,7 @@ Tested locally (Postgres 16 with TLS and a private CA): backup → decrypt → r
 2. `/colours unlock-role add role:@…` for each role your other bots give reppers (server tag, `.gg/femboii` in status). Any one of them unlocks colours.
 3. `/colours menu create title:Pinks/Magentas emoji:🫐 banner:<image>` for each group.
 4. `/colours menu add-role menu:Pinks/Magentas role:@Rose ⸝⸝` for each colour. Use your existing roles: the bot never creates or edits roles. Roles with moderator/admin permissions, roles above the bot and bot-managed roles are refused.
-5. `/colours post channel:#colour-yourself` posts every menu, in order. Run it again any time: it updates them in place. `fresh:true` deletes and reposts them all (use it after changing a menu's `position`).
+5. `/colours post channel:#tag-donor-colours` posts every menu, in order. Run it again any time: it updates them in place. `fresh:true` deletes and reposts them all (use it after changing a menu's `position`).
 6. Optional: `/colours log-channel channel:#staff-logs` logs each colour the bot takes off.
 7. Delete your old menu messages.
 

@@ -73,7 +73,7 @@ export const coloursCommand = defineCommand({
         s
           .setName('post')
           .setDescription('Post or update all menus in a channel, in order')
-          .addChannelOption((o) => o.setName('channel').setDescription('e.g. #colour-yourself').addChannelTypes(ChannelType.GuildText).setRequired(true))
+          .addChannelOption((o) => o.setName('channel').setDescription('e.g. #tag-donor-colours').addChannelTypes(ChannelType.GuildText).setRequired(true))
           .addBooleanOption((o) => o.setName('fresh').setDescription('Delete and repost them all (to change their order)')),
       )
       .addSubcommand((s) =>

@@ -5,7 +5,7 @@ import { pino } from 'pino';
 import { Collection, DiscordAPIError, GuildScheduledEventStatus, RESTEvents, RESTJSONErrorCodes, type Client, type Guild } from 'discord.js';
 import { createDb, type Db } from '../db/prisma.js';
 import { CheckinService } from './checkins.js';
-import { CHECKIN_STOP_ID, sendDm } from './dm.js';
+import { CHECKIN_STOP_ID, DmQueue } from './dm.js';
 
 const url = process.env['TEST_DATABASE_URL'];
 const GUILD = '900000000000000001';
@@ -46,7 +46,9 @@ describe.skipIf(!url)('check-in DMs', () => {
         },
       },
     } as unknown as Client;
-    const service = new CheckinService(client, GUILD, db, pino({ level: 'silent' }), opts.enabled ?? true, () => clock.now, (ms) => (waits.push(ms), Promise.resolve()), () => 0.5);
+    // The real DM queue, on the test clock (its 3-second gap doesn't really wait).
+    const dmQueue = new DmQueue(client, db, pino({ level: 'silent' }), () => clock.now.getTime(), () => Promise.resolve());
+    const service = new CheckinService(dmQueue, GUILD, db, pino({ level: 'silent' }), opts.enabled ?? true, () => clock.now, (ms) => (waits.push(ms), Promise.resolve()), () => 0.5);
     /** Someone talked `daysAgo` days ago (saved the way the bot saves them). */
     const talked = async (n: number, daysAgo: number) => {
       const at = clock.now;
@@ -172,7 +174,8 @@ describe.skipIf(!url)('check-in DMs', () => {
       u.rest.emit(RESTEvents.RateLimited, { timeToReset: 1000 });
       return undefined as never;
     });
-    expect(await u.service.run(u.guild)).toMatchObject({ stopped: 'rate limited' });
+    // The DM queue pauses all DMs for an hour, so the run stops.
+    expect(await u.service.run(u.guild)).toMatchObject({ stopped: 'DM limit (paused)' });
     expect(u.dms.length).toBeLessThanOrEqual(1);
   });
 
@@ -213,7 +216,7 @@ describe.skipIf(!url)('check-in DMs', () => {
     await t.service.setOptOut(id(1), true);
     expect(await t.service.status(id(1))).toEqual({ optedOut: true, lastCheckinAt: null });
     const client = { users: { send: () => Promise.reject(new Error('should not be called')) } } as unknown as Client;
-    expect(await sendDm(client, db, id(1), { content: 'hi' })).toEqual({ status: 'opted-out' });
+    expect(await new DmQueue(client, db, pino({ level: 'silent' })).send(id(1), { content: 'hi' }, 'checkin')).toEqual({ status: 'opted-out' });
     await t.service.setOptOut(id(1), false);
     expect(await t.service.status(id(1))).toMatchObject({ optedOut: false });
   });
