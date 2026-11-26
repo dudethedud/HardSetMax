@@ -14,6 +14,7 @@ import { ColourMenuService } from './services/colourMenus.js';
 import { DonationService } from './services/donations.js';
 import { edmontonTime } from './core/inviteEvent.js';
 import { InviteEventService } from './services/inviteEvent.js';
+import { CheckinService } from './services/checkins.js';
 import { startWebhookServer } from './services/webhookServer.js';
 import { acquireGatewayLeader } from './services/gatewayLeader.js';
 import { createShutdown } from './services/shutdown.js';
@@ -22,6 +23,9 @@ import { VERSION } from './version.js';
 const SWEEP_EVERY_MS = 60 * 60_000;
 /** The invite event's due-or-not steps (hourly check, Sunday posts, freeze) run this often. */
 const INVITE_TICK_MS = 5 * 60_000;
+/** Check-ins: message times are saved this often; the daily run is checked hourly. */
+const ACTIVITY_FLUSH_MS = 5 * 60_000;
+const CHECKIN_TICK_MS = 60 * 60_000;
 
 const env = loadEnv();
 const log = createLogger(env.LOG_LEVEL);
@@ -74,7 +78,8 @@ const invites =
       })
     : null;
 if (!invites && (env.LEADERBOARD_CHANNEL_ID || env.LEVEL3_ROLE_ID)) log.warn('invite event needs both LEADERBOARD_CHANNEL_ID and LEVEL3_ROLE_ID: it is off');
-const ctx: AppContext = { env, log, db, client, colours, donations, invites };
+const checkins = new CheckinService(client, env.GUILD_ID, db, log, env.CHECKIN_DMS === 'on');
+const ctx: AppContext = { env, log, db, client, colours, donations, invites, checkins };
 
 // Steps run in order: stop taking Ko-fi donations before the database closes.
 let webhook: Server | null = null;
@@ -88,6 +93,8 @@ shutdown.add({
     }),
 });
 shutdown.add({ name: 'discord', run: () => client.destroy() });
+// Save the last few minutes of message times before the database closes.
+shutdown.add({ name: 'check-in activity', run: () => checkins.flush().then(() => undefined) });
 shutdown.add({ name: 'database', run: () => db.$disconnect() });
 shutdown.add({ name: 'gateway-leader', run: () => leader!.release() });
 
@@ -109,7 +116,17 @@ client.once(Events.ClientReady, (c) => {
     void invites.start(guild).then(tick, logErrors('invite event start'));
     setInterval(tick, INVITE_TICK_MS).unref();
   }
+  // Check-ins: note when tracking started, save message times every 5 minutes, and
+  // check hourly (from a minute after start) whether today's run is due.
+  void checkins.state().catch(logErrors('check-in start'));
+  setInterval(() => void checkins.flush().catch(logErrors('check-in activity save')), ACTIVITY_FLUSH_MS).unref();
+  if (guild) {
+    const checkinTick = () => void checkins.tick(guild).catch(logErrors('check-in run'));
+    setTimeout(checkinTick, 60_000).unref();
+    setInterval(checkinTick, CHECKIN_TICK_MS).unref();
+  }
 });
+client.on(Events.MessageCreate, (message) => checkins.noteMessage(message));
 client.on(Events.InviteCreate, (invite) => invites?.onInviteCreate(invite));
 client.on(Events.InviteDelete, (invite) => invites?.onInviteDelete(invite));
 client.on(Events.GuildMemberAdd, (member) => {

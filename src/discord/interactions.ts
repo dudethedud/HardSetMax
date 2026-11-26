@@ -4,6 +4,8 @@ import { MessageFlags, PermissionFlagsBits, type AutocompleteInteraction, type B
 import { ACCESS_DENIED, checkAccess, type AccessLevel, type AccessResult } from '../core/access.js';
 import { MENU_SELECT_PREFIX } from '../services/colourMenus.js';
 import { DONATE_BUTTON_ID } from '../services/donations.js';
+import { CHECKIN_STOP_ID } from '../services/dm.js';
+import { OPTED_OUT_TEXT } from './commands/checkins.js';
 import { COMMANDS_BY_NAME } from './commands/index.js';
 import type { AppContext } from './commands/types.js';
 
@@ -60,8 +62,9 @@ async function handleAutocomplete(interaction: AutocompleteInteraction, ctx: App
   }
 }
 
-/** The donation panel's Donate button: the member's code and the Ko-fi link, privately. */
+/** The donation panel's Donate button (the member's code and the Ko-fi link, privately), and "Stop these DMs" in check-in DMs. */
 async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
+  if (interaction.customId === CHECKIN_STOP_ID) return handleCheckinStop(interaction, ctx);
   if (interaction.customId !== DONATE_BUTTON_ID || !interaction.inCachedGuild() || interaction.guildId !== ctx.env.GUILD_ID) {
     await interaction.reply({ content: 'This button no longer works.', flags: MessageFlags.Ephemeral });
     return;
@@ -72,6 +75,19 @@ async function handleButton(interaction: ButtonInteraction, ctx: AppContext): Pr
   } catch (err) {
     ctx.log.error({ err }, 'donate button failed');
     await interaction.editReply('❌ Something went wrong. Please try again.').catch(() => undefined);
+  }
+}
+
+/** "Stop these DMs" under a check-in DM (works in DMs, and after restarts). */
+async function handleCheckinStop(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
+  try {
+    await ctx.checkins.setOptOut(interaction.user.id, true);
+    await interaction.reply({ content: OPTED_OUT_TEXT, ...(interaction.inGuild() ? { flags: MessageFlags.Ephemeral } : {}) });
+    // Take the button off the DM so it isn't tapped twice.
+    if (!interaction.inGuild()) await interaction.message.edit({ components: [] }).catch(() => undefined);
+  } catch (err) {
+    ctx.log.error({ err }, 'check-in opt-out failed');
+    await interaction.reply({ content: '❌ Something went wrong. Try /checkins off in the server.' }).catch(() => undefined);
   }
 }
 
