@@ -1,6 +1,6 @@
 # Colour menu bot
 
-Colour role menus for server reppers. Members who wear the server tag or have `.gg/femboii` in their status (other bots give them a role for it) pick **one** colour from menus in #colour-yourself. When they stop repping, the bot takes the colour off.
+Colour role menus for server reppers. Members who wear the server tag or have `.gg/femboii` in their status (other bots give them a role for it) pick **one** colour from menus in #tag-donor-colours. When they stop repping, the bot takes the colour off.
 
 - Menus look like: banner image → emoji + underlined heading → the colour roles → "╰ Max Selection: **1**" → a **Make a selection** dropdown.
 - One colour across all menus: picking a new one swaps it. "Remove colour" takes it off.

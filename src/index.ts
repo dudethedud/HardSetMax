@@ -15,6 +15,7 @@ import { DonationService } from './services/donations.js';
 import { edmontonTime } from './core/inviteEvent.js';
 import { InviteEventService } from './services/inviteEvent.js';
 import { CheckinService } from './services/checkins.js';
+import { DmQueue } from './services/dm.js';
 import { startWebhookServer } from './services/webhookServer.js';
 import { acquireGatewayLeader } from './services/gatewayLeader.js';
 import { createShutdown } from './services/shutdown.js';
@@ -63,7 +64,9 @@ if (!leader) await new Promise(() => undefined);
 
 const db = createDb(connection, env.DATABASE_POOL_MAX);
 const client = createClient();
-const colours = new ColourMenuService(client, env.GUILD_ID, db, log);
+// Every DM the bot sends goes through one queue (docs/SPEC.md §10).
+const dms = new DmQueue(client, db, log);
+const colours = new ColourMenuService(client, env.GUILD_ID, db, log, dms);
 const donations = new DonationService(client, env.GUILD_ID, db, log);
 // The Christmas invite event, only when its channel and level role are set.
 const invites =
@@ -78,7 +81,7 @@ const invites =
       })
     : null;
 if (!invites && (env.LEADERBOARD_CHANNEL_ID || env.LEVEL3_ROLE_ID)) log.warn('invite event needs both LEADERBOARD_CHANNEL_ID and LEVEL3_ROLE_ID: it is off');
-const checkins = new CheckinService(client, env.GUILD_ID, db, log, env.CHECKIN_DMS === 'on');
+const checkins = new CheckinService(dms, env.GUILD_ID, db, log, env.CHECKIN_DMS === 'on');
 const ctx: AppContext = { env, log, db, client, colours, donations, invites, checkins };
 
 // Steps run in order: stop taking Ko-fi donations before the database closes.
@@ -139,7 +142,7 @@ client.on(Events.InteractionCreate, (interaction) => {
   handleInteraction(interaction, ctx).catch(logErrors('interaction handler'));
 });
 client.on(Events.GuildMemberUpdate, (_before, after) => {
-  colours.check(after).catch(logErrors('colour check'));
+  colours.onMemberUpdate(after).catch(logErrors('colour check'));
   invites?.onMemberUpdate(after).catch(logErrors('invite event role check'));
 });
 client.on(Events.Error, (err) => log.error({ err }, 'discord client error'));

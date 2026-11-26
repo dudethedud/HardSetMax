@@ -1,9 +1,10 @@
 // Needs a real Postgres with migrations applied: set TEST_DATABASE_URL to run.
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pino } from 'pino';
-import { Collection, ComponentType, MessageFlags, PermissionFlagsBits, PermissionsBitField, type Client, type GuildMember, type Role } from 'discord.js';
+import { Collection, ComponentType, DiscordAPIError, MessageFlags, PermissionFlagsBits, PermissionsBitField, RESTJSONErrorCodes, type Client, type GuildMember, type Role } from 'discord.js';
 import { createDb, type Db } from '../db/prisma.js';
 import { ColourMenuService, MENU_SELECT_PREFIX, REP_MESSAGE } from './colourMenus.js';
+import { DmQueue } from './dm.js';
 
 const url = process.env['TEST_DATABASE_URL'];
 const GUILD = '900000000000000001';
@@ -62,7 +63,7 @@ describe.skipIf(!url)('colour menus', () => {
         user: { bot: false, tag: `user${id.slice(-2)}` },
         displayName: `user${id.slice(-2)}`,
         displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png',
-        send: (o: { content: string }) => (closedDms.has(id) ? Promise.reject(new Error('Cannot send messages to this user')) : (dms.push({ to: id, content: o.content }), Promise.resolve())),
+        send: (o: { content: string }) => (closedDms.has(id) ? Promise.reject(new DiscordAPIError({ message: 'Cannot send messages to this user', code: RESTJSONErrorCodes.CannotSendMessagesToThisUser }, RESTJSONErrorCodes.CannotSendMessagesToThisUser, 403, 'POST', '/channels/x/messages', {})) : (dms.push({ to: id, content: o.content }), Promise.resolve())),
         roles: {
           cache,
           set: (ids: string[]) => {
@@ -96,10 +97,13 @@ describe.skipIf(!url)('colour menus', () => {
       },
     });
     const client = { guilds: { cache: new Map([[GUILD, guild]]) }, channels: { fetch: (id: string) => Promise.resolve(channel(id)) } } as unknown as Client;
-    const service = new ColourMenuService(client, GUILD, db, pino({ level: 'silent' }));
+    const clock = { now: 1_800_000_000_000 };
+    const log = pino({ level: 'silent' });
+    // The real shared DM queue, on the test clock (its 3-second gap doesn't really wait).
+    const service = new ColourMenuService(client, GUILD, db, log, new DmQueue(client, db, log, () => clock.now, () => Promise.resolve()), () => clock.now);
     const pauses: number[] = [];
     service.pause = (ms) => (pauses.push(ms), Promise.resolve());
-    return { service, guild, roles: roleObjs, member, changes, sent, messages, channel, dms, closedDms, pauses };
+    return { service, guild, roles: roleObjs, member, changes, sent, messages, channel, dms, closedDms, pauses, clock };
   }
 
   async function withMenus(t: ReturnType<typeof setup>) {
@@ -252,5 +256,47 @@ describe.skipIf(!url)('colour menus', () => {
     expect(await t.service.sweep(t.guild)).toBe(2);
     expect(t.dms.map((d) => d.to)).toEqual(['100000000000000008', '100000000000000009']);
     expect(t.pauses).toEqual([3000, 3000]);
+  });
+
+  it('mass-removal brake: over 10 reppers losing their colour within 5 minutes pauses removals and DMs, and tells staff once', async () => {
+    const t = setup();
+    await withMenus(t);
+    await t.service.post(t.channel(CHANNEL) as never, false);
+    await t.service.setLogChannel(LOG);
+    // The tag bot glitches: 12 reppers lose their rep role a few seconds apart.
+    const lost = Array.from({ length: 12 }, (_, i) => t.member(`2000000000000000${String(i).padStart(2, '0')}`, [ROSE]));
+    const removed: number[] = [];
+    for (const m of lost) {
+      removed.push(await t.service.onMemberUpdate(m));
+      t.clock.now += 5000;
+    }
+    expect(removed).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0]);
+    expect(t.dms).toHaveLength(10);
+    expect([...lost[11]!.roles.cache.keys()]).toEqual([ROSE]); // kept
+    const titles = t.sent.filter((x) => x.channelId === LOG).map((x) => (x.opts['embeds'] as { toJSON(): { title?: string } }[])[0]!.toJSON().title);
+    expect(titles.filter((x) => x === '⚠️ Colour removals paused')).toHaveLength(1);
+
+    // While it's on, the hourly check doesn't take anything off either...
+    expect(await t.service.sweep(t.guild)).toBe(0);
+    // ...but a sweep staff asked for (removing an unlock role) still runs.
+    expect(await t.service.sweep(t.guild, { force: true })).toBe(2);
+
+    // 15 minutes after the last loss it's off: the next hourly check catches up.
+    t.member('300000000000000001', [GOLD]);
+    t.clock.now += 15 * 60_000;
+    expect(await t.service.sweep(t.guild)).toBe(1);
+  });
+
+  it('colour-removal DMs share the DM limits: over 30 in an hour, the colour still comes off but the DM is skipped', async () => {
+    const t = setup();
+    await withMenus(t);
+    await t.service.setLogChannel(LOG);
+    for (let i = 0; i < 31; i++) {
+      await t.service.check(t.member(`4000000000000000${String(i).padStart(2, '0')}`, [GOLD]));
+      t.clock.now += 60_000; // one a minute
+    }
+    expect(t.dms).toHaveLength(30);
+    const last = (t.sent.at(-1)!.opts['embeds'] as { toJSON(): { fields: { name: string; value: string }[] } }[])[0]!.toJSON();
+    expect(last.fields.find((f) => f.name === 'DM')?.value).toBe('Skipped (DM limit: 30 an hour)');
   });
 });

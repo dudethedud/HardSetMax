@@ -2,7 +2,7 @@
 
 A Discord bot for one server. Colour menus for reppers (§1–6) and a donation panel (§7).
 
-Members who **rep the server** (wear its server tag or put `.gg/femboii` in their status) can pick a colour role from menus in a channel such as #colour-yourself. When someone stops repping, the bot takes their colour off.
+Members who **rep the server** (wear its server tag or put `.gg/femboii` in their status) can pick a colour role from menus in a channel such as #tag-donor-colours. When someone stops repping, the bot takes their colour off.
 
 Other bots already give reppers a role. This bot never looks at tags or statuses itself: it watches those **unlock roles**.
 
@@ -30,7 +30,8 @@ Other bots already give reppers a role. This bot never looks at tags or statuses
 - Removing an unlock role from the config runs the same check.
 - If no unlock roles are configured, nobody is stripped.
 - Each removal is posted to the log channel, if one is set, as an embed: member, colour removed, reason, and whether the DM got through (no pings).
-- The member gets a DM: which colour was removed, that it's because they stopped repping the server (server tag or `.gg/femboii` in status), and where to pick again (the channel the menus are posted in). Closed DMs are skipped quietly. In a sweep, removals that send a DM are 3 seconds apart, so a catch-up after downtime isn't a burst of DMs.
+- The member gets a DM: which colour was removed, that it's because they stopped repping the server (server tag or `.gg/femboii` in status), and where to pick again (the channel the menus are posted in). Closed DMs are skipped quietly. The DM goes through the shared DM queue (§10), so it's never part of a burst; over the hourly DM limit the colour still comes off and the log says the DM was skipped. The check-in opt-out (§9) doesn't stop these DMs (owner's choice). In a sweep, removals are also 3 seconds apart.
+- **Mass-removal brake:** if more than 10 reppers would lose their colour within 5 minutes (usually the tag/status bot glitching and re-adding roles), live removals pause: no colours come off and nobody is DMed, and a ⚠️ "Colour removals paused" embed goes to the log channel once. It lifts 15 minutes after the last such loss, and the hourly check (which also waits while the brake is on) then catches up on anyone who really stopped repping. A sweep staff start by removing an unlock role is never held back.
 - Taking a role out of a menu, or deleting a menu, does **not** remove it from people wearing it.
 
 ## 4. Commands
@@ -103,3 +104,12 @@ A friendly DM to members who've gone quiet, about the server's next event, with 
 - **Closed DMs:** skipped quietly, no retries: it counts as their check-in until they're active again.
 - **Opt-out:** the button sets `checkinOptOut` and answers "Done! No more check-ins ♡ Turn them back on with /checkins on", then removes itself from the DM. `/checkins on|off|status` (everyone, private).
 - `CHECKIN_DMS=off` stops all check-ins; message times are still noted and opt-outs still work. Colour-removal DMs (§3) are separate and not affected by the check-in opt-out.
+
+## 10. DM limits
+Every DM the bot sends (check-ins §9 and colour removals §3) goes through one queue, `services/dm.ts` (`DmQueue`), with the limits in `core/dmLimits.ts`:
+
+- **One at a time, at least 3 seconds apart.**
+- **At most 30 in any hour.** Over it, the DM is skipped, never queued for later (a colour still comes off; a check-in run stops for the day).
+- **A rate limit on DMs pauses all DMs for an hour**: a global rate limit, a rate limit on opening DM channels, or any rate limit while a DM is going out. Other rate limits (e.g. role changes) don't.
+- Check-in DMs check the opt-out first; colour-removal DMs don't.
+- Closed DMs (Discord error 50007) are told apart from real errors and never retried.

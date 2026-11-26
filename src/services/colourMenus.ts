@@ -23,10 +23,12 @@ import {
   type SendableChannels,
 } from 'discord.js';
 import { coloursToStrip, isRepper, MAX_COLOURS_PER_MENU, NO_COLOUR, removalDm, rolesAfterPick } from '../core/colours.js';
+import { BRAKE_HOLD_MS, BRAKE_MAX, BRAKE_WINDOW_MS, brakeOnLoss, isBraked, NO_BRAKE, type BrakeState } from '../core/dmLimits.js';
 import type { Db } from '../db/prisma.js';
 import type { ColourMenu, MenuColour } from '../generated/prisma/client.js';
 import type { Logger } from '../logger.js';
 import { assignableRoleError } from './roleSafety.js';
+import type { DmQueue } from './dm.js';
 import { fetchAllMembers } from './memberList.js';
 
 export const MENU_SELECT_PREFIX = 'colours:menu:';
@@ -44,12 +46,17 @@ export class ColourMenuService {
   #colourRoles = new Set<string>();
   /** Waits between removal DMs in a sweep, so Discord doesn't see a burst of DMs as spam. Replaceable in tests. */
   pause: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  /** Mass-removal brake: many reppers losing their colour at once looks like another bot glitching. */
+  #brake: BrakeState = NO_BRAKE;
 
   constructor(
     private readonly client: Client,
     private readonly guildId: string,
     private readonly db: Db,
     private readonly log: Logger,
+    /** Every DM goes through the shared queue (3 s apart, 30 an hour, paused on rate limits). */
+    private readonly dms: DmQueue,
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   #guild(): Guild | undefined {
@@ -155,7 +162,8 @@ export class ColourMenuService {
     if (!count) return '❌ That role doesn’t unlock colours.';
     await this.load();
     const guild = this.#guild();
-    const stripped = guild ? await this.sweep(guild) : 0;
+    // Staff asked for this one: it isn't held back by the mass-removal brake.
+    const stripped = guild ? await this.sweep(guild, { force: true }) : 0;
     return `✅ <@&${roleId}> no longer unlocks colours.${stripped ? ` Took colours off ${stripped} member(s) who don't have another unlock role.` : ''}`;
   }
 
@@ -264,6 +272,32 @@ export class ColourMenuService {
   }
 
   /** Member update: takes menu colours off anyone who no longer reps the server. */
+  /**
+   * A member's roles changed (live). Losing the colour goes through the mass-removal
+   * brake: over 10 in 5 minutes, removals pause (and staff are told) until 15 minutes
+   * after the last one, then the hourly check catches up on any that were real.
+   */
+  async onMemberUpdate(member: GuildMember): Promise<number> {
+    if (member.guild.id !== this.guildId || member.user.bot) return 0;
+    if (!coloursToStrip(new Set(member.roles.cache.keys()), this.#unlock, this.#colourRoles).length) return 0;
+    const brake = brakeOnLoss(this.#brake, this.now());
+    this.#brake = brake.state;
+    if (!brake.braked) return this.check(member);
+    if (brake.tripped) {
+      this.log.warn({ losses: brake.state.losses.length }, 'colour removals paused: too many reppers lost their rep role at once');
+      await this.#log(
+        new EmbedBuilder()
+          .setColor(0xfee75c)
+          .setTitle('⚠️ Colour removals paused')
+          .setDescription(
+            `More than ${BRAKE_MAX} reppers lost their rep role within ${BRAKE_WINDOW_MS / 60_000} minutes. That usually means the tag/status bot glitched, so no colours were taken off and nobody was DMed.\n\nRemovals start again ${BRAKE_HOLD_MS / 60_000} minutes after the last one, and the hourly check then catches up on anyone who really stopped repping.`,
+          )
+          .setTimestamp(new Date(this.now())),
+      );
+    }
+    return 0;
+  }
+
   async check(member: GuildMember): Promise<number> {
     if (member.guild.id !== this.guildId || member.user.bot) return 0;
     const strip = coloursToStrip(new Set(member.roles.cache.keys()), this.#unlock, this.#colourRoles);
@@ -274,7 +308,7 @@ export class ColourMenuService {
       this.log.warn({ err, userId: member.id }, "couldn't remove colour roles");
       return 0;
     }
-    const dmSent = await this.#tellMember(member, strip);
+    const dm = await this.#tellMember(member, strip);
     await this.#log(
       new EmbedBuilder()
         .setColor(0xff8fc7)
@@ -284,7 +318,7 @@ export class ColourMenuService {
         .addFields(
           { name: 'Removed', value: strip.map((id) => `<@&${id}>`).join(', '), inline: true },
           { name: 'Reason', value: 'Lost their last unlock role', inline: true },
-          { name: 'DM', value: dmSent ? 'Sent ✅' : "Couldn't send (DMs closed)", inline: true },
+          { name: 'DM', value: dm, inline: true },
         )
         .setFooter({ text: `User ID: ${member.id}` })
         .setTimestamp(new Date()),
@@ -293,21 +327,25 @@ export class ColourMenuService {
   }
 
   /** DMs the member why their colour went. Members with closed DMs are skipped quietly. Returns whether it was sent. */
-  async #tellMember(member: GuildMember, roleIds: string[]): Promise<boolean> {
+  /** DMs the member why their colour came off (through the shared DM queue). Returns what happened, for the log. */
+  async #tellMember(member: GuildMember, roleIds: string[]): Promise<string> {
     const names = roleIds.map((id) => member.guild.roles.cache.get(id)?.name ?? 'colour');
     const posted = await this.db.colourMenu.findFirst({ where: { channelId: { not: null } }, select: { channelId: true }, orderBy: { position: 'asc' } });
-    try {
-      await member.send({ content: removalDm(names, member.guild.name, posted?.channelId ?? null), allowedMentions: { parse: [] } });
-      return true;
-    } catch (err) {
-      this.log.info({ userId: member.id, err: err instanceof Error ? err.message : String(err) }, "couldn't DM a member about their removed colour (DMs closed?)");
-      return false;
-    }
+    const dm = await this.dms.send(member.id, { content: removalDm(names, member.guild.name, posted?.channelId ?? null) }, 'colour-removal', (m) => member.send(m));
+    if (dm.status === 'sent') return 'Sent ✅';
+    if (dm.status === 'closed') return "Couldn't send (DMs closed)";
+    if (dm.status === 'held') return dm.reason === 'paused' ? 'Skipped (DMs paused after a rate limit)' : 'Skipped (DM limit: 30 an hour)';
+    this.log.info({ userId: member.id, err: dm.status === 'failed' && dm.error instanceof Error ? dm.error.message : dm.status }, "couldn't DM a member about their removed colour");
+    return "Couldn't send";
   }
 
   /** Startup and hourly: checks every member, in case Discord missed a role change. Returns how many were fixed. */
-  async sweep(guild: Guild): Promise<number> {
+  async sweep(guild: Guild, opts: { force?: boolean } = {}): Promise<number> {
     if (this.#unlock.size === 0 || this.#colourRoles.size === 0) return 0;
+    if (!opts.force && isBraked(this.#brake, this.now())) {
+      this.log.info('colour sweep skipped: the mass-removal brake is on');
+      return 0;
+    }
     const members = await fetchAllMembers(guild);
     let fixed = 0;
     for (const member of members.values()) {
