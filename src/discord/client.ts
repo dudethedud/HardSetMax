@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, Options } from 'discord.js';
 
 // GuildMembers is privileged (Developer Portal → Bot → Server Members Intent):
 // needed to see role changes and joins, and to check everyone in the hourly sweep.
@@ -19,5 +19,9 @@ export function createClient(): Client {
     intents: Object.values(REQUIRED_INTENTS),
     // Nothing the bot sends pings anyone.
     allowedMentions: { parse: [] },
+    // The bot only needs to know *when* members talk (check-ins), never the messages
+    // themselves: keep none in memory (discord.js keeps 200 per channel by default),
+    // so every message in the server costs next to no CPU or memory.
+    makeCache: Options.cacheWithLimits({ ...Options.DefaultMakeCacheSettings, MessageManager: 0 }),
   });
 }
